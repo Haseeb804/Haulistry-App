@@ -75,7 +75,7 @@ class ProviderRemoteDataSource {
         const Duration(seconds: 60), // Increased timeout to 60 seconds
         onTimeout: () {
           throw custom_exceptions.ServerException(
-            message: 'Request timeout. Please check your internet connection and try again.',
+            message: 'Connection timed out. Please check your internet and try again.',
           );
         },
       );
@@ -386,7 +386,16 @@ class ProviderRemoteDataSource {
 
   custom_exceptions.ApiException _handleException(OperationException exception) {
     if (exception.linkException != null) {
-      return custom_exceptions.NetworkException(message: 'Network error: ${exception.linkException}');
+      final errorStr = exception.linkException.toString().toLowerCase();
+      if (errorStr.contains('socketexception') ||
+          errorStr.contains('connection refused') ||
+          errorStr.contains('network is unreachable') ||
+          errorStr.contains('no address associated')) {
+        return custom_exceptions.NetworkException(
+            message: 'Please check your internet connection and try again');
+      }
+      return custom_exceptions.NetworkException(
+          message: 'Please check your internet connection and try again');
     }
 
     final errors = exception.graphqlErrors;
@@ -403,6 +412,6 @@ class ProviderRemoteDataSource {
       }
     }
 
-    return custom_exceptions.ServerException(message: 'Unknown error occurred');
+    return custom_exceptions.ServerException(message: 'Something went wrong. Please try again later');
   }
 }

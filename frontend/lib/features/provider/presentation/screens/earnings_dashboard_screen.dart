@@ -29,8 +29,9 @@ class _EarningsDashboardScreenState extends State<EarningsDashboardScreen> {
     if (!_earningsRequested) {
       _earningsRequested = true;
       context.read<ProviderBloc>().add(const ProviderLoadEarningsRequested());
-      // Fallback: if still loading after 5 seconds, force show earnings UI with zeros
-      _fallbackTimer = Timer(const Duration(seconds: 5), () {
+      // Fallback: if still loading after 20 seconds, force show earnings UI
+      // This should be longer than the API timeout (15s) to give real data time to load
+      _fallbackTimer = Timer(const Duration(seconds: 20), () {
         if (mounted) {
           setState(() {
             _forceShowEarnings = true;

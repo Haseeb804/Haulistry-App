@@ -1,6 +1,7 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
+import 'dart:io';
 import 'dart:typed_data';
 import '../../../../core/domain/entities/user_entity.dart';
 import '../../../../core/constants/app_constants.dart';
@@ -46,7 +47,7 @@ class AuthRepositoryImpl implements AuthRepository {
       
       return null;
     } catch (e) {
-      throw Exception('Failed to get current user: $e');
+      throw Exception(_getNetworkErrorMessage(e));
     }
   }
 
@@ -85,7 +86,7 @@ class AuthRepositoryImpl implements AuthRepository {
     } on FirebaseAuthException catch (e) {
       throw Exception(_getAuthErrorMessage(e.code));
     } catch (e) {
-      throw Exception('Sign in failed: $e');
+      throw Exception(_getNetworkErrorMessage(e));
     }
   }
 
@@ -143,7 +144,7 @@ class AuthRepositoryImpl implements AuthRepository {
     } on FirebaseAuthException catch (e) {
       throw Exception(_getAuthErrorMessage(e.code));
     } catch (e) {
-      throw Exception('Sign up failed: $e');
+      throw Exception(_getNetworkErrorMessage(e));
     }
   }
 
@@ -152,7 +153,7 @@ class AuthRepositoryImpl implements AuthRepository {
     try {
       await _firebaseAuth.signOut();
     } catch (e) {
-      throw Exception('Sign out failed: $e');
+      throw Exception(_getNetworkErrorMessage(e));
     }
   }
 
@@ -163,7 +164,7 @@ class AuthRepositoryImpl implements AuthRepository {
     } on FirebaseAuthException catch (e) {
       throw Exception(_getAuthErrorMessage(e.code));
     } catch (e) {
-      throw Exception('Password reset failed: $e');
+      throw Exception(_getNetworkErrorMessage(e));
     }
   }
 
@@ -342,7 +343,7 @@ class AuthRepositoryImpl implements AuthRepository {
     } on FirebaseAuthException catch (e) {
       throw Exception(_getAuthErrorMessage(e.code));
     } catch (e) {
-      throw Exception('Sign up failed: $e');
+      throw Exception(_getNetworkErrorMessage(e));
     }
   }
 
@@ -362,8 +363,25 @@ class AuthRepositoryImpl implements AuthRepository {
         return 'Operation not allowed';
       case 'user-disabled':
         return 'This account has been disabled';
+      case 'network-request-failed':
+        return 'Please check your internet connection and try again';
       default:
         return 'Authentication failed';
     }
+  }
+
+  /// Get user-friendly message for network errors
+  String _getNetworkErrorMessage(dynamic error) {
+    final errorStr = error.toString().toLowerCase();
+    if (error is SocketException ||
+        errorStr.contains('socketexception') ||
+        errorStr.contains('connection refused') ||
+        errorStr.contains('network is unreachable') ||
+        errorStr.contains('no address associated')) {
+      return 'Please check your internet connection and try again';
+    } else if (errorStr.contains('timeout')) {
+      return 'Connection timed out. Please check your internet and try again';
+    }
+    return 'Something went wrong. Please try again later';
   }
 }

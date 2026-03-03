@@ -1,7 +1,9 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:firebase_auth/firebase_auth.dart';
 import '../constants/app_constants.dart';
+import '../data/api_exceptions.dart';
 
 /// API Service for REST communication with backend
 /// All communication with backend goes through REST endpoints (not GraphQL mutations)
@@ -48,12 +50,13 @@ class ApiService {
       final headers = await _getHeaders();
       final response = await http.get(uri, headers: headers).timeout(
         const Duration(seconds: 30),
-        onTimeout: () => throw ApiException('Request timeout'),
+        onTimeout: () => throw NetworkException(message: ErrorMessages.connectionTimeout),
       );
 
       return _handleResponse(response);
     } catch (e) {
-      throw ApiException('Network error: $e');
+      if (e is ApiException) rethrow;
+      throw NetworkException(message: ErrorMessages.getFriendlyMessage(e));
     }
   }
 
@@ -68,12 +71,13 @@ class ApiService {
         body: jsonEncode(body),
       ).timeout(
         const Duration(seconds: 30),
-        onTimeout: () => throw ApiException('Request timeout'),
+        onTimeout: () => throw NetworkException(message: ErrorMessages.connectionTimeout),
       );
 
       return _handleResponse(response);
     } catch (e) {
-      throw ApiException('Network error: $e');
+      if (e is ApiException) rethrow;
+      throw NetworkException(message: ErrorMessages.getFriendlyMessage(e));
     }
   }
 
@@ -88,12 +92,13 @@ class ApiService {
         body: jsonEncode(body),
       ).timeout(
         const Duration(seconds: 30),
-        onTimeout: () => throw ApiException('Request timeout'),
+        onTimeout: () => throw NetworkException(message: ErrorMessages.connectionTimeout),
       );
 
       return _handleResponse(response);
     } catch (e) {
-      throw ApiException('Network error: $e');
+      if (e is ApiException) rethrow;
+      throw NetworkException(message: ErrorMessages.getFriendlyMessage(e));
     }
   }
 
@@ -104,12 +109,13 @@ class ApiService {
       final headers = await _getHeaders();
       final response = await http.delete(uri, headers: headers).timeout(
         const Duration(seconds: 30),
-        onTimeout: () => throw ApiException('Request timeout'),
+        onTimeout: () => throw NetworkException(message: ErrorMessages.connectionTimeout),
       );
 
       return _handleResponse(response);
     } catch (e) {
-      throw ApiException('Network error: $e');
+      if (e is ApiException) rethrow;
+      throw NetworkException(message: ErrorMessages.getFriendlyMessage(e));
     }
   }
 

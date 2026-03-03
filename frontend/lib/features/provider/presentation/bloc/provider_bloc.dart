@@ -163,12 +163,15 @@ class ProviderBloc extends Bloc<ProviderEvent, ProviderState> {
         }),
       ]);
 
-      // Categorize bookings
-      final pendingBookings = allBookings.where((b) => b.status == 'pending').toList();
+      // Categorize bookings - case-insensitive status checks
+      final pendingBookings = allBookings.where((b) => 
+          b.status.toLowerCase() == 'pending').toList();
       final activeBookings = allBookings
-          .where((b) => ['accepted', 'provider_arriving', 'provider_arrived', 'in_progress'].contains(b.status))
+          .where((b) => ['accepted', 'provider_arriving', 'provider_arrived', 'in_progress']
+              .contains(b.status.toLowerCase()))
           .toList();
-      final completedBookings = allBookings.where((b) => b.status == 'completed').toList();
+      final completedBookings = allBookings.where((b) => 
+          b.status.toLowerCase() == 'completed').toList();
 
       // Calculate earnings
       final totalEarnings = completedBookings.fold<double>(
@@ -595,7 +598,9 @@ class ProviderBloc extends Bloc<ProviderEvent, ProviderState> {
       try {
         final allBookings = await _repository.getProviderBookings(user.uid)
             .timeout(const Duration(seconds: 15));
-        completed = allBookings.where((b) => b.status == 'completed').toList();
+        // Case-insensitive status check
+        completed = allBookings.where((b) => 
+            b.status.toLowerCase() == 'completed').toList();
       } catch (e) {
         // Continue with empty list if bookings fail to load
         completed = [];
