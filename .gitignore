@@ -1,0 +1,23 @@
+# ============================================================
+# Root .gitignore — Haulistry App
+# ============================================================
+
+# ── IDE / Editor ────────────────────────────────────────────
+.idea/
+.vscode/
+*.iml
+*.ipr
+*.iws
+*.suo
+*.user
+*.userosscache
+*.sln.docobj
+*.ncb
+*.opendb
+.history/
+.DS_Store
+Thumbs.db
+
+# ── OS Files ─────────────────────────────────────────────────
+desktop.ini
+$RECYCLE.BIN/

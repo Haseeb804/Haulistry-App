@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <!--
+    If you are serving your web app in a path other than the root, change the
+    href value below to reflect the base path you are serving from.
+
+    The path provided below has to start and end with a slash "/" in order for
+    it to work correctly.
+
+    For more details:
+    * https://developer.mozilla.org/en-US/docs/Web/HTML/Element/base
+
+    This is a placeholder for base href that will be replaced by the value of
+    the `--base-href` argument provided to `flutter build`.
+  -->
+  <base href="$FLUTTER_BASE_HREF">
+
+  <meta charset="UTF-8">
+  <meta content="IE=Edge" http-equiv="X-UA-Compatible">
+  <meta name="description" content="A new Flutter project.">
+
+  <!-- iOS meta tags & icons -->
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black">
+  <meta name="apple-mobile-web-app-title" content="haulistry">
+  <link rel="apple-touch-icon" href="icons/Icon-192.png">
+
+  <!-- Favicon -->
+  <link rel="icon" type="image/png" href="favicon.png"/>
+
+  <title>haulistry</title>
+  <link rel="manifest" href="manifest.json">
+  
+  <!-- Google Maps JavaScript API - Cross-platform compatibility -->
+  <script>
+    // Store the Google Maps API key for Flutter web
+    window.googleMapsApiKey = 'AIzaSyAS4j4CQrnzzsnob_s22yNxjOV5FdBSjRo';
+    
+    // Callback when Google Maps API is loaded
+    function initGoogleMaps() {
+      window.google = window.google || {};
+    }
+    
+    // Error handler for Google Maps loading
+    window.gm_authFailure = function() {
+      console.error('✗ Google Maps API authentication failed');
+      alert('Google Maps failed to load. Please check your API key.');
+    };
+  </script>
+  
+  <!-- Load Google Maps API with Places library -->
+  <script async defer
+    src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAS4j4CQrnzzsnob_s22yNxjOV5FdBSjRo&libraries=places&callback=initGoogleMaps"
+    onerror="console.error('Failed to load Google Maps API script')">
+  </script>
+  
+  <!-- Firebase SDK -->
+  <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-storage-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-analytics-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-messaging-compat.js"></script>
+  
+  <!-- Firebase Configuration -->
+  <script>
+    // Your web app's Firebase configuration
+    const firebaseConfig = {
+      apiKey: "AIzaSyAjpWj5X8KJ6ZjW4W6k1MoIU0hzIm0KMq8",
+      authDomain: "haulistry-1b835.firebaseapp.com",
+      projectId: "haulistry-1b835",
+      storageBucket: "haulistry-1b835.firebasestorage.app",
+      messagingSenderId: "651868062803",
+      appId: "1:651868062803:web:5fc6ba07e3a1ba17d8a64a",
+      measurementId: "G-RDB6N76VSB"
+    };
+
+    // Initialize Firebase
+    firebase.initializeApp(firebaseConfig);
+  </script>
+  
+  <style>
+    /* Style for the reCAPTCHA container */
+    #recaptcha-container {
+      display: flex;
+      justify-content: center;
+      margin: 20px 0;
+    }
+  </style>
+</head>
+<body>
+  <!-- Container for reCAPTCHA (required for phone auth on web) -->
+  <div id="recaptcha-container"></div>
+  
+  <script src="flutter_bootstrap.js" async></script>
+</body>
+</html>

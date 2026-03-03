@@ -1,0 +1,119 @@
+"""
+Pydantic schemas for User/Auth API requests and responses
+"""
+
+from pydantic import BaseModel, Field, EmailStr
+from typing import Optional, Dict, Any
+from datetime import datetime
+
+
+class UserCreate(BaseModel):
+    """Schema for creating/syncing a user from Firebase"""
+    firebaseUid: str = Field(..., description="Firebase user ID")
+    email: EmailStr = Field(..., description="User email")
+    name: str = Field(..., description="User full name")
+    phone: str = Field(..., description="User phone number")
+    role: str = Field(..., description="User role: 'seeker' or 'provider'")
+    profileImageUrl: Optional[str] = Field(None, description="Profile image URL")
+    cnic: Optional[str] = Field(None, description="CNIC number for providers")
+    cnicFrontImageBase64: Optional[str] = Field(None, description="Base64 CNIC front image")
+    cnicBackImageBase64: Optional[str] = Field(None, description="Base64 CNIC back image")
+    licenseImageBase64: Optional[str] = Field(None, description="Base64 license image")
+    isVerified: bool = Field(default=True, description="Email verification status")
+    isActive: bool = Field(default=True, description="Account active status")
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "firebaseUid": "abc123xyz456",
+                "email": "user@example.com",
+                "name": "John Doe",
+                "phone": "+923001234567",
+                "role": "provider",
+                "cnic": "12345-1234567-1",
+                "isVerified": True,
+                "isActive": True
+            }
+        }
+
+
+class UserUpdate(BaseModel):
+    """Schema for updating user information"""
+    name: Optional[str] = Field(None, description="User full name")
+    phone: Optional[str] = Field(None, description="User phone number")
+    profileImageUrl: Optional[str] = Field(None, description="Profile image URL")
+    cnic: Optional[str] = Field(None, description="CNIC number")
+    drivingLicense: Optional[str] = Field(None, description="Driving license number")
+    latitude: Optional[float] = Field(None, description="User latitude")
+    longitude: Optional[float] = Field(None, description="User longitude")
+    address: Optional[str] = Field(None, description="User address")
+    isActive: Optional[bool] = Field(None, description="Account active status")
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "name": "John Doe Updated",
+                "phone": "+923001234567",
+                "address": "123 Main St, Lahore",
+                "cnic": "12345-1234567-1"
+            }
+        }
+
+
+class UserResponse(BaseModel):
+    """Schema for user API responses"""
+    success: bool = Field(..., description="Whether the operation was successful")
+    message: str = Field(..., description="Response message")
+    user: Optional[Dict[str, Any]] = Field(None, description="User data")
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "success": True,
+                "message": "User synced successfully",
+                "user": {
+                    "id": "abc123xyz456",
+                    "email": "user@example.com",
+                    "name": "John Doe",
+                    "role": "seeker",
+                    "isVerified": True
+                }
+            }
+        }
+
+
+class TokenVerifyRequest(BaseModel):
+    """Schema for Firebase token verification"""
+    idToken: str = Field(..., description="Firebase ID token")
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "idToken": "eyJhbGciOiJSUzI1NiIsImtpZCI6..."
+            }
+        }
+
+
+class TokenVerifyResponse(BaseModel):
+    """Schema for token verification response"""
+    success: bool = Field(..., description="Whether verification was successful")
+    message: str = Field(..., description="Response message")
+    user: Optional[Dict[str, Any]] = Field(None, description="User data from Neo4j")
+    firebaseUid: Optional[str] = Field(None, description="Firebase user ID")
+    email: Optional[str] = Field(None, description="User email")
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "success": True,
+                "message": "Token verified successfully",
+                "firebaseUid": "abc123xyz456",
+                "email": "user@example.com",
+                "user": {
+                    "id": "abc123xyz456",
+                    "email": "user@example.com",
+                    "name": "John Doe",
+                    "role": "seeker"
+                }
+            }
+        }
