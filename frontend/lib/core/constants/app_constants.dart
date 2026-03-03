@@ -5,9 +5,9 @@ class AppConstants {
   static const String appVersion = '1.0.0';
   
   // API Configuration
-  static const String apiUrl = 'http://127.0.0.1:4000';
-  static const String graphqlEndpoint = 'http://127.0.0.1:4000/graphql';
-  static const String wsEndpoint = 'ws://127.0.0.1:4000/graphql';
+  static const String apiUrl = 'https://haulistry-a9fcpw3ln-haseeb-ahmads-projects-a5a98988.vercel.app';
+  static const String graphqlEndpoint = 'https://haulistry-a9fcpw3ln-haseeb-ahmads-projects-a5a98988.vercel.app/graphql';
+  static const String wsEndpoint = 'wss://haulistry-a9fcpw3ln-haseeb-ahmads-projects-a5a98988.vercel.app/ws';
   
   // Firebase Collections
   static const String usersCollection = 'users';
