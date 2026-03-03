@@ -473,7 +473,7 @@ class _BookingHistoryScreenState extends State<BookingHistoryScreen> {
                                       Icon(Icons.star_rounded, size: 16, color: Colors.white),
                                       SizedBox(width: 6),
                                       Text(
-                                        'Rate Service',
+                                        'Rate Customer',
                                         style: TextStyle(
                                           color: Colors.white,
                                           fontWeight: FontWeight.w600,
