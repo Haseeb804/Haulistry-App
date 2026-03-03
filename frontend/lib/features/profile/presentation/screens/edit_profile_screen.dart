@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:math' as math;
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
@@ -195,12 +196,10 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       _isUpdating = true;
     });
 
-    // TODO: Implement profile update logic with Firebase Storage and Firestore
-    // Upload profile image if changed
+    // Convert picked image to base64 and send to backend
     String? profileImageUrl = authState.user.profileImageUrl;
     if (_profileImage != null) {
-      // Upload to Firebase Storage
-      // profileImageUrl = await uploadProfileImage(_profileImage!);
+      profileImageUrl = 'data:image/jpeg;base64,${base64Encode(_profileImage!.bytes)}';
     }
 
     // Update user profile
@@ -325,6 +324,10 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
           }
         },
         builder: (context, state) {
+          // Show loading overlay while profile is being saved
+          if (state is AuthLoading) {
+            return const Center(child: CircularProgressIndicator(color: AppTheme.primaryColor));
+          }
           if (state is! AuthAuthenticated) {
             return const Center(child: Text('Not authenticated'));
           }

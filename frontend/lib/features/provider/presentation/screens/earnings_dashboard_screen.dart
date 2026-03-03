@@ -18,11 +18,15 @@ class EarningsDashboardScreen extends StatefulWidget {
 
 class _EarningsDashboardScreenState extends State<EarningsDashboardScreen> {
   String _selectedPeriod = 'All Time';
+  bool _earningsRequested = false;
 
   @override
   void initState() {
     super.initState();
-    context.read<ProviderBloc>().add(const ProviderLoadEarningsRequested());
+    if (!_earningsRequested) {
+      _earningsRequested = true;
+      context.read<ProviderBloc>().add(const ProviderLoadEarningsRequested());
+    }
   }
 
   LinearGradient _getStatusGradient(String status) {
@@ -70,21 +74,11 @@ class _EarningsDashboardScreenState extends State<EarningsDashboardScreen> {
       backgroundColor: AppTheme.backgroundColor,
       body: BlocConsumer<ProviderBloc, ProviderState>(
         buildWhen: (previous, current) {
-          // If we already have earnings loaded, only rebuild for earnings-related states
-          if (previous is ProviderEarningsLoaded) {
-            return current is ProviderEarningsLoaded ||
-                current is ProviderWithdrawalInProgress ||
-                current is ProviderWithdrawalSuccess ||
-                current is ProviderError;
-          }
-          // Otherwise, rebuild for loading and earnings states
           return current is ProviderLoading ||
               current is ProviderEarningsLoaded ||
               current is ProviderWithdrawalInProgress ||
               current is ProviderWithdrawalSuccess ||
-              current is ProviderError ||
-              current is ProviderInitial ||
-              current is ProviderLoaded;
+              current is ProviderError;
         },
         listener: (context, state) {
           if (state is ProviderWithdrawalSuccess) {
@@ -145,52 +139,15 @@ class _EarningsDashboardScreenState extends State<EarningsDashboardScreen> {
           }
 
           if (state is ProviderInitial) {
-            // Trigger on initial state
-            WidgetsBinding.instance.addPostFrameCallback((_) {
-              context.read<ProviderBloc>().add(const ProviderLoadEarningsRequested());
-            });
             return const Center(
               child: CircularProgressIndicator(color: AppTheme.primaryColor),
             );
           }
 
-          // Handle ProviderLoaded (from dashboard) - also trigger earnings load
+          // Handle ProviderLoaded (from dashboard) - show loading while earnings load
           if (state is ProviderLoaded) {
-            WidgetsBinding.instance.addPostFrameCallback((_) {
-              context.read<ProviderBloc>().add(const ProviderLoadEarningsRequested());
-            });
-            return Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(24),
-                    decoration: BoxDecoration(
-                      gradient: AppTheme.secondaryGradient,
-                      borderRadius: BorderRadius.circular(20),
-                      boxShadow: [
-                        BoxShadow(
-                          color: AppTheme.secondaryColor.withOpacity(0.3),
-                          blurRadius: 20,
-                          offset: const Offset(0, 10),
-                        ),
-                      ],
-                    ),
-                    child: const CircularProgressIndicator(
-                      color: Colors.white,
-                      strokeWidth: 3,
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-                  const Text(
-                    'Loading earnings...',
-                    style: TextStyle(
-                      color: AppTheme.textSecondary,
-                      fontSize: 16,
-                    ),
-                  ),
-                ],
-              ),
+            return const Center(
+              child: CircularProgressIndicator(color: AppTheme.primaryColor),
             );
           }
 
