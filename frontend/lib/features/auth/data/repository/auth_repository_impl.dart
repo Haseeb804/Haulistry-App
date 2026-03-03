@@ -184,19 +184,13 @@ class AuthRepositoryImpl implements AuthRepository {
         body: json.encode(user.toJson()),
       );
 
-      print('Update profile response status: ${response.statusCode}');
-      print('Update profile response body: ${response.body}');
-
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
         if (data['success'] == true && data['user'] != null) {
-          print('Parsing user data: ${data['user']}');
           try {
             final updatedUser = UserEntity.fromJson(data['user']);
-            print('Successfully parsed user: ${updatedUser.name}, ${updatedUser.email}');
             return updatedUser;
           } catch (parseError) {
-            print('Error parsing user data: $parseError');
             throw Exception('Failed to parse user data: $parseError');
           }
         }
@@ -205,7 +199,6 @@ class AuthRepositoryImpl implements AuthRepository {
 
       throw Exception('Failed to update profile. Status: ${response.statusCode}, Body: ${response.body}');
     } catch (e) {
-      print('Update profile error: $e');
       rethrow;
     }
   }

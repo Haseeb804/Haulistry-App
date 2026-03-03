@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'package:agora_rtm/agora_rtm.dart';
-import 'package:flutter/foundation.dart';
 import 'api_service.dart';
 
 /// Service for Agora Real-Time Messaging
@@ -32,7 +31,6 @@ class AgoraMessagingService {
       final appId = config['agoraConfig']['appId'];
       
       if (appId == 'your_agora_app_id') {
-        debugPrint('⚠️ Agora App ID not configured in backend');
         return;
       }
 
@@ -40,18 +38,14 @@ class AgoraMessagingService {
       
       // Set up event handlers
       _client?.onMessageReceived = (AgoraRtmMessage message, String peerId) {
-        debugPrint('📩 Message from $peerId: ${message.text}');
         _messageController.add(message);
       };
       
       _client?.onConnectionStateChanged = (int state, int reason) {
-        debugPrint('🔗 RTM Connection state: $state, reason: $reason');
         _connectionStateController.add(state == 3); // 3 = Connected
       };
-
-      debugPrint('✅ Agora RTM Client initialized');
     } catch (e) {
-      debugPrint('❌ Failed to initialize Agora RTM: $e');
+      // silently ignored
     }
   }
 
@@ -64,10 +58,8 @@ class AgoraMessagingService {
     try {
       await _client?.login(null, userId); // Token can be null for testing
       _currentUserId = userId;
-      debugPrint('✅ Logged in to Agora RTM as $userId');
       return true;
     } catch (e) {
-      debugPrint('❌ Failed to login to Agora RTM: $e');
       return false;
     }
   }
@@ -84,16 +76,13 @@ class AgoraMessagingService {
       
       // Set up channel message handler
       _channel?.onMessageReceived = (AgoraRtmMessage message, AgoraRtmMember member) {
-        debugPrint('📩 Channel message from ${member.userId}: ${message.text}');
         _messageController.add(message);
       };
 
       await _channel?.join();
       _currentChannelId = bookingId;
-      debugPrint('✅ Joined channel: $bookingId');
       return true;
     } catch (e) {
-      debugPrint('❌ Failed to join channel: $e');
       return false;
     }
   }
@@ -106,11 +95,8 @@ class AgoraMessagingService {
       
       // Also save to backend
       await _saveToDB(peerId, message);
-      
-      debugPrint('✅ Sent message to $peerId');
       return true;
     } catch (e) {
-      debugPrint('❌ Failed to send message: $e');
       return false;
     }
   }
@@ -120,10 +106,8 @@ class AgoraMessagingService {
     try {
       final rtmMessage = AgoraRtmMessage.fromText(message);
       await _channel?.sendMessage(rtmMessage);
-      debugPrint('✅ Sent channel message');
       return true;
     } catch (e) {
-      debugPrint('❌ Failed to send channel message: $e');
       return false;
     }
   }
@@ -141,7 +125,7 @@ class AgoraMessagingService {
         'messageType': 'text',
       });
     } catch (e) {
-      debugPrint('⚠️ Failed to save message to DB: $e');
+      // silently ignored
     }
   }
 
@@ -151,7 +135,6 @@ class AgoraMessagingService {
       final response = await ApiService.instance.get('/messages/booking/$bookingId');
       return List<Map<String, dynamic>>.from(response['messages'] ?? []);
     } catch (e) {
-      debugPrint('❌ Failed to load message history: $e');
       return [];
     }
   }
@@ -164,7 +147,7 @@ class AgoraMessagingService {
         'bookingId': bookingId,
       });
     } catch (e) {
-      debugPrint('⚠️ Failed to mark messages as read: $e');
+      // silently ignored
     }
   }
 
@@ -174,9 +157,8 @@ class AgoraMessagingService {
       await _channel?.leave();
       _channel = null;
       _currentChannelId = null;
-      debugPrint('✅ Left channel');
     } catch (e) {
-      debugPrint('❌ Failed to leave channel: $e');
+      // silently ignored
     }
   }
 
@@ -186,9 +168,8 @@ class AgoraMessagingService {
       await leaveChannel();
       await _client?.logout();
       _currentUserId = null;
-      debugPrint('✅ Logged out from Agora RTM');
     } catch (e) {
-      debugPrint('❌ Failed to logout: $e');
+      // silently ignored
     }
   }
 
