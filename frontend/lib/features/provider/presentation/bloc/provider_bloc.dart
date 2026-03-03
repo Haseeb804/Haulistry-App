@@ -129,32 +129,24 @@ class ProviderBloc extends Bloc<ProviderEvent, ProviderState> {
       List<FareOfferEntity> pendingOffers = [];
 
       await Future.wait([
-        _repository.getProviderBookings(user.uid)
-            .timeout(const Duration(seconds: 15))
-            .then((result) {
+        _repository.getProviderBookings(user.uid).then((result) {
           allBookings = result;
         }).catchError((e) {
           allBookings = [];
         }),
-        _repository.getProviderVehicles(user.uid)
-            .timeout(const Duration(seconds: 15))
-            .then((result) {
+        _repository.getProviderVehicles(user.uid).then((result) {
           vehicles = result;
         }).catchError((e) {
           vehicles = [];
         }),
-        _apiService.getAvailableBookings()
-            .timeout(const Duration(seconds: 15))
-            .then((response) {
+        _apiService.getAvailableBookings().then((response) {
           availableBookings = (response['bookings'] as List<dynamic>? ?? [])
               .map((json) => BookingEntity.fromJson(json as Map<String, dynamic>))
               .toList();
         }).catchError((e) {
           availableBookings = [];
         }),
-        _apiService.getProviderOffers(user.uid, status: 'pending')
-            .timeout(const Duration(seconds: 15))
-            .then((response) {
+        _apiService.getProviderOffers(user.uid, status: 'pending').then((response) {
           pendingOffers = (response['offers'] as List<dynamic>? ?? [])
               .map((json) => FareOfferEntity.fromJson(json as Map<String, dynamic>))
               .toList();
