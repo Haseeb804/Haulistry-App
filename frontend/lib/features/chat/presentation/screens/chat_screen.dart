@@ -9,6 +9,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import '../../../../core/theme/app_theme.dart';
+import '../../../../core/utils/image_helper.dart';
 import '../../../../core/utils/cross_platform_image_picker.dart';
 import '../../../../core/services/api_service.dart';
 import '../bloc/chat_bloc.dart';
@@ -263,9 +264,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 child: CircleAvatar(
                   radius: 18,
                   backgroundColor: AppTheme.primaryColor.withOpacity(0.1),
-                  backgroundImage: widget.otherUserImage != null
-                      ? NetworkImage(widget.otherUserImage!)
-                      : null,
+                  backgroundImage: ImageHelper.providerFor(widget.otherUserImage),
                   child: widget.otherUserImage == null
                       ? Text(
                           widget.otherUserName[0].toUpperCase(),

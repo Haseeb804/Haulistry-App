@@ -3,6 +3,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import '../../../../core/theme/app_theme.dart';
+import '../../../../core/utils/image_helper.dart';
 import '../../../../core/widgets/modern_widgets.dart';
 import '../bloc/chat_bloc.dart';
 import '../bloc/chat_event.dart';
@@ -315,9 +316,7 @@ class _ConversationTile extends StatelessWidget {
                     child: CircleAvatar(
                       radius: 26,
                       backgroundColor: AppTheme.primaryColor.withOpacity(0.1),
-                      backgroundImage: conversation.otherUserImage != null
-                          ? NetworkImage(conversation.otherUserImage!)
-                          : null,
+                      backgroundImage: ImageHelper.providerFor(conversation.otherUserImage),
                       child: conversation.otherUserImage == null
                           ? Text(
                               conversation.otherUserName[0].toUpperCase(),

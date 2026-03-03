@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
+import '../utils/image_helper.dart';
 
 /// Modern Gradient Button with shadow and animation
 class GradientButton extends StatelessWidget {
@@ -709,7 +710,7 @@ class GradientAvatar extends StatelessWidget {
       child: CircleAvatar(
         radius: size / 2,
         backgroundColor: Colors.white,
-        backgroundImage: imageUrl != null ? NetworkImage(imageUrl!) : null,
+        backgroundImage: ImageHelper.providerFor(imageUrl),
         child: imageUrl == null
             ? Text(
                 initials ?? '?',

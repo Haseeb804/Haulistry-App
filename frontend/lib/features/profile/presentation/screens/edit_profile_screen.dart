@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import '../../../../core/theme/app_theme.dart';
+import '../../../../core/utils/image_helper.dart';
 import '../../../../core/utils/validators.dart';
 import '../../../../core/utils/cross_platform_image_picker.dart';
 import '../../../../core/widgets/modern_widgets.dart';
@@ -398,7 +399,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                                         backgroundImage: _profileImage != null
                                             ? MemoryImage(_profileImage!.bytes)
                                             : (user.profileImageUrl != null
-                                                ? NetworkImage(user.profileImageUrl!) as ImageProvider
+                                                ? ImageHelper.providerFor(user.profileImageUrl)
                                                 : null),
                                         child: _profileImage == null && user.profileImageUrl == null
                                             ? Text(

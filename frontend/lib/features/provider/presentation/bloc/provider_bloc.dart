@@ -585,7 +585,8 @@ class ProviderBloc extends Bloc<ProviderEvent, ProviderState> {
       // Fetch completed bookings from repository to calculate earnings
       List<BookingEntity> completed = [];
       try {
-        final allBookings = await _repository.getProviderBookings(user.uid);
+        final allBookings = await _repository.getProviderBookings(user.uid)
+            .timeout(const Duration(seconds: 15));
         completed = allBookings.where((b) => b.status == 'completed').toList();
       } catch (e) {
         // Continue with empty list if bookings fail to load

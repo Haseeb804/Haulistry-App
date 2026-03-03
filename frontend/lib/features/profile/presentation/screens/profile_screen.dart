@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import '../../../../core/theme/app_theme.dart';
+import '../../../../core/utils/image_helper.dart';
 import '../../../../core/widgets/modern_widgets.dart';
 import '../../../auth/presentation/bloc/auth_bloc.dart';
 import '../../../auth/presentation/bloc/auth_event.dart';
@@ -127,11 +128,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                     backgroundColor: Colors.white,
                                     child: user.profileImageUrl != null
                                         ? ClipOval(
-                                            child: Image.network(
-                                              user.profileImageUrl!,
+                                            child: ImageHelper.imageWidget(
+                                              imageUrl: user.profileImageUrl!,
                                               width: 80,
                                               height: 80,
-                                              fit: BoxFit.cover,
                                             ),
                                           )
                                         : Text(
