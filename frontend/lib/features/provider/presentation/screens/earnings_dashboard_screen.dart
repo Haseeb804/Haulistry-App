@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
@@ -19,6 +20,8 @@ class EarningsDashboardScreen extends StatefulWidget {
 class _EarningsDashboardScreenState extends State<EarningsDashboardScreen> {
   String _selectedPeriod = 'All Time';
   bool _earningsRequested = false;
+  bool _forceShowEarnings = false;
+  Timer? _fallbackTimer;
 
   @override
   void initState() {
@@ -26,7 +29,21 @@ class _EarningsDashboardScreenState extends State<EarningsDashboardScreen> {
     if (!_earningsRequested) {
       _earningsRequested = true;
       context.read<ProviderBloc>().add(const ProviderLoadEarningsRequested());
+      // Fallback: if still loading after 5 seconds, force show earnings UI with zeros
+      _fallbackTimer = Timer(const Duration(seconds: 5), () {
+        if (mounted) {
+          setState(() {
+            _forceShowEarnings = true;
+          });
+        }
+      });
     }
+  }
+
+  @override
+  void dispose() {
+    _fallbackTimer?.cancel();
+    super.dispose();
   }
 
   LinearGradient _getStatusGradient(String status) {
@@ -74,11 +91,11 @@ class _EarningsDashboardScreenState extends State<EarningsDashboardScreen> {
       backgroundColor: AppTheme.backgroundColor,
       body: BlocConsumer<ProviderBloc, ProviderState>(
         buildWhen: (previous, current) {
-          return current is ProviderLoading ||
-              current is ProviderEarningsLoaded ||
-              current is ProviderWithdrawalInProgress ||
-              current is ProviderWithdrawalSuccess ||
-              current is ProviderError;
+          // Cancel fallback timer if we got a proper earnings state
+          if (current is ProviderEarningsLoaded || current is ProviderError) {
+            _fallbackTimer?.cancel();
+          }
+          return true; // Always rebuild to ensure UI updates
         },
         listener: (context, state) {
           if (state is ProviderWithdrawalSuccess) {
@@ -103,52 +120,49 @@ class _EarningsDashboardScreenState extends State<EarningsDashboardScreen> {
         },
         builder: (context, state) {
           if (state is ProviderLoading || state is ProviderWithdrawalInProgress) {
-            return Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(24),
-                    decoration: BoxDecoration(
-                      gradient: AppTheme.secondaryGradient,
-                      borderRadius: BorderRadius.circular(20),
-                      boxShadow: [
-                        BoxShadow(
-                          color: AppTheme.secondaryColor.withOpacity(0.3),
-                          blurRadius: 20,
-                          offset: const Offset(0, 10),
-                        ),
-                      ],
+            if (!_forceShowEarnings) {
+              return Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(24),
+                      decoration: BoxDecoration(
+                        gradient: AppTheme.secondaryGradient,
+                        borderRadius: BorderRadius.circular(20),
+                        boxShadow: [
+                          BoxShadow(
+                            color: AppTheme.secondaryColor.withOpacity(0.3),
+                            blurRadius: 20,
+                            offset: const Offset(0, 10),
+                          ),
+                        ],
+                      ),
+                      child: const CircularProgressIndicator(
+                        color: Colors.white,
+                        strokeWidth: 3,
+                      ),
                     ),
-                    child: const CircularProgressIndicator(
-                      color: Colors.white,
-                      strokeWidth: 3,
+                    const SizedBox(height: 20),
+                    const Text(
+                      'Loading earnings...',
+                      style: TextStyle(
+                        color: AppTheme.textSecondary,
+                        fontSize: 16,
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 20),
-                  const Text(
-                    'Loading earnings...',
-                    style: TextStyle(
-                      color: AppTheme.textSecondary,
-                      fontSize: 16,
-                    ),
-                  ),
-                ],
-              ),
-            );
+                  ],
+                ),
+              );
+            }
           }
 
-          if (state is ProviderInitial) {
-            return const Center(
-              child: CircularProgressIndicator(color: AppTheme.primaryColor),
-            );
-          }
-
-          // Handle ProviderLoaded (from dashboard) - show loading while earnings load
-          if (state is ProviderLoaded) {
-            return const Center(
-              child: CircularProgressIndicator(color: AppTheme.primaryColor),
-            );
+          if (state is ProviderInitial || state is ProviderLoaded) {
+            if (!_forceShowEarnings) {
+              return const Center(
+                child: CircularProgressIndicator(color: AppTheme.primaryColor),
+              );
+            }
           }
 
           if (state is ProviderError) {
@@ -165,14 +179,35 @@ class _EarningsDashboardScreenState extends State<EarningsDashboardScreen> {
             );
           }
 
+          // Show earnings UI - either from loaded state or fallback with zeros
+          final double totalEarnings;
+          final double thisMonth;
+          final double thisWeek;
+          final double today;
+          final List<EarningEntry> recentEarnings;
+
           if (state is ProviderEarningsLoaded) {
-            return CustomScrollView(
-              slivers: [
-                // Modern App Bar with Total Earnings
-                SliverAppBar(
-                  expandedHeight: 260,
-                  pinned: true,
-                  backgroundColor: Colors.transparent,
+            totalEarnings = state.totalEarnings;
+            thisMonth = state.thisMonth;
+            thisWeek = state.thisWeek;
+            today = state.today;
+            recentEarnings = state.recentEarnings;
+          } else {
+            // Fallback values when forcing show
+            totalEarnings = 0;
+            thisMonth = 0;
+            thisWeek = 0;
+            today = 0;
+            recentEarnings = [];
+          }
+
+          return CustomScrollView(
+            slivers: [
+              // Modern App Bar with Total Earnings
+              SliverAppBar(
+                expandedHeight: 260,
+                pinned: true,
+                backgroundColor: Colors.transparent,
                   elevation: 0,
                   leading: Container(
                     margin: const EdgeInsets.all(8),
@@ -243,7 +278,7 @@ class _EarningsDashboardScreenState extends State<EarningsDashboardScreen> {
                                   ),
                                   const SizedBox(height: 4),
                                   Text(
-                                    'Rs. ${state.totalEarnings.toStringAsFixed(0)}',
+                                    'Rs. ${totalEarnings.toStringAsFixed(0)}',
                                     style: const TextStyle(
                                       color: Colors.white,
                                       fontSize: 32,
@@ -253,7 +288,7 @@ class _EarningsDashboardScreenState extends State<EarningsDashboardScreen> {
                                   ),
                                   const SizedBox(height: 12),
                                   GestureDetector(
-                                    onTap: () => _showWithdrawalDialog(context, state.totalEarnings),
+                                    onTap: () => _showWithdrawalDialog(context, totalEarnings),
                                     child: Container(
                                       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
                                       decoration: BoxDecoration(
@@ -303,7 +338,7 @@ class _EarningsDashboardScreenState extends State<EarningsDashboardScreen> {
                         Expanded(
                           child: _buildPeriodCard(
                             'Today',
-                            state.today,
+                            today,
                             Icons.today_rounded,
                             AppTheme.primaryGradient,
                           ),
@@ -312,7 +347,7 @@ class _EarningsDashboardScreenState extends State<EarningsDashboardScreen> {
                         Expanded(
                           child: _buildPeriodCard(
                             'This Week',
-                            state.thisWeek,
+                            thisWeek,
                             Icons.calendar_view_week_rounded,
                             AppTheme.accentGradient,
                           ),
@@ -327,7 +362,7 @@ class _EarningsDashboardScreenState extends State<EarningsDashboardScreen> {
                     padding: const EdgeInsets.symmetric(horizontal: 20),
                     child: _buildPeriodCard(
                       'This Month',
-                      state.thisMonth,
+                      thisMonth,
                       Icons.calendar_month_rounded,
                       AppTheme.secondaryGradient,
                       isFullWidth: true,
@@ -376,34 +411,21 @@ class _EarningsDashboardScreenState extends State<EarningsDashboardScreen> {
                 ),
 
                 // Recent Earnings List
-                if (state.recentEarnings.isEmpty)
+                if (recentEarnings.isEmpty)
                   SliverFillRemaining(
                     child: _buildEmptyState(),
                   )
                 else
                   SliverList(
                     delegate: SliverChildBuilderDelegate(
-                      (context, index) => _buildEarningCard(state.recentEarnings[index]),
-                      childCount: state.recentEarnings.length,
+                      (context, index) => _buildEarningCard(recentEarnings[index]),
+                      childCount: recentEarnings.length,
                     ),
                   ),
 
                 const SliverPadding(padding: EdgeInsets.only(bottom: 32)),
               ],
             );
-          }
-
-          // Fallback for any unhandled state
-          return Center(
-            child: EmptyStateWidget(
-              icon: Icons.refresh_rounded,
-              title: 'Loading...',
-              buttonText: 'Refresh',
-              onButtonPressed: () {
-                context.read<ProviderBloc>().add(const ProviderLoadEarningsRequested());
-              },
-            ),
-          );
         },
       ),
     );
