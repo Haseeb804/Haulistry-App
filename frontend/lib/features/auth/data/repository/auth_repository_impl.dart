@@ -3,12 +3,13 @@ import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'dart:typed_data';
 import '../../../../core/domain/entities/user_entity.dart';
+import '../../../../core/constants/app_constants.dart';
 import '../../domain/repository/auth_repository.dart';
 
 /// Implementation of AuthRepository using Firebase Auth + Neo4j Backend
 class AuthRepositoryImpl implements AuthRepository {
   final FirebaseAuth _firebaseAuth;
-  final String _baseUrl = 'http://127.0.0.1:4000/api';
+  final String _baseUrl = '${AppConstants.apiUrl}/api';
 
   AuthRepositoryImpl({
     FirebaseAuth? firebaseAuth,
