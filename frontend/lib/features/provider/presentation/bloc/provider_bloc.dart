@@ -161,7 +161,7 @@ class ProviderBloc extends Bloc<ProviderEvent, ProviderState> {
         }).catchError((e) {
           pendingOffers = [];
         }),
-      ]).timeout(const Duration(seconds: 20), onTimeout: () {});
+      ]);
 
       // Categorize bookings
       final pendingBookings = allBookings.where((b) => b.status == 'pending').toList();
