@@ -78,14 +78,28 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen> {
               state is ProviderWithdrawalSuccess ||
               state is ProviderOfferCreatedSuccess ||
               state is ProviderOfferUpdatedSuccess ||
-              state is ProviderServiceActionSuccess ||
-              state is ProviderEarningsLoaded) {
+              state is ProviderServiceActionSuccess) {
             // Trigger loading for states that require dashboard refresh
             WidgetsBinding.instance.addPostFrameCallback((_) {
               context.read<ProviderBloc>().add(const ProviderLoadBookingsRequested());
             });
             return const Center(
               child: CircularProgressIndicator(color: AppTheme.primaryColor),
+            );
+          }
+
+          // ProviderEarningsLoaded - user was on earnings screen, show refresh prompt
+          if (state is ProviderEarningsLoaded) {
+            return Center(
+              child: EmptyStateWidget(
+                icon: Icons.refresh_rounded,
+                title: 'Welcome back',
+                subtitle: 'Tap to load your dashboard',
+                buttonText: 'Load Dashboard',
+                onButtonPressed: () {
+                  context.read<ProviderBloc>().add(const ProviderLoadBookingsRequested());
+                },
+              ),
             );
           }
 
@@ -231,22 +245,6 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen> {
       pinned: true,
       backgroundColor: AppTheme.primaryColor,
       automaticallyImplyLeading: false,
-      title: BlocBuilder<AuthBloc, AuthState>(
-        builder: (context, authState) {
-          String name = 'Provider';
-          if (authState is AuthAuthenticated) {
-            name = authState.user.name.split(' ').first;
-          }
-          return Text(
-            'Hello, $name!',
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-            ),
-          );
-        },
-      ),
       actions: [
         _buildAppBarAction(
           icon: Icons.notifications_rounded,

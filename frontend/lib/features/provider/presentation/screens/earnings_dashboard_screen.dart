@@ -19,19 +19,20 @@ class EarningsDashboardScreen extends StatefulWidget {
 
 class _EarningsDashboardScreenState extends State<EarningsDashboardScreen> {
   String _selectedPeriod = 'All Time';
-  bool _earningsRequested = false;
   bool _forceShowEarnings = false;
   Timer? _fallbackTimer;
 
   @override
   void initState() {
     super.initState();
-    if (!_earningsRequested) {
-      _earningsRequested = true;
-      context.read<ProviderBloc>().add(const ProviderLoadEarningsRequested());
-      // Fallback: if still loading after 20 seconds, force show earnings UI
-      // This should be longer than the API timeout (15s) to give real data time to load
-      _fallbackTimer = Timer(const Duration(seconds: 20), () {
+    // Check if data is already loaded
+    final currentState = context.read<ProviderBloc>().state;
+    if (currentState is ProviderLoaded || currentState is ProviderEarningsLoaded) {
+      // Data already available, show immediately
+      _forceShowEarnings = true;
+    } else {
+      // Start fallback timer - show UI after 3 seconds if no data
+      _fallbackTimer = Timer(const Duration(seconds: 3), () {
         if (mounted) {
           setState(() {
             _forceShowEarnings = true;
@@ -92,8 +93,8 @@ class _EarningsDashboardScreenState extends State<EarningsDashboardScreen> {
       backgroundColor: AppTheme.backgroundColor,
       body: BlocListener<ProviderBloc, ProviderState>(
         listener: (context, state) {
-          // Cancel timer when we get proper state
-          if (state is ProviderEarningsLoaded || state is ProviderError) {
+          // Cancel timer when we get proper state with data
+          if (state is ProviderLoaded || state is ProviderEarningsLoaded || state is ProviderError) {
             _fallbackTimer?.cancel();
             if (mounted && !_forceShowEarnings) {
               setState(() {
@@ -181,27 +182,56 @@ class _EarningsDashboardScreenState extends State<EarningsDashboardScreen> {
           );
         }
 
-        // Get earnings data - either from loaded state or fallback with zeros
-        final double totalEarnings;
-        final double thisMonth;
-        final double thisWeek;
-        final double today;
-        final List<EarningEntry> recentEarnings;
+        // Get earnings data from various possible states
+        double totalEarnings = 0;
+        double thisMonth = 0;
+        double thisWeek = 0;
+        double today = 0;
+        List<EarningEntry> recentEarnings = [];
 
         if (state is ProviderEarningsLoaded) {
+          // Use dedicated earnings state
           totalEarnings = state.totalEarnings;
           thisMonth = state.thisMonth;
           thisWeek = state.thisWeek;
           today = state.today;
           recentEarnings = state.recentEarnings;
-        } else {
-          // Fallback values - show zeros until real data arrives
-          totalEarnings = 0;
-          thisMonth = 0;
-          thisWeek = 0;
-          today = 0;
-          recentEarnings = [];
+        } else if (state is ProviderLoaded) {
+          // Calculate from ProviderLoaded state (same data as home screen)
+          final completed = state.completedBookings;
+          totalEarnings = state.totalEarnings;
+          
+          final now = DateTime.now();
+          final todayStart = DateTime(now.year, now.month, now.day);
+          final weekStart = todayStart.subtract(Duration(days: now.weekday - 1));
+          final monthStart = DateTime(now.year, now.month, 1);
+          
+          for (final booking in completed) {
+            final amount = booking.finalPrice ?? booking.estimatedPrice;
+            final completedAt = booking.completedAt ?? booking.updatedAt ?? booking.createdAt;
+            
+            if (completedAt.isAfter(monthStart)) {
+              thisMonth += amount;
+            }
+            if (completedAt.isAfter(weekStart)) {
+              thisWeek += amount;
+            }
+            if (completedAt.isAfter(todayStart)) {
+              today += amount;
+            }
+            
+            if (recentEarnings.length < 10) {
+              recentEarnings.add(EarningEntry(
+                bookingId: booking.id,
+                date: completedAt,
+                amount: amount,
+                serviceType: booking.serviceType,
+                status: 'paid',
+              ));
+            }
+          }
         }
+        // If neither state, show zeros (fallback triggered by timer)
 
         return CustomScrollView(
             slivers: [
