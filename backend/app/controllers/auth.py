@@ -14,27 +14,55 @@ from ..schemas.user_schema import (
 from ..models.user import User
 from ..config import settings
 import os
+import json
+import base64
 import logging
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
-# Initialize Firebase Admin SDK
+
+def _init_firebase() -> firebase_admin.App:
+    """
+    Initialise Firebase Admin SDK.
+
+    Priority order (supports both local dev and serverless environments):
+      1. FIREBASE_CREDENTIALS_JSON  – base64-encoded service-account JSON
+                                      (set this env var on Vercel / any serverless host)
+      2. FIREBASE_CREDENTIALS_PATH  – path to a local service-account JSON file
+                                      (used for local development)
+      3. Project-ID fallback         – minimal init when neither is available
+    """
+    raw_b64 = os.getenv("FIREBASE_CREDENTIALS_JSON")
+    if raw_b64:
+        try:
+            service_account_info = json.loads(base64.b64decode(raw_b64).decode("utf-8"))
+            cred = credentials.Certificate(service_account_info)
+            app = firebase_admin.initialize_app(cred)
+            logger.info("Firebase initialised from FIREBASE_CREDENTIALS_JSON env var")
+            return app
+        except Exception as exc:
+            logger.error(f"Failed to parse FIREBASE_CREDENTIALS_JSON: {exc}")
+
+    service_account_path = os.path.abspath(settings.FIREBASE_CREDENTIALS_PATH)
+    if os.path.exists(service_account_path):
+        cred = credentials.Certificate(service_account_path)
+        app = firebase_admin.initialize_app(cred)
+        logger.info(f"Firebase initialised from file: {service_account_path}")
+        return app
+
+    # Last-resort fallback — auth token verification will not work
+    options = {"projectId": "haulistry-1b835"}
+    app = firebase_admin.initialize_app(options=options)
+    logger.warning("Firebase initialised with project ID only (no service account — token verification disabled)")
+    return app
+
+
+# Initialize Firebase Admin SDK (idempotent — won't re-init if already done)
 try:
     firebase_app = firebase_admin.get_app()
 except ValueError:
-    # Use FIREBASE_CREDENTIALS_PATH from settings/env
-    service_account_path = os.path.abspath(settings.FIREBASE_CREDENTIALS_PATH)
-    
-    if os.path.exists(service_account_path):
-        cred = credentials.Certificate(service_account_path)
-        firebase_app = firebase_admin.initialize_app(cred)
-        logger.info(f"Firebase initialized with credentials from {service_account_path}")
-    else:
-        # Fallback to default credentials or project ID
-        options = {'projectId': 'haulistry-1b835'}
-        firebase_app = firebase_admin.initialize_app(options=options)
-        logger.warning("Firebase initialized with project ID only (no service account)")
+    firebase_app = _init_firebase()
 
 
 @router.get("/test")
