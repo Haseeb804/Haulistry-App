@@ -89,15 +89,17 @@ class _EarningsDashboardScreenState extends State<EarningsDashboardScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppTheme.backgroundColor,
-      body: BlocConsumer<ProviderBloc, ProviderState>(
-        buildWhen: (previous, current) {
-          // Cancel fallback timer if we got a proper earnings state
-          if (current is ProviderEarningsLoaded || current is ProviderError) {
-            _fallbackTimer?.cancel();
-          }
-          return true; // Always rebuild to ensure UI updates
-        },
+      body: BlocListener<ProviderBloc, ProviderState>(
         listener: (context, state) {
+          // Cancel timer when we get proper state
+          if (state is ProviderEarningsLoaded || state is ProviderError) {
+            _fallbackTimer?.cancel();
+            if (mounted && !_forceShowEarnings) {
+              setState(() {
+                _forceShowEarnings = true;
+              });
+            }
+          }
           if (state is ProviderWithdrawalSuccess) {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
@@ -118,90 +120,89 @@ class _EarningsDashboardScreenState extends State<EarningsDashboardScreen> {
             );
           }
         },
-        builder: (context, state) {
-          if (state is ProviderLoading || state is ProviderWithdrawalInProgress) {
-            if (!_forceShowEarnings) {
-              return Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(24),
-                      decoration: BoxDecoration(
-                        gradient: AppTheme.secondaryGradient,
-                        borderRadius: BorderRadius.circular(20),
-                        boxShadow: [
-                          BoxShadow(
-                            color: AppTheme.secondaryColor.withOpacity(0.3),
-                            blurRadius: 20,
-                            offset: const Offset(0, 10),
-                          ),
-                        ],
-                      ),
-                      child: const CircularProgressIndicator(
-                        color: Colors.white,
-                        strokeWidth: 3,
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-                    const Text(
-                      'Loading earnings...',
-                      style: TextStyle(
-                        color: AppTheme.textSecondary,
-                        fontSize: 16,
-                      ),
-                    ),
-                  ],
+        child: _forceShowEarnings 
+            ? _buildEarningsContent(context)
+            : _buildLoadingIndicator(),
+      ),
+    );
+  }
+
+  Widget _buildLoadingIndicator() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              gradient: AppTheme.secondaryGradient,
+              borderRadius: BorderRadius.circular(20),
+              boxShadow: [
+                BoxShadow(
+                  color: AppTheme.secondaryColor.withOpacity(0.3),
+                  blurRadius: 20,
+                  offset: const Offset(0, 10),
                 ),
-              );
-            }
-          }
+              ],
+            ),
+            child: const CircularProgressIndicator(
+              color: Colors.white,
+              strokeWidth: 3,
+            ),
+          ),
+          const SizedBox(height: 20),
+          const Text(
+            'Loading earnings...',
+            style: TextStyle(
+              color: AppTheme.textSecondary,
+              fontSize: 16,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
-          if (state is ProviderInitial || state is ProviderLoaded) {
-            if (!_forceShowEarnings) {
-              return const Center(
-                child: CircularProgressIndicator(color: AppTheme.primaryColor),
-              );
-            }
-          }
+  Widget _buildEarningsContent(BuildContext context) {
+    return BlocBuilder<ProviderBloc, ProviderState>(
+      builder: (context, state) {
+        if (state is ProviderError) {
+          return Center(
+            child: EmptyStateWidget(
+              icon: Icons.error_outline_rounded,
+              title: 'Something went wrong',
+              subtitle: state.message,
+              buttonText: 'Retry',
+              onButtonPressed: () {
+                context.read<ProviderBloc>().add(const ProviderLoadEarningsRequested());
+              },
+            ),
+          );
+        }
 
-          if (state is ProviderError) {
-            return Center(
-              child: EmptyStateWidget(
-                icon: Icons.error_outline_rounded,
-                title: 'Something went wrong',
-                subtitle: state.message,
-                buttonText: 'Retry',
-                onButtonPressed: () {
-                  context.read<ProviderBloc>().add(const ProviderLoadEarningsRequested());
-                },
-              ),
-            );
-          }
+        // Get earnings data - either from loaded state or fallback with zeros
+        final double totalEarnings;
+        final double thisMonth;
+        final double thisWeek;
+        final double today;
+        final List<EarningEntry> recentEarnings;
 
-          // Show earnings UI - either from loaded state or fallback with zeros
-          final double totalEarnings;
-          final double thisMonth;
-          final double thisWeek;
-          final double today;
-          final List<EarningEntry> recentEarnings;
+        if (state is ProviderEarningsLoaded) {
+          totalEarnings = state.totalEarnings;
+          thisMonth = state.thisMonth;
+          thisWeek = state.thisWeek;
+          today = state.today;
+          recentEarnings = state.recentEarnings;
+        } else {
+          // Fallback values - show zeros until real data arrives
+          totalEarnings = 0;
+          thisMonth = 0;
+          thisWeek = 0;
+          today = 0;
+          recentEarnings = [];
+        }
 
-          if (state is ProviderEarningsLoaded) {
-            totalEarnings = state.totalEarnings;
-            thisMonth = state.thisMonth;
-            thisWeek = state.thisWeek;
-            today = state.today;
-            recentEarnings = state.recentEarnings;
-          } else {
-            // Fallback values when forcing show
-            totalEarnings = 0;
-            thisMonth = 0;
-            thisWeek = 0;
-            today = 0;
-            recentEarnings = [];
-          }
-
-          return CustomScrollView(
+        return CustomScrollView(
             slivers: [
               // Modern App Bar with Total Earnings
               SliverAppBar(
@@ -426,10 +427,9 @@ class _EarningsDashboardScreenState extends State<EarningsDashboardScreen> {
                 const SliverPadding(padding: EdgeInsets.only(bottom: 32)),
               ],
             );
-        },
-      ),
-    );
-  }
+          },
+        );
+      }
 
   Widget _buildPeriodCard(String title, double amount, IconData icon, LinearGradient gradient, {bool isFullWidth = false}) {
     return Container(

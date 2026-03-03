@@ -71,15 +71,16 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen> {
             );
           }
 
+          // These states need dashboard to be reloaded
           if (state is ProviderInitial ||
               state is ProviderBookingActionSuccess ||
               state is ProviderVehicleActionSuccess ||
-              state is ProviderEarningsLoaded ||
               state is ProviderWithdrawalSuccess ||
               state is ProviderOfferCreatedSuccess ||
               state is ProviderOfferUpdatedSuccess ||
-              state is ProviderServiceActionSuccess) {
-            // Trigger loading for any non-loaded state
+              state is ProviderServiceActionSuccess ||
+              state is ProviderEarningsLoaded) {
+            // Trigger loading for states that require dashboard refresh
             WidgetsBinding.instance.addPostFrameCallback((_) {
               context.read<ProviderBloc>().add(const ProviderLoadBookingsRequested());
             });
