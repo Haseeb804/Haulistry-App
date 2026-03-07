@@ -456,7 +456,11 @@ class ProviderBloc extends Bloc<ProviderEvent, ProviderState> {
     ProviderLoadServicesRequested event,
     Emitter<ProviderState> emit,
   ) async {
-    emit(const ProviderLoading());
+    // Only show loading if not already in ProviderLoaded state
+    final currentState = state;
+    if (currentState is! ProviderLoaded) {
+      emit(const ProviderLoading());
+    }
 
     try {
       final user = _auth.currentUser;
@@ -477,16 +481,24 @@ class ProviderBloc extends Bloc<ProviderEvent, ProviderState> {
       final services = results[0] as List<ServiceEntity>;
       final vehicles = results[1] as List<VehicleEntity>;
 
-      emit(ProviderLoaded(
-        pendingBookings: [],
-        activeBookings: [],
-        completedBookings: [],
-        vehicles: vehicles,
-        services: services,
-        totalEarnings: 0,
-        pendingEarnings: 0,
-        isOnline: _isOnline,
-      ));
+      // If we have existing ProviderLoaded state, preserve other data
+      if (currentState is ProviderLoaded) {
+        emit(currentState.copyWith(
+          services: services,
+          vehicles: vehicles,
+        ));
+      } else {
+        emit(ProviderLoaded(
+          pendingBookings: [],
+          activeBookings: [],
+          completedBookings: [],
+          vehicles: vehicles,
+          services: services,
+          totalEarnings: 0,
+          pendingEarnings: 0,
+          isOnline: _isOnline,
+        ));
+      }
     } catch (e) {
       emit(ProviderError(message: 'Error loading services: ${e.toString()}'));
     }

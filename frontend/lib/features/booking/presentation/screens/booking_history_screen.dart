@@ -466,15 +466,15 @@ class _BookingHistoryScreenState extends State<BookingHistoryScreen> {
                               child: InkWell(
                                 onTap: () => _navigateToFeedback(booking),
                                 borderRadius: BorderRadius.circular(10),
-                                child: const Padding(
-                                  padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                                   child: Row(
                                     children: [
-                                      Icon(Icons.star_rounded, size: 16, color: Colors.white),
-                                      SizedBox(width: 6),
+                                      const Icon(Icons.star_rounded, size: 16, color: Colors.white),
+                                      const SizedBox(width: 6),
                                       Text(
-                                        'Rate Customer',
-                                        style: TextStyle(
+                                        _userRole == 'seeker' ? 'Rate Provider' : 'Rate Customer',
+                                        style: const TextStyle(
                                           color: Colors.white,
                                           fontWeight: FontWeight.w600,
                                           fontSize: 12,
