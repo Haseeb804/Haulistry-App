@@ -28,7 +28,7 @@ class StopLocationTracking extends LocationTrackingEvent {
   const StopLocationTracking();
 }
 
-/// Location update received (from own device or other user via WebSocket)
+/// Location update received (from own device or other user via FCM)
 class LocationUpdateReceived extends LocationTrackingEvent {
   final String userId;
   final double latitude;

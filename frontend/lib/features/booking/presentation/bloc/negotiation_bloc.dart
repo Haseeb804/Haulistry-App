@@ -304,7 +304,7 @@ class NegotiationBloc extends Bloc<NegotiationEvent, NegotiationState> {
     }
   }
 
-  /// Handle new offer from WebSocket
+  /// Handle new offer from FCM
   void _onNewOfferReceived(
     NewOfferReceived event,
     Emitter<NegotiationState> emit,
@@ -319,7 +319,7 @@ class NegotiationBloc extends Bloc<NegotiationEvent, NegotiationState> {
     }
   }
 
-  /// Handle offer status update from WebSocket
+  /// Handle offer status update from FCM
   void _onOfferStatusUpdated(
     OfferStatusUpdated event,
     Emitter<NegotiationState> emit,

@@ -245,9 +245,9 @@ class ProviderLoadOffersRequested extends ProviderEvent {
   List<Object?> get props => [status];
 }
 
-// ===== WebSocket Events =====
+// ===== FCM Notification Events =====
 
-/// New booking request received via WebSocket
+/// New booking request received via FCM
 class ProviderNewBookingReceived extends ProviderEvent {
   final BookingEntity booking;
 
@@ -257,7 +257,7 @@ class ProviderNewBookingReceived extends ProviderEvent {
   List<Object?> get props => [booking];
 }
 
-/// Offer status updated via WebSocket
+/// Offer status updated via FCM
 class ProviderOfferStatusReceived extends ProviderEvent {
   final String offerId;
   final String status;

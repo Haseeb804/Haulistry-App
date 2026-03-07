@@ -64,7 +64,7 @@ class ProviderBloc extends Bloc<ProviderEvent, ProviderState> {
     on<ProviderWithdrawOfferRequested>(_onWithdrawOffer);
     on<ProviderLoadOffersRequested>(_onLoadOffers);
     
-    // WebSocket Events
+    // FCM Notification Events
     on<ProviderNewBookingReceived>(_onNewBookingReceived);
     on<ProviderOfferStatusReceived>(_onOfferStatusReceived);
     
@@ -813,7 +813,7 @@ class ProviderBloc extends Bloc<ProviderEvent, ProviderState> {
     }
   }
 
-  // ===== WebSocket Event Handlers =====
+  // ===== FCM Notification Event Handlers =====
 
   void _onNewBookingReceived(
     ProviderNewBookingReceived event,

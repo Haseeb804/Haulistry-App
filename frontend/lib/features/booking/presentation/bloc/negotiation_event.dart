@@ -102,7 +102,7 @@ class WithdrawOfferRequested extends NegotiationEvent {
   List<Object?> get props => [offerId];
 }
 
-/// New offer received via WebSocket
+/// New offer received via FCM
 class NewOfferReceived extends NegotiationEvent {
   final FareOfferEntity offer;
 
@@ -112,7 +112,7 @@ class NewOfferReceived extends NegotiationEvent {
   List<Object?> get props => [offer];
 }
 
-/// Offer status updated via WebSocket
+/// Offer status updated via FCM
 class OfferStatusUpdated extends NegotiationEvent {
   final String offerId;
   final String status;

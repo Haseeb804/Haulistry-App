@@ -7,7 +7,6 @@ class AppConstants {
   // API Configuration
   static const String apiUrl = 'https://haulistry-app.vercel.app';
   static const String graphqlEndpoint = 'https://haulistry-app.vercel.app/graphql';
-  static const String wsEndpoint = 'wss://haulistry-app.vercel.app/ws';
   
   // Firebase Collections
   static const String usersCollection = 'users';

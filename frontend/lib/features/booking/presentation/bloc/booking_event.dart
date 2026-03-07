@@ -208,9 +208,9 @@ class RateBookingRequested extends BookingEvent {
   List<Object?> get props => [bookingId, rating, review];
 }
 
-// ===== Real-time Events (from WebSocket) =====
+// ===== Real-time Events (from FCM) =====
 
-/// Booking status updated via WebSocket
+/// Booking status updated via FCM
 class BookingStatusReceived extends BookingEvent {
   final String bookingId;
   final String status;
