@@ -83,23 +83,3 @@ class LocationTrackingError extends LocationTrackingEvent {
   @override
   List<Object?> get props => [message];
 }
-
-/// Join booking room for real-time updates
-class JoinBookingRoom extends LocationTrackingEvent {
-  final String bookingId;
-
-  const JoinBookingRoom({required this.bookingId});
-
-  @override
-  List<Object?> get props => [bookingId];
-}
-
-/// Leave booking room
-class LeaveBookingRoom extends LocationTrackingEvent {
-  final String bookingId;
-
-  const LeaveBookingRoom({required this.bookingId});
-
-  @override
-  List<Object?> get props => [bookingId];
-}

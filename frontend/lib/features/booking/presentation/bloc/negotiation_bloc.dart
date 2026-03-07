@@ -3,7 +3,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'negotiation_event.dart';
 import 'negotiation_state.dart';
 import '../../../../core/services/api_service.dart';
-import '../../../../core/services/websocket_service.dart';
+import '../../../../core/services/notification_service.dart';
 import '../../../../core/domain/entities/fare_offer_entity.dart';
 import '../../../../core/domain/entities/booking_entity.dart';
 
@@ -11,14 +11,14 @@ import '../../../../core/domain/entities/booking_entity.dart';
 /// Manages offers, counter-offers, and acceptance flow
 class NegotiationBloc extends Bloc<NegotiationEvent, NegotiationState> {
   final ApiService _apiService;
-  final WebSocketService _wsService;
-  StreamSubscription? _wsSubscription;
+  final NotificationService _notificationService;
+  StreamSubscription<Map<String, dynamic>>? _fcmSubscription;
 
   NegotiationBloc({
     ApiService? apiService,
-    WebSocketService? wsService,
+    NotificationService? notificationService,
   })  : _apiService = apiService ?? ApiService.instance,
-        _wsService = wsService ?? WebSocketService.instance,
+        _notificationService = notificationService ?? NotificationService(),
         super(const NegotiationInitial()) {
     // Register event handlers
     on<LoadBookingOffersRequested>(_onLoadOffers);
@@ -32,36 +32,38 @@ class NegotiationBloc extends Bloc<NegotiationEvent, NegotiationState> {
     on<OfferStatusUpdated>(_onOfferStatusUpdated);
     on<NegotiationReset>(_onReset);
 
-    // Listen to WebSocket fare offer stream
-    _wsSubscription = _wsService.fareOfferStream.listen(_handleWsMessage);
+    // Listen to FCM notification stream for fare offers
+    _fcmSubscription = _notificationService.notificationStream.listen(_handleFcmMessage);
   }
 
-  void _handleWsMessage(WSMessage message) {
-    switch (message.type) {
-      case WSMessageType.newFareOffer:
-        final offer = FareOfferEntity.fromJson(message.data);
+  void _handleFcmMessage(Map<String, dynamic> data) {
+    final type = data['type'] as String?;
+    
+    switch (type) {
+      case 'new_fare_offer':
+        final offer = FareOfferEntity.fromJson(data);
         add(NewOfferReceived(offer));
         break;
 
-      case WSMessageType.fareOfferAccepted:
-        _handleOfferStatusUpdate(message, 'accepted');
+      case 'fare_offer_accepted':
+        _handleOfferStatusUpdate(data, 'accepted');
         break;
 
-      case WSMessageType.fareOfferRejected:
-        _handleOfferStatusUpdate(message, 'rejected');
+      case 'fare_offer_rejected':
+        _handleOfferStatusUpdate(data, 'rejected');
         break;
 
-      case WSMessageType.offerUpdated:
-        _handleOfferStatusUpdate(message, 'updated');
+      case 'offer_updated':
+        _handleOfferStatusUpdate(data, 'updated');
         break;
 
-      case WSMessageType.offerWithdrawn:
-        _handleOfferStatusUpdate(message, 'withdrawn');
+      case 'offer_withdrawn':
+        _handleOfferStatusUpdate(data, 'withdrawn');
         break;
 
-      case WSMessageType.counterOffer:
-        final offerId = message.data['offerId'] as String?;
-        final counterPrice = (message.data['counterPrice'] as num?)?.toDouble();
+      case 'counter_offer':
+        final offerId = data['offerId'] as String?;
+        final counterPrice = double.tryParse(data['counterPrice']?.toString() ?? '');
         if (offerId != null && counterPrice != null) {
           add(OfferStatusUpdated(
             offerId: offerId,
@@ -76,13 +78,13 @@ class NegotiationBloc extends Bloc<NegotiationEvent, NegotiationState> {
     }
   }
 
-  void _handleOfferStatusUpdate(WSMessage message, String status) {
-    final offerId = message.data['id'] as String? ?? message.data['offerId'] as String?;
+  void _handleOfferStatusUpdate(Map<String, dynamic> data, String status) {
+    final offerId = data['id'] as String? ?? data['offerId'] as String?;
     if (offerId != null) {
       add(OfferStatusUpdated(
         offerId: offerId,
         status: status,
-        newPrice: (message.data['offeredPrice'] as num?)?.toDouble(),
+        newPrice: double.tryParse(data['offeredPrice']?.toString() ?? ''),
       ));
     }
   }
@@ -367,7 +369,7 @@ class NegotiationBloc extends Bloc<NegotiationEvent, NegotiationState> {
 
   @override
   Future<void> close() {
-    _wsSubscription?.cancel();
+    _fcmSubscription?.cancel();
     return super.close();
   }
 }

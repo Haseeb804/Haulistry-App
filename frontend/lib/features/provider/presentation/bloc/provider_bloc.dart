@@ -9,27 +9,26 @@ import '../../../../core/domain/entities/vehicle_entity.dart';
 import '../../../../core/domain/entities/fare_offer_entity.dart';
 import '../../../../core/domain/entities/service_entity.dart';
 import '../../../../core/services/api_service.dart';
-import '../../../../core/services/websocket_service.dart';
+import '../../../../core/services/notification_service.dart';
 
 class ProviderBloc extends Bloc<ProviderEvent, ProviderState> {
   final ProviderRepository _repository;
   final FirebaseAuth _auth;
   final ApiService _apiService;
-  final WebSocketService _wsService;
+  final NotificationService _notificationService;
 
-  StreamSubscription? _bookingRequestSubscription;
-  StreamSubscription? _fareOfferSubscription;
+  StreamSubscription<Map<String, dynamic>>? _fcmSubscription;
   bool _isOnline = false;
 
   ProviderBloc({
     required ProviderRepository repository,
     FirebaseAuth? auth,
     ApiService? apiService,
-    WebSocketService? wsService,
+    NotificationService? notificationService,
   })  : _repository = repository,
         _auth = auth ?? FirebaseAuth.instance,
         _apiService = apiService ?? ApiService.instance,
-        _wsService = wsService ?? WebSocketService.instance,
+        _notificationService = notificationService ?? NotificationService(),
         super(const ProviderInitial()) {
     // Dashboard & Booking Events
     on<ProviderLoadDashboardRequested>(_onLoadDashboard);
@@ -74,38 +73,45 @@ class ProviderBloc extends Bloc<ProviderEvent, ProviderState> {
     on<ProviderGoOffline>(_onGoOffline);
     on<ProviderUpdateLocation>(_onUpdateLocation);
 
-    // Setup WebSocket listeners
-    _setupWebSocketListeners();
+    // Setup FCM listeners
+    _setupFcmListeners();
   }
 
-  void _setupWebSocketListeners() {
-    // Listen for new booking requests
-    _bookingRequestSubscription = _wsService.bookingRequestStream.listen((message) {
-      if (message.data.isNotEmpty) {
+  void _setupFcmListeners() {
+    // Listen for FCM notifications (booking requests, fare offer updates)
+    _fcmSubscription = _notificationService.notificationStream.listen((data) {
+      final type = data['type'] as String?;
+      
+      if (type == 'new_booking_request') {
+        // New booking request
         add(ProviderNewBookingReceived(
-          booking: BookingEntity.fromJson(message.data),
+          booking: BookingEntity.fromJson(data),
         ));
-      }
-    });
-
-    // Listen for fare offer updates (counter offers, acceptance, etc.)
-    _fareOfferSubscription = _wsService.fareOfferStream.listen((message) {
-      final offerId = message.data['id'] as String? ?? message.data['offerId'] as String?;
-      if (offerId != null) {
-        String status = 'unknown';
-        if (message.type == WSMessageType.fareOfferAccepted) {
-          status = 'accepted';
-        } else if (message.type == WSMessageType.fareOfferRejected) {
-          status = 'rejected';
-        } else if (message.type == WSMessageType.counterOffer) {
-          status = 'counter_offered';
+      } else if (type == 'fare_offer_accepted') {
+        final offerId = data['offerId'] as String?;
+        if (offerId != null) {
+          add(ProviderOfferStatusReceived(
+            offerId: offerId,
+            status: 'accepted',
+          ));
         }
-        
-        add(ProviderOfferStatusReceived(
-          offerId: offerId,
-          status: status,
-          counterPrice: (message.data['counterPrice'] as num?)?.toDouble(),
-        ));
+      } else if (type == 'fare_offer_rejected') {
+        final offerId = data['offerId'] as String?;
+        if (offerId != null) {
+          add(ProviderOfferStatusReceived(
+            offerId: offerId,
+            status: 'rejected',
+          ));
+        }
+      } else if (type == 'counter_offer') {
+        final offerId = data['offerId'] as String?;
+        if (offerId != null) {
+          add(ProviderOfferStatusReceived(
+            offerId: offerId,
+            status: 'counter_offered',
+            counterPrice: double.tryParse(data['counterPrice']?.toString() ?? ''),
+          ));
+        }
       }
     });
   }
@@ -874,14 +880,7 @@ class ProviderBloc extends Bloc<ProviderEvent, ProviderState> {
     }
 
     try {
-      // Connect to WebSocket
-      await _wsService.connect(user.uid, role: 'provider');
-
-      // Subscribe to service categories
-      for (final category in event.serviceCategories ?? ['general']) {
-        _wsService.subscribeToCategory(category);
-      }
-
+      // Set online status (FCM handles notifications automatically)
       _isOnline = true;
 
       if (state is ProviderLoaded) {
@@ -901,7 +900,6 @@ class ProviderBloc extends Bloc<ProviderEvent, ProviderState> {
     ProviderGoOffline event,
     Emitter<ProviderState> emit,
   ) {
-    _wsService.disconnect();
     _isOnline = false;
 
     if (state is ProviderLoaded) {
@@ -915,13 +913,8 @@ class ProviderBloc extends Bloc<ProviderEvent, ProviderState> {
     ProviderUpdateLocation event,
     Emitter<ProviderState> emit,
   ) async {
-    // Send location via WebSocket
-    _wsService.sendLocationUpdate(
-      latitude: event.latitude,
-      longitude: event.longitude,
-      heading: event.heading,
-      speed: event.speed,
-    );
+    // Location updates are handled via the location tracking service
+    // which sends updates to the backend via API
   }
 
   Future<void> _onLoadAvailableBookings(
@@ -958,8 +951,7 @@ class ProviderBloc extends Bloc<ProviderEvent, ProviderState> {
 
   @override
   Future<void> close() {
-    _bookingRequestSubscription?.cancel();
-    _fareOfferSubscription?.cancel();
+    _fcmSubscription?.cancel();
     return super.close();
   }
 }

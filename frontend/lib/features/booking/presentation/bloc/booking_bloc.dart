@@ -6,7 +6,7 @@ import 'booking_state.dart';
 import '../../domain/services/booking_service.dart';
 import '../../domain/repositories/booking_repository.dart';
 import '../../../../core/services/api_service.dart';
-import '../../../../core/services/websocket_service.dart';
+import '../../../../core/services/notification_service.dart';
 import '../../../../core/domain/entities/booking_entity.dart';
 import '../../../../core/domain/entities/location_entity.dart';
 
@@ -15,23 +15,21 @@ class BookingBloc extends Bloc<BookingEvent, BookingState> {
   final BookingRepository _repository;
   final FirebaseAuth _auth;
   final ApiService _apiService;
-  final WebSocketService _wsService;
+  final NotificationService _notificationService;
 
-  StreamSubscription? _bookingStatusSubscription;
-  StreamSubscription? _locationSubscription;
-  StreamSubscription? _bookingRequestSubscription;
+  StreamSubscription<Map<String, dynamic>>? _fcmSubscription;
 
   BookingBloc({
     BookingService? bookingService,
     required BookingRepository repository,
     FirebaseAuth? auth,
     ApiService? apiService,
-    WebSocketService? wsService,
+    NotificationService? notificationService,
   })  : _bookingService = bookingService ?? BookingService(),
         _repository = repository,
         _auth = auth ?? FirebaseAuth.instance,
         _apiService = apiService ?? ApiService.instance,
-        _wsService = wsService ?? WebSocketService.instance,
+        _notificationService = notificationService ?? NotificationService(),
         super(const BookingInitial()) {
     // Booking Creation Events
     on<BookingServiceSelected>(_onServiceSelected);
@@ -61,39 +59,33 @@ class BookingBloc extends Bloc<BookingEvent, BookingState> {
     on<StartTrackingBooking>(_onStartTracking);
     on<StopTrackingBooking>(_onStopTracking);
 
-    // Listen to WebSocket streams
-    _setupWebSocketListeners();
+    // Listen to FCM notifications
+    _setupFcmListeners();
   }
 
-  void _setupWebSocketListeners() {
-    // Booking status updates
-    _bookingStatusSubscription = _wsService.bookingStatusStream.listen((message) {
-      final bookingId = message.bookingId;
-      if (bookingId != null) {
+  void _setupFcmListeners() {
+    // Listen to FCM notifications for booking updates
+    _fcmSubscription = _notificationService.notificationStream.listen((data) {
+      final type = data['type'] as String?;
+      final bookingId = data['bookingId'] as String?;
+      
+      if (type == 'booking_status' && bookingId != null) {
+        // Booking status update
         add(BookingStatusReceived(
           bookingId: bookingId,
-          status: message.type,
-          data: message.data,
+          status: data['status'] as String? ?? '',
+          data: data,
         ));
-      }
-    });
-
-    // Location updates
-    _locationSubscription = _wsService.locationStream.listen((message) {
-      final bookingId = message.bookingId;
-      if (bookingId != null && message.data.isNotEmpty) {
+      } else if (type == 'location_update' && bookingId != null) {
+        // Location update
         add(ProviderLocationReceived(
           bookingId: bookingId,
-          location: LocationEntity.fromJson(message.data),
+          location: LocationEntity.fromJson(data),
         ));
-      }
-    });
-
-    // New booking requests (for providers)
-    _bookingRequestSubscription = _wsService.bookingRequestStream.listen((message) {
-      if (message.data.isNotEmpty) {
+      } else if (type == 'new_booking_request') {
+        // New booking request (for providers)
         add(NewBookingRequestReceived(
-          booking: BookingEntity.fromJson(message.data),
+          booking: BookingEntity.fromJson(data),
         ));
       }
     });
@@ -605,10 +597,7 @@ class BookingBloc extends Bloc<BookingEvent, BookingState> {
     StartTrackingBooking event,
     Emitter<BookingState> emit,
   ) async {
-    // Join WebSocket room for this booking
-    _wsService.joinBookingRoom(event.bookingId);
-
-    // Load current booking state
+    // Load current booking state (FCM handles real-time updates)
     add(LoadBookingRequested(bookingId: event.bookingId));
   }
 
@@ -616,8 +605,7 @@ class BookingBloc extends Bloc<BookingEvent, BookingState> {
     StopTrackingBooking event,
     Emitter<BookingState> emit,
   ) {
-    // Leave WebSocket room
-    _wsService.leaveBookingRoom(event.bookingId);
+    // No-op for FCM - notifications continue until booking is complete
   }
 
   // ===== Helper Methods =====
@@ -655,9 +643,7 @@ class BookingBloc extends Bloc<BookingEvent, BookingState> {
 
   @override
   Future<void> close() {
-    _bookingStatusSubscription?.cancel();
-    _locationSubscription?.cancel();
-    _bookingRequestSubscription?.cancel();
+    _fcmSubscription?.cancel();
     return super.close();
   }
 }

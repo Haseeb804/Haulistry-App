@@ -2,7 +2,7 @@ import 'dart:async';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:geolocator/geolocator.dart';
 import '../../../../core/services/location_tracking_service.dart';
-import '../../../../core/services/websocket_service.dart';
+import '../../../../core/services/notification_service.dart';
 import '../../../../core/services/api_service.dart';
 import 'location_tracking_event.dart';
 import 'location_tracking_state.dart';
@@ -10,25 +10,23 @@ import 'location_tracking_state.dart';
 /// BLoC for managing real-time location tracking during bookings
 class LocationTrackingBloc extends Bloc<LocationTrackingEvent, LocationTrackingState> {
   final LocationTrackingService _locationService;
-  final WebSocketService _wsService;
+  final NotificationService _notificationService;
 
   StreamSubscription<Position>? _positionSubscription;
-  StreamSubscription<WSMessage>? _wsLocationSubscription;
+  StreamSubscription<Map<String, dynamic>>? _fcmLocationSubscription;
   StreamSubscription<String>? _errorSubscription;
 
   LocationTrackingBloc({
     LocationTrackingService? locationService,
-    WebSocketService? wsService,
+    NotificationService? notificationService,
   })  : _locationService = locationService ?? LocationTrackingService.instance,
-        _wsService = wsService ?? WebSocketService.instance,
+        _notificationService = notificationService ?? NotificationService(),
         super(const LocationTrackingInitial()) {
     on<StartLocationTracking>(_onStartTracking);
     on<StopLocationTracking>(_onStopTracking);
     on<LocationUpdateReceived>(_onLocationUpdate);
     on<RequestOtherUserLocation>(_onRequestOtherUserLocation);
     on<LocationTrackingError>(_onError);
-    on<JoinBookingRoom>(_onJoinBookingRoom);
-    on<LeaveBookingRoom>(_onLeaveBookingRoom);
   }
 
   /// Start location tracking for a booking
@@ -64,18 +62,18 @@ class LocationTrackingBloc extends Bloc<LocationTrackingEvent, LocationTrackingS
         ));
       });
 
-      // Listen to location updates from WebSocket (other users)
-      _wsLocationSubscription = _wsService.locationStream.listen((message) {
-        final data = message.data;
-        if (data['userId'] != event.userId) {
+      // Listen to location updates from FCM (other users)
+      _fcmLocationSubscription = _notificationService.notificationStream.listen((data) {
+        final type = data['type'] as String?;
+        if (type == 'location_update' && data['userId'] != event.userId) {
           // Only process location updates from other users
           add(LocationUpdateReceived(
             userId: data['userId'] as String,
-            latitude: (data['latitude'] as num).toDouble(),
-            longitude: (data['longitude'] as num).toDouble(),
-            heading: data['heading'] != null ? (data['heading'] as num).toDouble() : null,
-            speed: data['speed'] != null ? (data['speed'] as num).toDouble() : null,
-            accuracy: data['accuracy'] != null ? (data['accuracy'] as num).toDouble() : null,
+            latitude: double.tryParse(data['latitude']?.toString() ?? '0') ?? 0,
+            longitude: double.tryParse(data['longitude']?.toString() ?? '0') ?? 0,
+            heading: data['heading'] != null ? double.tryParse(data['heading'].toString()) : null,
+            speed: data['speed'] != null ? double.tryParse(data['speed'].toString()) : null,
+            accuracy: data['accuracy'] != null ? double.tryParse(data['accuracy'].toString()) : null,
             timestamp: DateTime.now(),
           ));
         }
@@ -124,11 +122,11 @@ class LocationTrackingBloc extends Bloc<LocationTrackingEvent, LocationTrackingS
   ) async {
     await _locationService.stopTracking();
     await _positionSubscription?.cancel();
-    await _wsLocationSubscription?.cancel();
+    await _fcmLocationSubscription?.cancel();
     await _errorSubscription?.cancel();
 
     _positionSubscription = null;
-    _wsLocationSubscription = null;
+    _fcmLocationSubscription = null;
     _errorSubscription = null;
 
     emit(const LocationTrackingStopped());
@@ -212,36 +210,10 @@ class LocationTrackingBloc extends Bloc<LocationTrackingEvent, LocationTrackingS
     emit(LocationTrackingErrorState(message: event.message));
   }
 
-  /// Join booking room for real-time WebSocket updates
-  Future<void> _onJoinBookingRoom(
-    JoinBookingRoom event,
-    Emitter<LocationTrackingState> emit,
-  ) async {
-    // Send join room message via WebSocket
-    _wsService.send({
-      'type': 'join_booking_room',
-      'data': {'bookingId': event.bookingId},
-      'bookingId': event.bookingId,
-    });
-  }
-
-  /// Leave booking room
-  Future<void> _onLeaveBookingRoom(
-    LeaveBookingRoom event,
-    Emitter<LocationTrackingState> emit,
-  ) async {
-    // Send leave room message via WebSocket
-    _wsService.send({
-      'type': 'leave_booking_room',
-      'data': {'bookingId': event.bookingId},
-      'bookingId': event.bookingId,
-    });
-  }
-
   @override
   Future<void> close() async {
     await _positionSubscription?.cancel();
-    await _wsLocationSubscription?.cancel();
+    await _fcmLocationSubscription?.cancel();
     await _errorSubscription?.cancel();
     await _locationService.stopTracking();
     return super.close();
