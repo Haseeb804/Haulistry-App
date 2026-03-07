@@ -9,7 +9,7 @@ from ..schemas.location_schema import (
     LocationResponse, BookingLocationsResponse
 )
 from ..models.location import LocationUpdate
-from ..services.websocket_manager import manager, WSMessageType, create_ws_message
+from ..services.fcm_service import fcm_service
 
 router = APIRouter()
 
@@ -37,24 +37,33 @@ async def update_booking_location(location: LocationUpdateRequest):
                 detail="Failed to update location"
             )
         
-        # Broadcast location to other user in the booking room
-        await manager.broadcast_to_booking_room(
-            location.bookingId,
-            create_ws_message(
-                WSMessageType.LOCATION_UPDATE,
-                {
-                    'userId': location.userId,
-                    'latitude': location.latitude,
-                    'longitude': location.longitude,
-                    'heading': location.heading,
-                    'speed': location.speed,
-                    'accuracy': location.accuracy
-                },
-                booking_id=location.bookingId,
-                sender_id=location.userId
-            ),
-            exclude_user=location.userId
-        )
+        # Send location update to other user in the booking via FCM
+        from ..models.booking import Booking
+        from ..models.user import User
+        
+        booking = Booking.get_by_id(location.bookingId)
+        if booking:
+            # Determine who to notify (the other party)
+            target_user_id = None
+            sender_name = "User"
+            
+            if location.userId == booking.get('seekerId'):
+                target_user_id = booking.get('providerId')
+                user_data = User.get_by_id(location.userId)
+                sender_name = user_data.get('name', 'Customer') if user_data else 'Customer'
+            else:
+                target_user_id = booking.get('seekerId')
+                user_data = User.get_by_id(location.userId)
+                sender_name = user_data.get('name', 'Provider') if user_data else 'Provider'
+            
+            if target_user_id:
+                await fcm_service.notify_location_update(
+                    target_user_id=target_user_id,
+                    booking_id=location.bookingId,
+                    latitude=location.latitude,
+                    longitude=location.longitude,
+                    sender_name=sender_name
+                )
         
         return LocationResponse(
             success=True,

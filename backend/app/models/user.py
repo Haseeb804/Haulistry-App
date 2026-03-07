@@ -228,7 +228,8 @@ class User:
             'longitude': 'longitude',
             'address': 'address',
             'isActive': 'isActive',
-            'isVerified': 'isVerified'
+            'isVerified': 'isVerified',
+            'fcmToken': 'fcmToken'
         }
         
         for key, neo4j_key in field_mapping.items():

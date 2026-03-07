@@ -10,7 +10,7 @@ from ..schemas.fare_offer_schema import (
     FareOfferResponse, FareOffersListResponse
 )
 from ..models.fare_offer import FareOffer
-from ..services.websocket_manager import manager, WSMessageType, create_ws_message
+from ..services.fcm_service import fcm_service, FCMNotificationType
 
 router = APIRouter()
 
@@ -30,19 +30,15 @@ async def create_fare_offer(offer: FareOfferCreate):
                 detail="Failed to create fare offer"
             )
         
-        # Notify seeker via WebSocket about the new offer
-        # Get booking to find seeker ID
+        # Notify seeker via FCM about the new offer
         from ..models.booking import Booking
         booking = Booking.get_by_id(offer.bookingId)
         if booking:
-            await manager.send_personal_message(
-                booking['seekerId'],
-                create_ws_message(
-                    WSMessageType.NEW_FARE_OFFER,
-                    offer_data,
-                    booking_id=offer.bookingId,
-                    sender_id=offer.providerId
-                )
+            await fcm_service.notify_new_fare_offer(
+                seeker_id=booking['seekerId'],
+                booking_id=offer.bookingId,
+                provider_name=offer_data.get('providerName', 'Provider'),
+                fare_amount=offer_data.get('offeredPrice', 0)
             )
         
         return FareOfferResponse(
@@ -140,19 +136,13 @@ async def accept_offer(offer_id: str):
                 detail="Offer not found"
             )
         
-        # Notify provider that their offer was accepted
-        await manager.send_personal_message(
-            offer_data['providerId'],
-            create_ws_message(
-                WSMessageType.FARE_OFFER_ACCEPTED,
-                offer_data,
-                booking_id=offer_data['bookingId'],
-                sender_id=offer_data.get('booking', {}).get('seekerId')
-            )
+        # Notify provider that their offer was accepted via FCM
+        await fcm_service.notify_fare_accepted(
+            target_user_id=offer_data['providerId'],
+            booking_id=offer_data['bookingId'],
+            accepter_name=offer_data.get('booking', {}).get('seekerName', 'Customer'),
+            fare_amount=offer_data.get('acceptedPrice', offer_data.get('offeredPrice', 0))
         )
-        
-        # Also notify other providers that their offers were rejected
-        # (This is handled in the model when we accept one offer)
         
         return FareOfferResponse(
             success=True,
@@ -184,15 +174,15 @@ async def reject_offer(offer_id: str):
                 detail="Offer not found"
             )
         
-        # Notify provider that their offer was rejected
+        # Notify provider that their offer was rejected via FCM
         if existing:
-            await manager.send_personal_message(
-                existing['providerId'],
-                create_ws_message(
-                    WSMessageType.FARE_OFFER_REJECTED,
-                    offer_data,
-                    booking_id=existing['bookingId']
-                )
+            from ..models.booking import Booking
+            booking = Booking.get_by_id(existing['bookingId'])
+            seeker_name = booking.get('seekerName', 'Customer') if booking else 'Customer'
+            await fcm_service.notify_fare_rejected(
+                target_user_id=existing['providerId'],
+                booking_id=existing['bookingId'],
+                rejecter_name=seeker_name
             )
         
         return FareOfferResponse(
@@ -228,19 +218,16 @@ async def counter_offer(offer_id: str, counter: CounterOfferRequest):
                 detail="Offer not found"
             )
         
-        # Notify provider about the counter offer
+        # Notify provider about the counter offer via FCM
         if existing:
-            await manager.send_personal_message(
-                existing['providerId'],
-                create_ws_message(
-                    WSMessageType.COUNTER_OFFER,
-                    {
-                        'offerId': offer_id,
-                        'counterPrice': counter.counterPrice,
-                        'originalPrice': existing['offeredPrice']
-                    },
-                    booking_id=existing['bookingId']
-                )
+            from ..models.booking import Booking
+            booking = Booking.get_by_id(existing['bookingId'])
+            seeker_name = booking.get('seekerName', 'Customer') if booking else 'Customer'
+            await fcm_service.notify_counter_offer(
+                provider_id=existing['providerId'],
+                booking_id=existing['bookingId'],
+                seeker_name=seeker_name,
+                fare_amount=counter.counterPrice
             )
         
         return FareOfferResponse(
@@ -275,19 +262,16 @@ async def update_offer_price(offer_id: str, update: UpdateOfferPrice):
                 detail="Offer not found"
             )
         
-        # Notify seeker about the updated offer
+        # Notify seeker about the updated offer via FCM
         if existing:
             from ..models.booking import Booking
             booking = Booking.get_by_id(existing['bookingId'])
             if booking:
-                await manager.send_personal_message(
-                    booking['seekerId'],
-                    create_ws_message(
-                        WSMessageType.OFFER_UPDATED,
-                        offer_data,
-                        booking_id=existing['bookingId'],
-                        sender_id=existing['providerId']
-                    )
+                await fcm_service.notify_new_fare_offer(
+                    seeker_id=booking['seekerId'],
+                    booking_id=existing['bookingId'],
+                    provider_name=existing.get('providerName', 'Provider'),
+                    fare_amount=update.newPrice
                 )
         
         return FareOfferResponse(
@@ -320,18 +304,17 @@ async def withdraw_offer(offer_id: str):
                 detail="Offer not found"
             )
         
-        # Notify seeker about withdrawn offer
+        # Notify seeker about withdrawn offer via FCM
         if existing:
             from ..models.booking import Booking
             booking = Booking.get_by_id(existing['bookingId'])
             if booking:
-                await manager.send_personal_message(
-                    booking['seekerId'],
-                    create_ws_message(
-                        WSMessageType.OFFER_WITHDRAWN,
-                        {'offerId': offer_id},
-                        booking_id=existing['bookingId']
-                    )
+                await fcm_service.send_to_user(
+                    user_id=booking['seekerId'],
+                    notification_type=FCMNotificationType.OFFER_WITHDRAWN,
+                    title="Offer Withdrawn",
+                    body=f"{existing.get('providerName', 'Provider')} withdrew their offer",
+                    booking_id=existing['bookingId']
                 )
         
         return FareOfferResponse(

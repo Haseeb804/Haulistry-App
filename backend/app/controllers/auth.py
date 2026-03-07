@@ -282,3 +282,62 @@ async def get_user_by_id(user_id: str):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to get user: {str(e)}"
         )
+
+
+@router.post("/fcm-token")
+async def update_fcm_token(
+    authorization: Optional[str] = Header(None),
+    fcm_token: str = None
+):
+    """
+    Update user's FCM token for push notifications
+    Called when app starts or token refreshes
+    """
+    if not authorization or not authorization.startswith('Bearer '):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing or invalid authorization header"
+        )
+    
+    if not fcm_token:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="FCM token is required"
+        )
+    
+    try:
+        id_token = authorization.split('Bearer ')[1]
+        decoded_token = auth.verify_id_token(id_token)
+        firebase_uid = decoded_token['uid']
+        
+        # Update FCM token in Neo4j
+        user_data = User.update(firebase_uid, {'fcmToken': fcm_token})
+        
+        if not user_data:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User not found in database"
+            )
+        
+        return {
+            "success": True,
+            "message": "FCM token updated successfully"
+        }
+        
+    except auth.InvalidIdTokenError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid Firebase token"
+        )
+    except auth.ExpiredIdTokenError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Firebase token has expired"
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to update FCM token: {str(e)}"
+        )

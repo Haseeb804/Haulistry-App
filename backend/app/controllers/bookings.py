@@ -19,7 +19,7 @@ from pydantic import BaseModel, Field
 from ..schemas.booking_schema import BookingCreate, BookingUpdate, BookingResponse
 from ..models.booking import Booking
 from ..models.location import LocationUpdate
-from ..services.websocket_manager import manager, WSMessageType, create_ws_message
+from ..services.fcm_service import fcm_service, FCMNotificationType
 
 router = APIRouter()
 
@@ -56,22 +56,13 @@ async def create_booking(booking: BookingCreate):
                 detail="Failed to create booking"
             )
         
-        # Broadcast new booking to all online providers
-        await manager.broadcast_to_providers(
-            create_ws_message(
-                WSMessageType.NEW_BOOKING_REQUEST,
-                {
-                    'booking': booking_data,
-                    'serviceType': booking.serviceType,
-                    'pickupAddress': booking.pickupAddress,
-                    'dropAddress': booking.dropAddress,
-                    'estimatedPrice': booking.estimatedPrice,
-                    'distanceInKm': booking.distanceInKm,
-                },
-                booking_id=booking_data['id'],
-                sender_id=booking.seekerId
-            ),
-            category=booking.serviceType
+        # Broadcast new booking to all online providers via FCM
+        await fcm_service.notify_new_booking_request(
+            booking_id=booking_data['id'],
+            seeker_name=booking_data.get('seekerName', 'Customer'),
+            service_type=booking.serviceType,
+            pickup_address=booking.pickupAddress,
+            exclude_seeker_id=booking.seekerId
         )
         
         return BookingResponse(
@@ -276,18 +267,13 @@ async def provider_arriving(booking_id: str):
                 detail="Booking not found"
             )
         
-        # Notify seeker
-        await manager.send_personal_message(
-            booking_data['seekerId'],
-            create_ws_message(
-                WSMessageType.PROVIDER_ARRIVING,
-                booking_data,
-                booking_id=booking_id
-            )
+        # Notify seeker via FCM
+        await fcm_service.notify_booking_status(
+            target_user_id=booking_data['seekerId'],
+            booking_id=booking_id,
+            status="provider_arriving",
+            message="Your provider is on the way!"
         )
-        
-        # Join booking room for location sharing
-        manager.join_booking_room(booking_id, booking_data['providerId'])
         
         return BookingResponse(
             success=True,
@@ -316,14 +302,12 @@ async def provider_arrived(booking_id: str):
                 detail="Booking not found"
             )
         
-        # Notify seeker
-        await manager.send_personal_message(
-            booking_data['seekerId'],
-            create_ws_message(
-                WSMessageType.PROVIDER_ARRIVED,
-                booking_data,
-                booking_id=booking_id
-            )
+        # Notify seeker via FCM
+        await fcm_service.notify_booking_status(
+            target_user_id=booking_data['seekerId'],
+            booking_id=booking_id,
+            status="provider_arrived",
+            message="Your provider has arrived at the pickup location!"
         )
         
         return BookingResponse(
@@ -353,18 +337,13 @@ async def start_booking(booking_id: str):
                 detail="Booking not found"
             )
         
-        # Notify seeker and add to booking room
-        await manager.send_personal_message(
-            booking_data['seekerId'],
-            create_ws_message(
-                WSMessageType.BOOKING_STARTED,
-                booking_data,
-                booking_id=booking_id
-            )
+        # Notify seeker via FCM
+        await fcm_service.notify_booking_status(
+            target_user_id=booking_data['seekerId'],
+            booking_id=booking_id,
+            status="in_progress",
+            message="Service has started!"
         )
-        
-        # Add seeker to booking room for location tracking
-        manager.join_booking_room(booking_id, booking_data['seekerId'])
         
         return BookingResponse(
             success=True,
@@ -393,19 +372,15 @@ async def complete_booking(booking_id: str, final_price: Optional[float] = None)
                 detail="Booking not found"
             )
         
-        # Notify seeker
-        await manager.send_personal_message(
-            booking_data['seekerId'],
-            create_ws_message(
-                WSMessageType.BOOKING_COMPLETED,
-                booking_data,
-                booking_id=booking_id
-            )
+        # Notify seeker via FCM
+        await fcm_service.notify_booking_status(
+            target_user_id=booking_data['seekerId'],
+            booking_id=booking_id,
+            status="completed",
+            message="Service completed! Please rate your experience."
         )
         
-        # Clean up booking room and locations
-        manager.leave_booking_room(booking_id, booking_data['seekerId'])
-        manager.leave_booking_room(booking_id, booking_data['providerId'])
+        # Clean up location data
         LocationUpdate.delete_booking_locations(booking_id)
         
         return BookingResponse(
@@ -438,28 +413,18 @@ async def cancel_booking(booking_id: str, reason: Optional[str] = None, cancelle
                 detail="Booking not found"
             )
         
-        # Notify the other party
+        # Notify the other party via FCM
         if existing:
             target_user = existing['seekerId'] if cancelled_by == existing.get('providerId') else existing.get('providerId')
             if target_user:
-                await manager.send_personal_message(
-                    target_user,
-                    create_ws_message(
-                        WSMessageType.BOOKING_CANCELLED,
-                        {
-                            'bookingId': booking_id,
-                            'reason': reason,
-                            'cancelledBy': cancelled_by
-                        },
-                        booking_id=booking_id
-                    )
+                cancelled_by_name = existing.get('providerName') if cancelled_by == existing.get('providerId') else existing.get('seekerName', 'User')
+                await fcm_service.notify_booking_cancelled(
+                    target_user_id=target_user,
+                    booking_id=booking_id,
+                    cancelled_by_name=cancelled_by_name or 'User'
                 )
         
-        # Clean up
-        if existing:
-            manager.leave_booking_room(booking_id, existing.get('seekerId', ''))
-            if existing.get('providerId'):
-                manager.leave_booking_room(booking_id, existing['providerId'])
+        # Clean up location data
         LocationUpdate.delete_booking_locations(booking_id)
         
         return BookingResponse(
@@ -523,14 +488,12 @@ async def accept_booking(booking_id: str, provider_id: str, vehicle_id: Optional
                 detail="Booking not found"
             )
         
-        # Notify seeker
-        await manager.send_personal_message(
-            booking_data['seekerId'],
-            create_ws_message(
-                WSMessageType.BOOKING_STATUS_UPDATE,
-                booking_data,
-                booking_id=booking_id
-            )
+        # Notify seeker via FCM
+        await fcm_service.notify_booking_accepted(
+            seeker_id=booking_data['seekerId'],
+            booking_id=booking_id,
+            provider_name=booking_data.get('providerName', 'Provider'),
+            service_type=booking_data.get('serviceType', 'service')
         )
         
         return BookingResponse(

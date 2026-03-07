@@ -1,17 +1,15 @@
-from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect, Query
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette_graphene3 import GraphQLApp, make_graphiql_handler
 import uvicorn
-from typing import Optional
 import logging
 
 from .config import settings
 from .database import neo4j_driver
 from .graphql.schema import schema
 from .controllers import api_router
-from .services.websocket_manager import manager, WSMessageType, create_ws_message
 
 # Configure logging with cleaner format
 logging.basicConfig(
@@ -103,128 +101,6 @@ graphql_app = GraphQLApp(
 
 app.add_route("/graphql", graphql_app)
 app.add_route("/graphql/", graphql_app)  # Also handle trailing slash
-
-
-# ============================================
-# WEBSOCKET ENDPOINT FOR REAL-TIME FEATURES
-# ============================================
-
-@app.websocket("/ws/{user_id}")
-async def websocket_endpoint(
-    websocket: WebSocket,
-    user_id: str,
-    role: str = Query("seeker", description="User role: seeker or provider"),
-    token: Optional[str] = Query(None, description="Auth token for verification")
-):
-    """
-    WebSocket endpoint for real-time communication
-    
-    Features:
-    - Booking request broadcasts to providers
-    - Fare offer notifications
-    - Negotiation updates
-    - Live location sharing
-    - Booking status updates
-    
-    Message Types (receive from client):
-    - ping: Keep-alive ping
-    - location_update: Share location during active booking
-    - subscribe_category: Provider subscribes to a service category
-    - unsubscribe_category: Provider unsubscribes from a category
-    - join_booking: Join a booking room for location sharing
-    - leave_booking: Leave a booking room
-    """
-    # Token verification can be added when needed by validating the token parameter
-    # against Firebase Auth or JWT tokens
-    
-    await manager.connect(websocket, user_id, role)
-    
-    try:
-        while True:
-            # Receive messages from client
-            data = await websocket.receive_json()
-            message_type = data.get("type", "")
-            
-            if message_type == WSMessageType.PING:
-                # Respond to ping with pong
-                await websocket.send_json({
-                    "type": WSMessageType.PONG,
-                    "timestamp": data.get("timestamp")
-                })
-            
-            elif message_type == WSMessageType.LOCATION_UPDATE:
-                # Handle location update during active booking
-                booking_id = data.get("bookingId")
-                if booking_id:
-                    # Broadcast to other user in the booking
-                    await manager.broadcast_to_booking_room(
-                        booking_id,
-                        create_ws_message(
-                            WSMessageType.LOCATION_UPDATE,
-                            {
-                                "userId": user_id,
-                                "latitude": data.get("latitude"),
-                                "longitude": data.get("longitude"),
-                                "heading": data.get("heading"),
-                                "speed": data.get("speed")
-                            },
-                            booking_id=booking_id,
-                            sender_id=user_id
-                        ),
-                        exclude_user=user_id
-                    )
-            
-            elif message_type == "subscribe_category":
-                # Provider subscribes to service category
-                category = data.get("category")
-                if category:
-                    manager.subscribe_to_category(user_id, category)
-                    await websocket.send_json({
-                        "type": WSMessageType.ACK,
-                        "message": f"Subscribed to {category}"
-                    })
-            
-            elif message_type == "unsubscribe_category":
-                # Provider unsubscribes from category
-                category = data.get("category")
-                if category:
-                    manager.unsubscribe_from_category(user_id, category)
-                    await websocket.send_json({
-                        "type": WSMessageType.ACK,
-                        "message": f"Unsubscribed from {category}"
-                    })
-            
-            elif message_type == "join_booking":
-                # User joins a booking room
-                booking_id = data.get("bookingId")
-                if booking_id:
-                    manager.join_booking_room(booking_id, user_id)
-                    await websocket.send_json({
-                        "type": WSMessageType.ACK,
-                        "message": f"Joined booking room {booking_id}"
-                    })
-            
-            elif message_type == "leave_booking":
-                # User leaves a booking room
-                booking_id = data.get("bookingId")
-                if booking_id:
-                    manager.leave_booking_room(booking_id, user_id)
-                    await websocket.send_json({
-                        "type": WSMessageType.ACK,
-                        "message": f"Left booking room {booking_id}"
-                    })
-            
-            else:
-                # Unknown message type
-                await websocket.send_json({
-                    "type": WSMessageType.ERROR,
-                    "message": f"Unknown message type: {message_type}"
-                })
-    
-    except WebSocketDisconnect:
-        manager.disconnect(user_id)
-    except Exception as e:
-        manager.disconnect(user_id)
 
 
 # Startup event
