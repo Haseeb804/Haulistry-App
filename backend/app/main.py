@@ -50,9 +50,11 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
     )
 
 # Configure CORS - Must be before other middleware
+# Use allow_origin_regex to allow all origins (works better with credentials)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.ALLOWED_ORIGINS,
+    allow_origins=["*"],
+    allow_origin_regex=".*",  # Allow all origins via regex
     allow_credentials=True,
     allow_methods=["*"],  # Allow all methods (GET, POST, PUT, DELETE, OPTIONS, etc.)
     allow_headers=["*"],  # Allow all headers
