@@ -10,12 +10,14 @@ class VoiceCallScreen extends StatefulWidget {
   final String callId;
   final String otherUserName;
   final String otherUserRole;
+  final String? otherUserProfileImageUrl;
 
   const VoiceCallScreen({
     super.key,
     required this.callId,
     this.otherUserName = '',
     this.otherUserRole = 'user',
+    this.otherUserProfileImageUrl,
   });
 
   @override
@@ -100,6 +102,7 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> {
                     : widget.otherUserRole != 'user'
                         ? widget.otherUserRole
                         : '';
+                final displayImageUrl = state.otherUserProfileImageUrl ?? widget.otherUserProfileImageUrl;
 
                 return Column(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -111,14 +114,19 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> {
                         CircleAvatar(
                           radius: 60,
                           backgroundColor: Colors.white.withOpacity(0.3),
-                          child: Text(
-                            displayName.isNotEmpty ? displayName[0].toUpperCase() : '?',
-                            style: const TextStyle(
-                              fontSize: 48,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.white,
-                            ),
-                          ),
+                          backgroundImage: displayImageUrl != null
+                              ? NetworkImage(displayImageUrl)
+                              : null,
+                          child: displayImageUrl == null
+                              ? Text(
+                                  displayName.isNotEmpty ? displayName[0].toUpperCase() : '?',
+                                  style: const TextStyle(
+                                    fontSize: 48,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.white,
+                                  ),
+                                )
+                              : null,
                         ),
                         const SizedBox(height: 24),
                         Text(

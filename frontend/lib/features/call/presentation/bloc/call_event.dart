@@ -11,6 +11,7 @@ class InitiateCallRequested extends CallEvent {
   final String receiverId;
   final String receiverName;
   final String receiverRole;
+  final String? receiverProfileImageUrl;
   final String bookingId;
   final String callType; // 'voice' or 'video'
 
@@ -18,12 +19,13 @@ class InitiateCallRequested extends CallEvent {
     required this.receiverId,
     required this.receiverName,
     this.receiverRole = 'user',
+    this.receiverProfileImageUrl,
     required this.bookingId,
     required this.callType,
   });
 
   @override
-  List<Object?> get props => [receiverId, receiverName, receiverRole, bookingId, callType];
+  List<Object?> get props => [receiverId, receiverName, receiverRole, receiverProfileImageUrl, bookingId, callType];
 }
 
 class AnswerCallRequested extends CallEvent {
@@ -118,6 +120,7 @@ class IncomingCallReceived extends CallEvent {
   final String callerId;
   final String callerName;
   final String callerRole;
+  final String? callerProfileImageUrl;
   final String callType;
   final Map<String, dynamic> agoraConfig;
 
@@ -126,12 +129,13 @@ class IncomingCallReceived extends CallEvent {
     required this.callerId,
     required this.callerName,
     this.callerRole = 'user',
+    this.callerProfileImageUrl,
     required this.callType,
     required this.agoraConfig,
   });
 
   @override
-  List<Object?> get props => [callId, callerId, callerName, callerRole, callType, agoraConfig];
+  List<Object?> get props => [callId, callerId, callerName, callerRole, callerProfileImageUrl, callType, agoraConfig];
 }
 
 class LoadCallHistoryRequested extends CallEvent {

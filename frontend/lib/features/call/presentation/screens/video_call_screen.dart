@@ -12,12 +12,14 @@ class VideoCallScreen extends StatefulWidget {
   final String callId;
   final String otherUserName;
   final String otherUserRole;
+  final String? otherUserProfileImageUrl;
 
   const VideoCallScreen({
     super.key,
     required this.callId,
     this.otherUserName = '',
     this.otherUserRole = 'user',
+    this.otherUserProfileImageUrl,
   });
 
   @override
@@ -125,19 +127,24 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
                             CircleAvatar(
                               radius: 40,
                               backgroundColor: Colors.white24,
-                              child: Text(
-                                (state.otherUserName.isNotEmpty
-                                        ? state.otherUserName
-                                        : widget.otherUserName.isNotEmpty
-                                            ? widget.otherUserName
-                                            : '?')[0]
-                                    .toUpperCase(),
-                                style: const TextStyle(
-                                  fontSize: 36,
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.white,
-                                ),
-                              ),
+                              backgroundImage: (state.otherUserProfileImageUrl ?? widget.otherUserProfileImageUrl) != null
+                                  ? NetworkImage((state.otherUserProfileImageUrl ?? widget.otherUserProfileImageUrl)!)
+                                  : null,
+                              child: (state.otherUserProfileImageUrl ?? widget.otherUserProfileImageUrl) == null
+                                  ? Text(
+                                      (state.otherUserName.isNotEmpty
+                                              ? state.otherUserName
+                                              : widget.otherUserName.isNotEmpty
+                                                  ? widget.otherUserName
+                                                  : '?')[0]
+                                          .toUpperCase(),
+                                      style: const TextStyle(
+                                        fontSize: 36,
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.white,
+                                      ),
+                                    )
+                                  : null,
                             ),
                             const SizedBox(height: 16),
                             Text(

@@ -10,6 +10,7 @@ class IncomingCallScreen extends StatelessWidget {
   final String callerId;
   final String callerName;
   final String callerRole;
+  final String? callerProfileImageUrl;
   final String callType;
   final Map<String, dynamic> agoraConfig;
 
@@ -19,6 +20,7 @@ class IncomingCallScreen extends StatelessWidget {
     required this.callerId,
     required this.callerName,
     this.callerRole = 'user',
+    this.callerProfileImageUrl,
     required this.callType,
     required this.agoraConfig,
   });
@@ -34,6 +36,7 @@ class IncomingCallScreen extends StatelessWidget {
             'callId': callId,
             'otherUserName': callerName,
             'otherUserRole': callerRole,
+            'otherUserProfileImageUrl': callerProfileImageUrl,
           });
         } else if (state is CallEnded) {
           context.pop();
@@ -67,14 +70,19 @@ class IncomingCallScreen extends StatelessWidget {
                     CircleAvatar(
                       radius: 60,
                       backgroundColor: Colors.white.withOpacity(0.3),
-                      child: Text(
-                        callerName.isNotEmpty ? callerName[0].toUpperCase() : '?',
-                        style: const TextStyle(
-                          fontSize: 48,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.white,
-                        ),
-                      ),
+                      backgroundImage: callerProfileImageUrl != null
+                          ? NetworkImage(callerProfileImageUrl!)
+                          : null,
+                      child: callerProfileImageUrl == null
+                          ? Text(
+                              callerName.isNotEmpty ? callerName[0].toUpperCase() : '?',
+                              style: const TextStyle(
+                                fontSize: 48,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                              ),
+                            )
+                          : null,
                     ),
                     const SizedBox(height: 24),
                     Text(

@@ -21,6 +21,7 @@ class CallInitiated extends CallState {
   final String receiverId;
   final String receiverName;
   final String receiverRole;
+  final String? receiverProfileImageUrl;
   final String callType;
   final Map<String, dynamic> agoraConfig;
 
@@ -29,12 +30,13 @@ class CallInitiated extends CallState {
     required this.receiverId,
     required this.receiverName,
     this.receiverRole = 'user',
+    this.receiverProfileImageUrl,
     required this.callType,
     required this.agoraConfig,
   });
 
   @override
-  List<Object?> get props => [callId, receiverId, receiverName, receiverRole, callType, agoraConfig];
+  List<Object?> get props => [callId, receiverId, receiverName, receiverRole, receiverProfileImageUrl, callType, agoraConfig];
 }
 
 class CallRinging extends CallState {
@@ -42,6 +44,7 @@ class CallRinging extends CallState {
   final String callerId;
   final String callerName;
   final String callerRole;
+  final String? callerProfileImageUrl;
   final String callType;
   final Map<String, dynamic> agoraConfig;
 
@@ -50,12 +53,13 @@ class CallRinging extends CallState {
     required this.callerId,
     required this.callerName,
     this.callerRole = 'user',
+    this.callerProfileImageUrl,
     required this.callType,
     required this.agoraConfig,
   });
 
   @override
-  List<Object?> get props => [callId, callerId, callerName, callerRole, callType, agoraConfig];
+  List<Object?> get props => [callId, callerId, callerName, callerRole, callerProfileImageUrl, callType, agoraConfig];
 }
 
 class CallConnecting extends CallState {
@@ -64,6 +68,7 @@ class CallConnecting extends CallState {
   final bool isCaller;
   final String otherUserName;
   final String otherUserRole;
+  final String? otherUserProfileImageUrl;
 
   const CallConnecting({
     required this.callId,
@@ -71,10 +76,11 @@ class CallConnecting extends CallState {
     required this.isCaller,
     this.otherUserName = '',
     this.otherUserRole = 'user',
+    this.otherUserProfileImageUrl,
   });
 
   @override
-  List<Object?> get props => [callId, callType, isCaller, otherUserName, otherUserRole];
+  List<Object?> get props => [callId, callType, isCaller, otherUserName, otherUserRole, otherUserProfileImageUrl];
 }
 
 class CallConnected extends CallState {
@@ -87,6 +93,7 @@ class CallConnected extends CallState {
   final DateTime connectedAt;
   final String otherUserName;
   final String otherUserRole;
+  final String? otherUserProfileImageUrl;
 
   const CallConnected({
     required this.callId,
@@ -98,6 +105,7 @@ class CallConnected extends CallState {
     required this.connectedAt,
     this.otherUserName = '',
     this.otherUserRole = 'user',
+    this.otherUserProfileImageUrl,
   });
 
   CallConnected copyWith({
@@ -116,6 +124,7 @@ class CallConnected extends CallState {
       connectedAt: connectedAt,
       otherUserName: otherUserName,
       otherUserRole: otherUserRole,
+      otherUserProfileImageUrl: otherUserProfileImageUrl,
     );
   }
 
@@ -130,6 +139,7 @@ class CallConnected extends CallState {
         connectedAt,
         otherUserName,
         otherUserRole,
+        otherUserProfileImageUrl,
       ];
 }
 

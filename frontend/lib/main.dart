@@ -92,12 +92,13 @@ void _setupNotificationHandling() {
       final callerRole = data['callerRole'] as String? ?? 'user';
       final callType = data['callType'] as String;
       
-      // Reconstruct agoraConfig
+      // Reconstruct agoraConfig including callType
       final agoraConfig = data['agoraConfig'] as Map<String, dynamic>? ?? {
         'appId': data['agoraAppId'] ?? '',
         'channel': data['agoraChannel'] ?? '',
         'token': data['agoraToken'] ?? '',
         'uid': int.tryParse(data['agoraUid']?.toString() ?? '0') ?? 0,
+        'callType': callType,
       };
 
       // Navigate to incoming call screen
@@ -441,6 +442,7 @@ final _router = GoRouter(
             callerId: extra['callerId'] as String,
             callerName: extra['callerName'] as String,
             callerRole: extra['callerRole'] as String? ?? 'user',
+            callerProfileImageUrl: extra['callerProfileImageUrl'] as String?,
             callType: extra['callType'] as String,
             agoraConfig: extra['agoraConfig'] as Map<String, dynamic>,
           ),
@@ -457,6 +459,7 @@ final _router = GoRouter(
             callId: extra['callId'] as String,
             receiverName: extra['receiverName'] as String,
             receiverRole: extra['receiverRole'] as String? ?? 'user',
+            receiverProfileImageUrl: extra['receiverProfileImageUrl'] as String?,
             callType: extra['callType'] as String,
           ),
         );
@@ -472,6 +475,7 @@ final _router = GoRouter(
             callId: extra['callId'] as String,
             otherUserName: extra['otherUserName'] as String? ?? '',
             otherUserRole: extra['otherUserRole'] as String? ?? 'user',
+            otherUserProfileImageUrl: extra['otherUserProfileImageUrl'] as String?,
           ),
         );
       },
@@ -486,6 +490,7 @@ final _router = GoRouter(
             callId: extra['callId'] as String,
             otherUserName: extra['otherUserName'] as String? ?? '',
             otherUserRole: extra['otherUserRole'] as String? ?? 'user',
+            otherUserProfileImageUrl: extra['otherUserProfileImageUrl'] as String?,
           ),
         );
       },

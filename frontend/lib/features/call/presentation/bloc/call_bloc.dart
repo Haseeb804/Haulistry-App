@@ -19,6 +19,7 @@ class CallBloc extends Bloc<CallEvent, CallState> {
   String? _currentCallId;
   String _otherUserName = '';
   String _otherUserRole = 'user';
+  String? _otherUserProfileImageUrl;
   int? _pendingRemoteUid; // Stores remote uid if they join before CallConnected
 
   CallBloc({
@@ -110,15 +111,20 @@ class CallBloc extends Bloc<CallEvent, CallState> {
         _currentCallId = call['id'];
         _otherUserName = event.receiverName;
         _otherUserRole = event.receiverRole;
+        _otherUserProfileImageUrl = event.receiverProfileImageUrl;
 
         emit(CallInitiated(
           callId: call['id'],
           receiverId: event.receiverId,
           receiverName: event.receiverName,
           receiverRole: event.receiverRole,
+          receiverProfileImageUrl: event.receiverProfileImageUrl,
           callType: event.callType,
           agoraConfig: agoraConfig,
         ));
+
+        // Initialize Agora engine with app ID
+        await _agoraService.initialize(agoraConfig['appId']);
 
         // Join Agora channel
         if (event.callType == 'voice') {
@@ -141,6 +147,7 @@ class CallBloc extends Bloc<CallEvent, CallState> {
           isCaller: true,
           otherUserName: _otherUserName,
           otherUserRole: _otherUserRole,
+          otherUserProfileImageUrl: _otherUserProfileImageUrl,
         ));
       } else {
         emit(CallError(message: response['message'] ?? 'Failed to initiate call'));
@@ -162,6 +169,12 @@ class CallBloc extends Bloc<CallEvent, CallState> {
         'callId': event.callId,
         'status': 'answered',
       });
+
+      // Initialize Agora engine with app ID
+      final appId = event.agoraConfig['appId'];
+      if (appId != null) {
+        await _agoraService.initialize(appId);
+      }
 
       // Join Agora channel
       final callType = event.agoraConfig['callType'] ?? 'voice';
@@ -185,6 +198,7 @@ class CallBloc extends Bloc<CallEvent, CallState> {
         isCaller: false,
         otherUserName: _otherUserName,
         otherUserRole: _otherUserRole,
+        otherUserProfileImageUrl: _otherUserProfileImageUrl,
       ));
     } catch (e) {
       emit(CallError(message: 'Failed to answer call: $e'));
@@ -334,6 +348,7 @@ class CallBloc extends Bloc<CallEvent, CallState> {
         connectedAt: _callStartTime!,
         otherUserName: connectingState.otherUserName,
         otherUserRole: connectingState.otherUserRole,
+        otherUserProfileImageUrl: connectingState.otherUserProfileImageUrl,
         remoteUid: _pendingRemoteUid,
       ));
       _pendingRemoteUid = null;
@@ -395,12 +410,14 @@ class CallBloc extends Bloc<CallEvent, CallState> {
     // Store other user info for state transitions
     _otherUserName = event.callerName;
     _otherUserRole = event.callerRole;
+    _otherUserProfileImageUrl = event.callerProfileImageUrl;
     
     emit(CallRinging(
       callId: event.callId,
       callerId: event.callerId,
       callerName: event.callerName,
       callerRole: event.callerRole,
+      callerProfileImageUrl: event.callerProfileImageUrl,
       callType: event.callType,
       agoraConfig: event.agoraConfig,
     ));

@@ -9,6 +9,7 @@ class OutgoingCallScreen extends StatefulWidget {
   final String callId;
   final String receiverName;
   final String receiverRole;
+  final String? receiverProfileImageUrl;
   final String callType;
 
   const OutgoingCallScreen({
@@ -16,6 +17,7 @@ class OutgoingCallScreen extends StatefulWidget {
     required this.callId,
     required this.receiverName,
     this.receiverRole = 'user',
+    this.receiverProfileImageUrl,
     required this.callType,
   });
 
@@ -53,6 +55,7 @@ class _OutgoingCallScreenState extends State<OutgoingCallScreen>
             'callId': widget.callId,
             'otherUserName': widget.receiverName,
             'otherUserRole': widget.receiverRole,
+            'otherUserProfileImageUrl': widget.receiverProfileImageUrl,
           });
         } else if (state is CallEnded) {
           context.pop();
@@ -103,16 +106,21 @@ class _OutgoingCallScreenState extends State<OutgoingCallScreen>
                         CircleAvatar(
                           radius: 60,
                           backgroundColor: Colors.white.withOpacity(0.3),
-                          child: Text(
-                            widget.receiverName.isNotEmpty
-                                ? widget.receiverName[0].toUpperCase()
-                                : '?',
-                            style: const TextStyle(
-                              fontSize: 48,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.white,
-                            ),
-                          ),
+                          backgroundImage: widget.receiverProfileImageUrl != null
+                              ? NetworkImage(widget.receiverProfileImageUrl!)
+                              : null,
+                          child: widget.receiverProfileImageUrl == null
+                              ? Text(
+                                  widget.receiverName.isNotEmpty
+                                      ? widget.receiverName[0].toUpperCase()
+                                      : '?',
+                                  style: const TextStyle(
+                                    fontSize: 48,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.white,
+                                  ),
+                                )
+                              : null,
                         ),
                       ],
                     ),

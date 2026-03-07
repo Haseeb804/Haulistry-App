@@ -144,6 +144,7 @@ class _ChatScreenState extends State<ChatScreen> {
             receiverId: widget.otherUserId,
             receiverName: widget.otherUserName,
             receiverRole: receiverRole,
+            receiverProfileImageUrl: widget.otherUserImage,
             bookingId: bookingId,
             callType: callType,
           ),
@@ -154,6 +155,7 @@ class _ChatScreenState extends State<ChatScreen> {
       'callId': 'pending', // Will be set by bloc
       'receiverName': widget.otherUserName,
       'receiverRole': receiverRole,
+      'receiverProfileImageUrl': widget.otherUserImage,
       'callType': callType,
     });
   }
