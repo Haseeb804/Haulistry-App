@@ -384,4 +384,34 @@ class AuthRepositoryImpl implements AuthRepository {
     }
     return 'Something went wrong. Please try again later';
   }
+
+  @override
+  Future<void> updateFcmToken(String fcmToken) async {
+    try {
+      final user = _firebaseAuth.currentUser;
+      if (user == null) {
+        throw Exception('User not authenticated');
+      }
+
+      final idToken = await user.getIdToken();
+      if (idToken == null) {
+        throw Exception('Failed to get auth token');
+      }
+
+      final response = await http.post(
+        Uri.parse('$_baseUrl/auth/fcm-token'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $idToken',
+        },
+        body: json.encode({'fcm_token': fcmToken}),
+      );
+
+      if (response.statusCode != 200) {
+        throw Exception('Failed to update FCM token');
+      }
+    } catch (e) {
+      // Silently fail - FCM token update is not critical
+    }
+  }
 }

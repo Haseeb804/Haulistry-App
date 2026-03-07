@@ -1,5 +1,6 @@
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../domain/repository/auth_repository.dart';
+import '../../../../core/services/notification_service.dart';
 import 'auth_event.dart';
 import 'auth_state.dart';
 
@@ -28,6 +29,8 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     try {
       final user = await _authRepository.getCurrentUser();
       if (user != null) {
+        // Update FCM token on app start if already authenticated
+        _updateFcmToken();
         emit(AuthAuthenticated(user: user));
       } else {
         emit(const AuthUnauthenticated());
@@ -47,6 +50,10 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
         event.email,
         event.password,
       );
+      
+      // Update FCM token after successful login
+      _updateFcmToken();
+      
       emit(AuthAuthenticated(user: user));
     } catch (e) {
       emit(AuthError(message: e.toString()));
@@ -65,9 +72,25 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
         name: event.name,
         phone: event.phone,
         role: event.role,        profileImage: event.profileImage,      );
+      
+      // Update FCM token after successful signup
+      _updateFcmToken();
+      
       emit(AuthAuthenticated(user: user));
     } catch (e) {
       emit(AuthError(message: e.toString()));
+    }
+  }
+
+  /// Update FCM token in backend (fire and forget)
+  void _updateFcmToken() async {
+    try {
+      final fcmToken = await NotificationService().getToken();
+      if (fcmToken != null) {
+        await _authRepository.updateFcmToken(fcmToken);
+      }
+    } catch (e) {
+      // Silently fail - FCM token update is not critical
     }
   }
 

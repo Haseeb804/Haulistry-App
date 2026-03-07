@@ -63,6 +63,9 @@ abstract class AuthRepository {
     String? vehicleImageBase64,
   });
   
+  /// Update FCM token for push notifications
+  Future<void> updateFcmToken(String fcmToken);
+  
   /// Stream of auth state changes
   Stream<User?> get authStateChanges;
 }
