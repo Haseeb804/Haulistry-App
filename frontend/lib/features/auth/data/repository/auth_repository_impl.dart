@@ -547,7 +547,7 @@ class AuthRepositoryImpl implements AuthRepository {
       case 'missing-client-identifier':
         return 'Missing app client identifier. Recheck Firebase configuration files.';
       case 'quota-exceeded':
-        return 'SMS quota exceeded. Please try again later.';
+        return 'OTP request limit exceeded. Please try again later.';
       case 'billing-not-enabled':
         return 'Phone authentication requires billing to be enabled for this Firebase project. Please enable billing in Google Cloud/Firebase and try again.';
       case 'internal-error':

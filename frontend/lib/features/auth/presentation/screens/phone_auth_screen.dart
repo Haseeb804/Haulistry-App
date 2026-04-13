@@ -179,7 +179,7 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
               _debugOtp = parsedDebugOtp;
             });
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('OTP sent successfully.')),
+              const SnackBar(content: Text('OTP generated successfully.')),
             );
             _startOtpTimer();
           } else if (state is AuthAuthenticated) {
@@ -236,7 +236,7 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
                         ),
                         const SizedBox(height: 8),
                         Text(
-                          'Check your SMS inbox and enter the 6-digit code to complete signup.',
+                          'Enter the 6-digit code below to complete signup (test OTP mode).',
                           style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                                 color: Colors.white.withValues(alpha: 0.9),
                               ),
@@ -314,7 +314,7 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
                                 const SizedBox(width: 8),
                                 Expanded(
                                   child: Text(
-                                    'Test OTP: $_debugOtp',
+                                    'Use this OTP: $_debugOtp',
                                     style: const TextStyle(
                                       color: AppTheme.warningColor,
                                       fontWeight: FontWeight.w700,
