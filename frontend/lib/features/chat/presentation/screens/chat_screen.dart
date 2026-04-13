@@ -241,7 +241,7 @@ class _ChatScreenState extends State<ChatScreen> {
             borderRadius: BorderRadius.circular(12),
           ),
           child: IconButton(
-            icon: const Icon(Icons.arrow_back_ios_new_rounded, color: AppTheme.textPrimary, size: 20),
+            icon: const Icon(Icons.chevron_left_rounded, color: AppTheme.textPrimary, size: 20),
             onPressed: () => Navigator.pop(context),
           ),
         ),

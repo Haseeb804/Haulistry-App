@@ -66,6 +66,23 @@ class _FareOffersScreenState extends State<FareOffersScreen> {
               extra: {
                 'providerId': state.acceptedOffer.providerId,
                 'providerName': state.acceptedOffer.providerName,
+                'pickupLocation': state.updatedBooking != null
+                    ? {
+                        'latitude': state.updatedBooking!.pickupLatitude,
+                        'longitude': state.updatedBooking!.pickupLongitude,
+                      }
+                    : null,
+                'dropoffLocation': state.updatedBooking != null
+                    ? {
+                        'latitude': state.updatedBooking!.dropLatitude,
+                        'longitude': state.updatedBooking!.dropLongitude,
+                      }
+                    : null,
+                'pickupAddress': state.updatedBooking?.pickupAddress,
+                'dropAddress': state.updatedBooking?.dropAddress,
+                'estimatedPrice': state.updatedBooking?.estimatedPrice ?? widget.estimatedPrice,
+                'serviceType': state.updatedBooking?.serviceType,
+                'bookingStatus': state.updatedBooking?.status,
               },
             );
           } else if (state is NegotiationCounterSent) {
@@ -120,7 +137,7 @@ class _FareOffersScreenState extends State<FareOffersScreen> {
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: IconButton(
-                    icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white),
+                    icon: const Icon(Icons.chevron_left_rounded, color: Colors.white),
                     onPressed: () => context.pop(),
                   ),
                 ),

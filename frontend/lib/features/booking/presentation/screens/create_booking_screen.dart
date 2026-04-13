@@ -636,7 +636,7 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
                     boxShadow: AppTheme.softShadow,
                   ),
                   child: IconButton(
-                    icon: const Icon(Icons.arrow_back),
+                    icon: const Icon(Icons.chevron_left_rounded),
                     onPressed: () => Navigator.pop(context),
                   ),
                 ),

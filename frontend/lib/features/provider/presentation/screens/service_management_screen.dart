@@ -151,7 +151,7 @@ class _ServiceManagementScreenState extends State<ServiceManagementScreen> {
                       color: Colors.white.withOpacity(0.2),
                       borderRadius: BorderRadius.circular(10),
                     ),
-                    child: const Icon(Icons.arrow_back_ios_new_rounded, 
+                    child: const Icon(Icons.chevron_left_rounded, 
                         color: Colors.white, size: 18),
                   ),
                   onPressed: () => Navigator.pop(context),

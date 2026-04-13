@@ -253,7 +253,7 @@ class _BookingConfirmationScreenState extends State<BookingConfirmationScreen> {
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: IconButton(
-                    icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white),
+                    icon: const Icon(Icons.chevron_left_rounded, color: Colors.white),
                     onPressed: () => context.pop(),
                   ),
                 ),
@@ -484,7 +484,7 @@ class _BookingConfirmationScreenState extends State<BookingConfirmationScreen> {
                         width: double.infinity,
                         child: OutlinedButton.icon(
                           onPressed: () => context.pop(),
-                          icon: const Icon(Icons.arrow_back_rounded),
+                          icon: const Icon(Icons.chevron_left_rounded),
                           label: const Text('Go Back'),
                           style: OutlinedButton.styleFrom(
                             foregroundColor: AppTheme.textSecondary,

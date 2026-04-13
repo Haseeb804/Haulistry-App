@@ -133,7 +133,7 @@ class _VehicleManagementScreenState extends State<VehicleManagementScreen> {
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: IconButton(
-                      icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white),
+                      icon: const Icon(Icons.chevron_left_rounded, color: Colors.white),
                       onPressed: () => context.pop(),
                     ),
                   ),

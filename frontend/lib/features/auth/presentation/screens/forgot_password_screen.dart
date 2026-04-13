@@ -193,7 +193,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
                               borderRadius: BorderRadius.circular(12),
                             ),
                             child: const Icon(
-                              Icons.arrow_back_ios_new_rounded,
+                              Icons.chevron_left_rounded,
                               color: AppTheme.primaryColor,
                               size: 20,
                             ),
@@ -349,7 +349,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
                                     const Icon(
-                                      Icons.arrow_back_rounded,
+                                      Icons.chevron_left_rounded,
                                       size: 18,
                                       color: AppTheme.primaryColor,
                                     ),

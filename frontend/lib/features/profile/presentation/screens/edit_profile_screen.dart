@@ -351,7 +351,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                       color: Colors.white.withOpacity(0.2),
                       borderRadius: BorderRadius.circular(12),
                     ),
-                    child: const Icon(Icons.arrow_back, color: Colors.white),
+                    child: const Icon(Icons.chevron_left_rounded, color: Colors.white),
                   ),
                   onPressed: () => context.pop(),
                 ),

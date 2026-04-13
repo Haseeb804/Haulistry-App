@@ -160,7 +160,7 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
               color: Colors.white.withValues(alpha: 0.2),
               borderRadius: BorderRadius.circular(10),
             ),
-            child: const Icon(Icons.arrow_back_ios_new_rounded, size: 18),
+            child: const Icon(Icons.chevron_left_rounded, size: 18),
           ),
           onPressed: () => context.go('/signup'),
         ),

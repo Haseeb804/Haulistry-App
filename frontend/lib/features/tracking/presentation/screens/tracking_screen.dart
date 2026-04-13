@@ -533,7 +533,7 @@ class _TrackingScreenState extends State<TrackingScreen> {
                 child: Row(
                   children: [
                     _circleGlassButton(
-                      icon: Icons.arrow_back_rounded,
+                      icon: Icons.chevron_left_rounded,
                       onTap: () => context.go('/seeker/home'),
                     ),
                     const SizedBox(width: 12),

@@ -55,6 +55,7 @@ class _ProviderTrackingScreenState extends State<ProviderTrackingScreen> {
   BookingEntity? _booking;
   bool _isNearDropLocation = false;
   bool _autoFollowSeeker = false;
+  bool _hasAutoCompletionTriggered = false;
   Timer? _seekerAnimationTimer;
   static const double _completionRadiusMeters = 100;
 
@@ -152,42 +153,33 @@ class _ProviderTrackingScreenState extends State<ProviderTrackingScreen> {
       final wasNear = _isNearDropLocation;
       _isNearDropLocation = distanceToDropM <= _completionRadiusMeters;
 
-      if (_isNearDropLocation && !wasNear && _booking?.status == 'in_progress') {
-        _showAutoCompleteDialog();
+      if (_isNearDropLocation &&
+          !wasNear &&
+          !_hasAutoCompletionTriggered &&
+          _booking?.status == 'in_progress') {
+        _hasAutoCompletionTriggered = true;
+        _completeBooking(autoTriggered: true);
       }
     }
 
     if (mounted) setState(() {});
   }
 
-  void _showAutoCompleteDialog() {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => AlertDialog(
-        title: const Text('You\'ve Arrived!'),
-        content: const Text(
-          'You have reached the drop-off location. Would you like to mark this booking as completed?',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Not Yet'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.pop(ctx);
-              _completeBooking();
-            },
-            style: ElevatedButton.styleFrom(backgroundColor: AppTheme.successColor),
-            child: const Text('Complete Booking'),
-          ),
-        ],
-      ),
+  void _startBooking() {
+    context.read<ProviderBloc>().add(
+      ProviderStartBookingRequested(bookingId: widget.bookingId),
     );
   }
 
-  void _completeBooking() {
+  void _completeBooking({bool autoTriggered = false}) {
+    if (autoTriggered) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Drop-off reached. Completing booking automatically...'),
+          backgroundColor: AppTheme.successColor,
+        ),
+      );
+    }
     context.read<ProviderBloc>().add(
       ProviderCompleteBookingRequested(bookingId: widget.bookingId),
     );
@@ -515,16 +507,15 @@ class _ProviderTrackingScreenState extends State<ProviderTrackingScreen> {
                   backgroundColor: AppTheme.successColor,
                 ),
               );
-              
-              // Navigate to feedback screen after completing booking
-              if (_booking != null) {
+
+              final didComplete = state.action == 'complete' ||
+                  (state.updatedBooking?.status.toLowerCase() == 'completed');
+              if (didComplete && _booking != null) {
                 context.go('/feedback/provider', extra: {
                   'bookingId': widget.bookingId,
                   'seekerId': _booking!.seekerId,
                   'seekerName': _booking!.seekerName ?? 'Customer',
                 });
-              } else {
-                context.go('/provider/home');
               }
             } else if (state is ProviderError) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -590,7 +581,7 @@ class _ProviderTrackingScreenState extends State<ProviderTrackingScreen> {
                           ],
                         ),
                         child: IconButton(
-                          icon: const Icon(Icons.arrow_back),
+                          icon: const Icon(Icons.chevron_left_rounded),
                           onPressed: () => context.pop(),
                         ),
                       ),
@@ -1008,7 +999,7 @@ class _ProviderTrackingScreenState extends State<ProviderTrackingScreen> {
                         const SizedBox(height: 16),
                       ],
 
-                      // Complete button - show for active bookings
+                      // Action button - start or complete based on current status
                       if (currentStatus == 'in_progress' ||
                           currentStatus == 'provider_arrived' ||
                           currentStatus == 'accepted' ||
@@ -1017,7 +1008,13 @@ class _ProviderTrackingScreenState extends State<ProviderTrackingScreen> {
                           width: double.infinity,
                           height: 56,
                           child: ElevatedButton.icon(
-                            onPressed: isLoading ? null : _completeBooking,
+                            onPressed: isLoading
+                                ? null
+                                : ((currentStatus == 'accepted' ||
+                                        currentStatus == 'provider_arriving' ||
+                                        currentStatus == 'provider_arrived')
+                                    ? _startBooking
+                                    : _completeBooking),
                             icon: isLoading
                                 ? const SizedBox(
                                     width: 20,
@@ -1029,7 +1026,13 @@ class _ProviderTrackingScreenState extends State<ProviderTrackingScreen> {
                                   )
                                 : const Icon(Icons.check_circle_rounded),
                             label: Text(
-                              isLoading ? 'Completing...' : 'Complete Booking',
+                              isLoading
+                                  ? (currentStatus == 'in_progress' ? 'Completing...' : 'Starting...')
+                                  : ((currentStatus == 'accepted' ||
+                                          currentStatus == 'provider_arriving' ||
+                                          currentStatus == 'provider_arrived')
+                                      ? 'Start Service'
+                                      : 'Complete Booking'),
                               style: const TextStyle(
                                 fontSize: 16,
                                 fontWeight: FontWeight.bold,
