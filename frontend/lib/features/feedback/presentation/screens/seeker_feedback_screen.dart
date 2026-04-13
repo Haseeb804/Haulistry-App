@@ -69,12 +69,15 @@ class _SeekerFeedbackScreenState extends State<SeekerFeedbackScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text('Rate ${widget.providerName}'),
-        centerTitle: true,
-      ),
-      body: BlocConsumer<FeedbackBloc, FeedbackState>(
+    return PopScope(
+      canPop: false,
+      child: Scaffold(
+        appBar: AppBar(
+          automaticallyImplyLeading: false,
+          title: Text('Rate ${widget.providerName}'),
+          centerTitle: true,
+        ),
+        body: BlocConsumer<FeedbackBloc, FeedbackState>(
         listener: (context, state) {
           if (state is FeedbackSubmitSuccess) {
             ScaffoldMessenger.of(context).showSnackBar(
@@ -88,14 +91,29 @@ class _SeekerFeedbackScreenState extends State<SeekerFeedbackScreen> {
             );
           }
         },
-        builder: (context, state) {
-          final isLoading = state is FeedbackLoading;
+          builder: (context, state) {
+            final isLoading = state is FeedbackLoading;
 
-          return SingleChildScrollView(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
+            return SingleChildScrollView(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.amber.shade50,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: Colors.amber.shade300),
+                    ),
+                    child: const Text(
+                      'Feedback is required to continue.',
+                      style: TextStyle(fontWeight: FontWeight.w600),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
                 // Provider info
                 Container(
                   padding: const EdgeInsets.all(16),
@@ -252,10 +270,11 @@ class _SeekerFeedbackScreenState extends State<SeekerFeedbackScreen> {
                           ),
                   ),
                 ),
-              ],
-            ),
-          );
-        },
+                ],
+              ),
+            );
+          },
+        ),
       ),
     );
   }

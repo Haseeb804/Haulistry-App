@@ -3,13 +3,14 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
-import 'package:latlong2/latlong.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/widgets/modern_widgets.dart';
 import '../../../../core/domain/entities/booking_entity.dart';
 import '../../../../core/constants/app_constants.dart';
 import '../../../auth/presentation/bloc/auth_bloc.dart';
 import '../../../auth/presentation/bloc/auth_state.dart';
+import '../../../feedback/data/datasources/feedback_remote_datasource.dart';
+import '../../../feedback/data/repositories/feedback_repository_impl.dart';
 import '../../data/datasources/booking_remote_datasource.dart';
 import '../../data/repositories/booking_repository_impl.dart';
 import '../../../../core/data/graphql_client.dart';
@@ -23,11 +24,13 @@ class BookingHistoryScreen extends StatefulWidget {
 
 class _BookingHistoryScreenState extends State<BookingHistoryScreen> {
   late BookingRepositoryImpl _repository;
+  late FeedbackRepositoryImpl _feedbackRepository;
   List<BookingEntity> _bookings = [];
   bool _isLoading = true;
   String? _error;
   String _selectedFilter = 'all';
   String? _userRole;
+  bool _feedbackGateChecked = false;
 
   final List<Map<String, dynamic>> _filters = [
     {'label': 'All', 'value': 'all', 'icon': Icons.all_inclusive_rounded},
@@ -45,6 +48,9 @@ class _BookingHistoryScreenState extends State<BookingHistoryScreen> {
       remoteDataSource: BookingRemoteDataSource(
         graphQLClient: GraphQLClientService.instance,
       ),
+    );
+    _feedbackRepository = FeedbackRepositoryImpl(
+      remoteDataSource: FeedbackRemoteDataSource(baseUrl: AppConstants.apiUrl),
     );
     _getUserRole();
     _loadBookings();
@@ -78,6 +84,8 @@ class _BookingHistoryScreenState extends State<BookingHistoryScreen> {
         _bookings = bookings;
         _isLoading = false;
       });
+
+      await _enforceMandatoryFeedback(bookings);
     } catch (e) {
       setState(() {
         _error = e.toString();
@@ -88,68 +96,54 @@ class _BookingHistoryScreenState extends State<BookingHistoryScreen> {
 
   bool get _isProvider => _userRole == AppConstants.roleProvider;
 
-  void _navigateToTracking(BookingEntity booking) {
-    LatLng? pickupLocation;
-    LatLng? dropoffLocation;
-    
-    pickupLocation = LatLng(booking.pickupLatitude, booking.pickupLongitude);
-      dropoffLocation = LatLng(booking.dropLatitude, booking.dropLongitude);
-      
-    // Check user role to determine which tracking screen to use
-    final authState = context.read<AuthBloc>().state;
-    final isProvider = authState is AuthAuthenticated && 
-        authState.user.role == AppConstants.roleProvider;
-    
-    if (isProvider) {
-      // Navigate to provider tracking screen
-      context.push(
-        '/provider/tracking/${booking.id}',
-        extra: {
-          'pickupLocation': pickupLocation,
-          'dropoffLocation': dropoffLocation,
-          'pickupAddress': booking.pickupAddress,
-          'dropAddress': booking.dropAddress,
-          'estimatedPrice': booking.estimatedPrice,
-          'serviceType': booking.serviceType,
-          'bookingStatus': booking.status,
-          'seekerName': booking.seekerName,
-        },
-      );
-    } else {
-      // Navigate to seeker tracking screen
-      context.push(
-        '/booking/${booking.id}/tracking',
-        extra: {
-          'providerId': booking.providerId ?? '',
-          'pickupLocation': pickupLocation,
-          'dropoffLocation': dropoffLocation,
-          'pickupAddress': booking.pickupAddress,
-          'dropAddress': booking.dropAddress,
-          'estimatedPrice': booking.estimatedPrice,
-          'serviceType': booking.serviceType,
-          'bookingStatus': booking.status,
-          'providerName': booking.providerName ?? 'Provider',
-        },
-      );
-    }
-  }
+  Future<void> _enforceMandatoryFeedback(List<BookingEntity> bookings) async {
+    if (_feedbackGateChecked || !mounted) return;
 
-  void _navigateToFeedback(BookingEntity booking) {
-    if (_isProvider) {
-      // Provider rating seeker
-      context.push('/feedback/provider', extra: {
-        'bookingId': booking.id,
-        'seekerId': booking.seekerId,
-        'seekerName': booking.seekerName ?? 'Customer',
-      });
-    } else {
-      // Seeker rating provider
-      context.push('/feedback/seeker', extra: {
-        'bookingId': booking.id,
-        'providerId': booking.providerId ?? '',
-        'providerName': booking.providerName ?? 'Provider',
-      });
+    final completedBookings = bookings
+        .where((b) => b.status.toLowerCase() == 'completed')
+        .toList()
+      ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+
+    if (completedBookings.isEmpty) {
+      _feedbackGateChecked = true;
+      return;
     }
+
+    for (final booking in completedBookings) {
+      final providerId = booking.providerId;
+      final seekerId = booking.seekerId;
+      final reviewerType = _isProvider ? 'provider' : 'seeker';
+
+      if (!_isProvider && (providerId == null || providerId.isEmpty)) continue;
+      if (_isProvider && seekerId.isEmpty) continue;
+
+      try {
+        final exists = await _feedbackRepository.checkFeedbackExists(booking.id, reviewerType);
+        if (!mounted) return;
+
+        if (!exists) {
+          _feedbackGateChecked = true;
+          if (_isProvider) {
+            context.go('/feedback/provider', extra: {
+              'bookingId': booking.id,
+              'seekerId': seekerId,
+              'seekerName': booking.seekerName ?? 'Customer',
+            });
+          } else {
+            context.go('/feedback/seeker', extra: {
+              'bookingId': booking.id,
+              'providerId': providerId,
+              'providerName': booking.providerName ?? 'Provider',
+            });
+          }
+          return;
+        }
+      } catch (_) {
+        // Keep history usable on check failure.
+      }
+    }
+
+    _feedbackGateChecked = true;
   }
 
   Color _getStatusColor(String status) {
@@ -240,7 +234,7 @@ class _BookingHistoryScreenState extends State<BookingHistoryScreen> {
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          onTap: () => _navigateToTracking(booking),
+          onTap: null,
           mouseCursor: SystemMouseCursors.click,
           borderRadius: BorderRadius.circular(20),
           child: Column(
@@ -442,77 +436,6 @@ class _BookingHistoryScreenState extends State<BookingHistoryScreen> {
                             ),
                           ),
                         ),
-                      ],
-                    ),
-                    
-                    const SizedBox(height: 12),
-                    
-                    // Action Buttons
-                    Row(
-                      children: [
-                        const Spacer(),
-                        if (booking.status == 'completed')
-                          Container(
-                            decoration: BoxDecoration(
-                              gradient: AppTheme.primaryGradient,
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            child: Material(
-                              color: Colors.transparent,
-                              child: InkWell(
-                                onTap: () => _navigateToFeedback(booking),
-                                borderRadius: BorderRadius.circular(10),
-                                child: Padding(
-                                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                                  child: Row(
-                                    children: [
-                                      const Icon(Icons.star_rounded, size: 16, color: Colors.white),
-                                      const SizedBox(width: 6),
-                                      Text(
-                                        _userRole == 'seeker' ? 'Rate Provider' : 'Rate Customer',
-                                        style: const TextStyle(
-                                          color: Colors.white,
-                                          fontWeight: FontWeight.w600,
-                                          fontSize: 12,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            ),
-                          )
-                        else
-                          Container(
-                            decoration: BoxDecoration(
-                              gradient: statusGradient,
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            child: Material(
-                              color: Colors.transparent,
-                              child: InkWell(
-                                onTap: () => _navigateToTracking(booking),
-                                borderRadius: BorderRadius.circular(10),
-                                child: const Padding(
-                                  padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                                  child: Row(
-                                    children: [
-                                      Icon(Icons.map_rounded, size: 16, color: Colors.white),
-                                      SizedBox(width: 6),
-                                      Text(
-                                        'View Route',
-                                        style: TextStyle(
-                                          color: Colors.white,
-                                          fontWeight: FontWeight.w600,
-                                          fontSize: 12,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
                       ],
                     ),
                   ],

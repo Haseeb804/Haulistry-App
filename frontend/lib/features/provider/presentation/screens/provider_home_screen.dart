@@ -1,9 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
+import '../../../../core/constants/app_constants.dart';
+import '../../../../core/data/graphql_client.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/widgets/modern_widgets.dart';
+import '../../../booking/data/datasources/booking_remote_datasource.dart';
+import '../../../booking/data/repositories/booking_repository_impl.dart';
+import '../../../feedback/data/datasources/feedback_remote_datasource.dart';
+import '../../../feedback/data/repositories/feedback_repository_impl.dart';
 import '../../../auth/presentation/bloc/auth_bloc.dart';
 import '../../../auth/presentation/bloc/auth_state.dart';
 import '../bloc/provider_bloc.dart';
@@ -18,10 +25,61 @@ class ProviderHomeScreen extends StatefulWidget {
 }
 
 class _ProviderHomeScreenState extends State<ProviderHomeScreen> {
+  late BookingRepositoryImpl _bookingRepository;
+  late FeedbackRepositoryImpl _feedbackRepository;
+  bool _feedbackGateChecked = false;
+
   @override
   void initState() {
     super.initState();
+    _bookingRepository = BookingRepositoryImpl(
+      remoteDataSource: BookingRemoteDataSource(
+        graphQLClient: GraphQLClientService.instance,
+      ),
+    );
+    _feedbackRepository = FeedbackRepositoryImpl(
+      remoteDataSource: FeedbackRemoteDataSource(baseUrl: AppConstants.apiUrl),
+    );
+
     context.read<ProviderBloc>().add(const ProviderLoadBookingsRequested());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _enforceMandatoryProviderFeedback();
+    });
+  }
+
+  Future<void> _enforceMandatoryProviderFeedback() async {
+    if (_feedbackGateChecked || !mounted) return;
+    _feedbackGateChecked = true;
+
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) return;
+
+      final bookings = await _bookingRepository.getBookingHistory(
+        user.uid,
+        status: 'completed',
+      );
+
+      bookings.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+
+      for (final booking in bookings) {
+        if (booking.seekerId.isEmpty) continue;
+
+        final exists = await _feedbackRepository.checkFeedbackExists(booking.id, 'provider');
+        if (!mounted) return;
+
+        if (!exists) {
+          context.go('/feedback/provider', extra: {
+            'bookingId': booking.id,
+            'seekerId': booking.seekerId,
+            'seekerName': booking.seekerName ?? 'Customer',
+          });
+          return;
+        }
+      }
+    } catch (_) {
+      // Non-blocking fallback: keep provider home usable if checks fail.
+    }
   }
 
   @override

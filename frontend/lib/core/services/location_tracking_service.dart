@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:firebase_database/firebase_database.dart';
 import 'api_service.dart';
 
 /// Real-time Location Tracking Service
@@ -9,19 +10,23 @@ class LocationTrackingService {
   static LocationTrackingService? _instance;
   
   StreamSubscription<Position>? _positionSubscription;
+  StreamSubscription<DatabaseEvent>? _firebaseLocationSubscription;
   Timer? _updateTimer;
+  DatabaseReference? _bookingLocationRef;
   
   String? _currentBookingId;
   String? _userId;
   Position? _lastPosition;
+  Position? _lastSentPosition;
   bool _isTracking = false;
   
   // Location update settings
-  static const int updateIntervalSeconds = 5; // Send update every 5 seconds
+  static const int updateIntervalSeconds = 3; // Send update every 3 seconds
   static const double minDistanceMeters = 10; // Only update if moved 10+ meters
   
   // Stream controllers
   final _positionController = StreamController<Position>.broadcast();
+  final _otherUserLocationController = StreamController<Map<String, dynamic>>.broadcast();
   final _errorController = StreamController<String>.broadcast();
   
   LocationTrackingService._();
@@ -36,6 +41,10 @@ class LocationTrackingService {
   
   /// Stream of errors
   Stream<String> get errorStream => _errorController.stream;
+
+  /// Stream of other user's location updates from Firebase Realtime DB
+  Stream<Map<String, dynamic>> get otherUserLocationStream =>
+      _otherUserLocationController.stream;
   
   /// Check if currently tracking
   bool get isTracking => _isTracking;
@@ -54,6 +63,9 @@ class LocationTrackingService {
     
     _userId = userId;
     _currentBookingId = bookingId;
+    _bookingLocationRef = FirebaseDatabase.instance
+      .ref('booking_locations')
+      .child(bookingId);
     
     // Check and request location permissions
     final hasPermission = await _checkLocationPermission();
@@ -65,17 +77,20 @@ class LocationTrackingService {
     try {
       // Get initial position
       _lastPosition = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.high,
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+        ),
       );
       
       // Send initial location
       await _sendLocationUpdate(_lastPosition!);
+      _lastSentPosition = _lastPosition;
       
       // Start listening to location stream
       _positionSubscription = Geolocator.getPositionStream(
         locationSettings: const LocationSettings(
           accuracy: LocationAccuracy.high,
-          distanceFilter: 10,
+          distanceFilter: 5,
         ),
       ).listen(
         _onLocationUpdate,
@@ -90,9 +105,37 @@ class LocationTrackingService {
         (_) async {
           if (_lastPosition != null) {
             await _sendLocationUpdate(_lastPosition!);
+            _lastSentPosition = _lastPosition;
           }
         },
       );
+
+      // Listen for other user's live updates
+      _firebaseLocationSubscription = _bookingLocationRef!.onValue.listen((event) {
+        final data = event.snapshot.value;
+        if (data is! Map) return;
+
+        data.forEach((key, value) {
+          final userKey = key.toString();
+          if (userKey == _userId || value is! Map) return;
+
+          final lat = double.tryParse(value['latitude']?.toString() ?? '');
+          final lng = double.tryParse(value['longitude']?.toString() ?? '');
+          if (lat == null || lng == null) return;
+
+          _otherUserLocationController.add({
+            'userId': userKey,
+            'latitude': lat,
+            'longitude': lng,
+            'heading': double.tryParse(value['heading']?.toString() ?? ''),
+            'speed': double.tryParse(value['speed']?.toString() ?? ''),
+            'accuracy': double.tryParse(value['accuracy']?.toString() ?? ''),
+            'timestamp': value['timestamp']?.toString(),
+          });
+        });
+      }, onError: (error) {
+        _errorController.add('Failed to listen live locations: $error');
+      });
       
       _isTracking = true;
       return true;
@@ -109,13 +152,24 @@ class LocationTrackingService {
     
     await _positionSubscription?.cancel();
     _positionSubscription = null;
+
+    await _firebaseLocationSubscription?.cancel();
+    _firebaseLocationSubscription = null;
     
     _updateTimer?.cancel();
     _updateTimer = null;
     
     _isTracking = false;
+
+    // Remove own ephemeral live node
+    if (_bookingLocationRef != null && _userId != null) {
+      await _bookingLocationRef!.child(_userId!).remove();
+    }
+
     _currentBookingId = null;
     _userId = null;
+    _lastSentPosition = null;
+    _bookingLocationRef = null;
     
   }
   
@@ -132,11 +186,11 @@ class LocationTrackingService {
   
   /// Check if we should send an update based on distance moved
   bool _shouldSendUpdate(Position position) {
-    if (_lastPosition == null) return true;
+    if (_lastSentPosition == null) return true;
     
     final distance = Geolocator.distanceBetween(
-      _lastPosition!.latitude,
-      _lastPosition!.longitude,
+      _lastSentPosition!.latitude,
+      _lastSentPosition!.longitude,
       position.latitude,
       position.longitude,
     );
@@ -149,6 +203,19 @@ class LocationTrackingService {
     if (_userId == null || _currentBookingId == null) return;
     
     try {
+      // Publish live location to Firebase Realtime Database
+      if (_bookingLocationRef != null) {
+        await _bookingLocationRef!.child(_userId!).set({
+          'latitude': position.latitude,
+          'longitude': position.longitude,
+          'heading': position.heading,
+          'speed': position.speed * 3.6,
+          'accuracy': position.accuracy,
+          'timestamp': DateTime.now().toIso8601String(),
+        });
+      }
+
+      // Keep backend tracking endpoint in sync for existing features
       await ApiService.updateBookingLocation(
         bookingId: _currentBookingId!,
         userId: _userId!,
@@ -198,6 +265,7 @@ class LocationTrackingService {
   void dispose() {
     stopTracking();
     _positionController.close();
+    _otherUserLocationController.close();
     _errorController.close();
   }
 }

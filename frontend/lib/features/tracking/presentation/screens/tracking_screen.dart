@@ -1,13 +1,17 @@
+import 'dart:async';
 import 'dart:convert';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_map/flutter_map.dart';
-import 'package:latlong2/latlong.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:go_router/go_router.dart';
 import 'package:http/http.dart' as http;
-import 'package:firebase_auth/firebase_auth.dart';
+import 'package:latlong2/latlong.dart';
+import '../../../../core/constants/app_constants.dart';
 import '../../../../core/theme/app_theme.dart';
+import '../../../feedback/data/datasources/feedback_remote_datasource.dart';
+import '../../../feedback/data/repositories/feedback_repository_impl.dart';
 import '../../../call/presentation/bloc/call_bloc.dart';
 import '../../../call/presentation/bloc/call_event.dart';
 import '../bloc/location_tracking_bloc.dart';
@@ -47,26 +51,73 @@ class TrackingScreen extends StatefulWidget {
 }
 
 class _TrackingScreenState extends State<TrackingScreen> {
-  MapController? _mapController;
+  final MapController _mapController = MapController();
+  final FeedbackRepositoryImpl _feedbackRepository = FeedbackRepositoryImpl(
+    remoteDataSource: FeedbackRemoteDataSource(baseUrl: AppConstants.apiUrl),
+  );
+
   List<Marker> _markers = [];
   List<Polyline> _polylines = [];
   List<LatLng> _routePoints = [];
-  LatLng? _providerLocation; // Real-time provider location
+
+  LatLng? _providerDisplayLocation;
+  double _providerSpeedKmh = 0;
+  bool _autoFollowProvider = true;
   bool _isTrackingActive = false;
+  bool _feedbackRedirectChecked = false;
+
+  Timer? _markerAnimationTimer;
+
+  bool get _isActiveServiceStatus {
+    final status = (widget.bookingStatus ?? '').toLowerCase();
+    if (status == 'confirmed') return true;
+    return status == 'accepted' ||
+        status == 'provider_arriving' ||
+        status == 'provider_arrived' ||
+        status == 'in_progress';
+  }
+
+  bool get _isCompletedServiceStatus {
+    final status = (widget.bookingStatus ?? '').toLowerCase();
+    return status == 'completed';
+  }
 
   @override
   void initState() {
     super.initState();
-    _mapController = MapController();
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!_isActiveServiceStatus) {
+        _checkMandatorySeekerFeedback();
+        return;
+      }
       _setupMap();
       _startLocationTracking();
     });
   }
 
+  Future<void> _checkMandatorySeekerFeedback() async {
+    if (_feedbackRedirectChecked || !_isCompletedServiceStatus) return;
+    _feedbackRedirectChecked = true;
+
+    if (widget.providerId.isEmpty) return;
+
+    try {
+      final exists = await _feedbackRepository.checkFeedbackExists(widget.bookingId, 'seeker');
+      if (!mounted || exists) return;
+
+      context.go('/feedback/seeker', extra: {
+        'bookingId': widget.bookingId,
+        'providerId': widget.providerId,
+        'providerName': widget.providerName ?? 'Provider',
+      });
+    } catch (_) {
+      // If check fails, keep fallback unavailable UI and avoid breaking flow.
+    }
+  }
+
   @override
   void dispose() {
-    // Stop tracking when leaving screen
+    _markerAnimationTimer?.cancel();
     context.read<LocationTrackingBloc>().add(const StopLocationTracking());
     super.dispose();
   }
@@ -75,12 +126,13 @@ class _TrackingScreenState extends State<TrackingScreen> {
     final user = FirebaseAuth.instance.currentUser;
     if (user != null && widget.bookingId.isNotEmpty) {
       context.read<LocationTrackingBloc>().add(
-        StartLocationTracking(
-          userId: user.uid,
-          bookingId: widget.bookingId,
-        ),
-      );
+            StartLocationTracking(
+              userId: user.uid,
+              bookingId: widget.bookingId,
+            ),
+          );
       _isTrackingActive = true;
+      setState(() {});
     }
   }
 
@@ -89,95 +141,106 @@ class _TrackingScreenState extends State<TrackingScreen> {
     _fetchRoute();
   }
 
+  void _animateProviderMarkerTo(LatLng target) {
+    _markerAnimationTimer?.cancel();
+
+    final start = _providerDisplayLocation;
+    if (start == null) {
+      _providerDisplayLocation = target;
+      _updateMarkers();
+      return;
+    }
+
+    const steps = 14;
+    var step = 0;
+
+    _markerAnimationTimer = Timer.periodic(const Duration(milliseconds: 40), (timer) {
+      step++;
+      final t = Curves.easeOutCubic.transform(step / steps);
+      final lat = start.latitude + (target.latitude - start.latitude) * t;
+      final lng = start.longitude + (target.longitude - start.longitude) * t;
+
+      setState(() {
+        _providerDisplayLocation = LatLng(lat, lng);
+      });
+      _updateMarkers();
+
+      if (step >= steps) {
+        timer.cancel();
+      }
+    });
+  }
+
+  void _onProviderLocationUpdate(LocationData providerLoc) {
+    final target = LatLng(providerLoc.latitude, providerLoc.longitude);
+    _providerSpeedKmh = providerLoc.speed ?? _providerSpeedKmh;
+
+    _animateProviderMarkerTo(target);
+
+    if (_autoFollowProvider && _providerDisplayLocation != null) {
+      final currentZoom = _mapController.camera.zoom;
+      _mapController.move(_providerDisplayLocation!, currentZoom < 14 ? 14 : currentZoom);
+    }
+  }
+
   void _updateMarkers() {
-    List<Marker> markers = [];
-    
-    // Pickup location marker (static)
+    final markers = <Marker>[];
+
     if (widget.pickupLocation != null) {
       markers.add(
         Marker(
           point: widget.pickupLocation!,
-          width: 50,
-          height: 50,
-          child: Container(
-            decoration: BoxDecoration(
-              gradient: AppTheme.secondaryGradient,
-              shape: BoxShape.circle,
-              border: Border.all(color: Colors.white, width: 3),
-              boxShadow: [
-                BoxShadow(
-                  color: AppTheme.secondaryColor.withOpacity(0.4),
-                  blurRadius: 10,
-                  offset: const Offset(0, 4),
-                ),
-              ],
-            ),
-            child: const Icon(Icons.trip_origin, color: Colors.white, size: 24),
-          ),
+          width: 52,
+          height: 52,
+          child: _buildPin(Icons.trip_origin, AppTheme.secondaryGradient),
         ),
       );
     }
-    
-    // Dropoff location marker (static)
+
     if (widget.dropoffLocation != null) {
       markers.add(
         Marker(
           point: widget.dropoffLocation!,
-          width: 50,
-          height: 50,
-          child: Container(
-            decoration: BoxDecoration(
-              gradient: AppTheme.primaryGradient,
-              shape: BoxShape.circle,
-              border: Border.all(color: Colors.white, width: 3),
-              boxShadow: [
-                BoxShadow(
-                  color: AppTheme.primaryColor.withOpacity(0.4),
-                  blurRadius: 10,
-                  offset: const Offset(0, 4),
-                ),
-              ],
-            ),
-            child: const Icon(Icons.location_on, color: Colors.white, size: 24),
-          ),
+          width: 52,
+          height: 52,
+          child: _buildPin(Icons.location_on_rounded, AppTheme.primaryGradient),
         ),
       );
     }
-    
-    // Provider real-time location marker (dynamic)
-    if (_providerLocation != null) {
+
+    if (_providerDisplayLocation != null) {
       markers.add(
         Marker(
-          point: _providerLocation!,
-          width: 60,
-          height: 60,
+          point: _providerDisplayLocation!,
+          width: 68,
+          height: 68,
           child: Stack(
             alignment: Alignment.center,
             children: [
-              // Pulsing animation circle
               Container(
+                width: 60,
+                height: 60,
                 decoration: BoxDecoration(
-                  color: AppTheme.accentColor.withOpacity(0.3),
+                  color: AppTheme.accentColor.withValues(alpha: 0.18),
                   shape: BoxShape.circle,
                 ),
               ),
-              // Inner truck icon
               Container(
-                width: 40,
-                height: 40,
+                width: 44,
+                height: 44,
                 decoration: BoxDecoration(
-                  color: AppTheme.accentColor,
+                  gradient: AppTheme.accentGradient,
                   shape: BoxShape.circle,
-                  border: Border.all(color: Colors.white, width: 2),
+                  border: Border.all(color: Colors.white, width: 2.5),
                   boxShadow: [
                     BoxShadow(
-                      color: AppTheme.accentColor.withOpacity(0.5),
-                      blurRadius: 8,
-                      offset: const Offset(0, 2),
+                      color: AppTheme.accentColor.withValues(alpha: 0.35),
+                      blurRadius: 10,
+                      offset: const Offset(0, 4),
                     ),
                   ],
                 ),
-                child: const Icon(Icons.local_shipping, color: Colors.white, size: 20),
+                child: const Icon(Icons.local_shipping_rounded, color: Colors.white, size: 22),
               ),
             ],
           ),
@@ -190,133 +253,264 @@ class _TrackingScreenState extends State<TrackingScreen> {
     });
   }
 
+  Widget _buildPin(IconData icon, LinearGradient gradient) {
+    return Container(
+      decoration: BoxDecoration(
+        gradient: gradient,
+        shape: BoxShape.circle,
+        border: Border.all(color: Colors.white, width: 2.5),
+        boxShadow: [
+          BoxShadow(
+            color: gradient.colors.first.withValues(alpha: 0.3),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Icon(icon, color: Colors.white, size: 24),
+    );
+  }
+
   Future<void> _fetchRoute() async {
     if (widget.pickupLocation == null || widget.dropoffLocation == null) return;
 
     try {
-      // Use OSRM free routing API to get actual road route
       final url = 'https://router.project-osrm.org/route/v1/driving/'
           '${widget.pickupLocation!.longitude},${widget.pickupLocation!.latitude};'
           '${widget.dropoffLocation!.longitude},${widget.dropoffLocation!.latitude}'
           '?overview=full&geometries=geojson';
 
       final response = await http.get(Uri.parse(url));
-      
+
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
         if (data['routes'] != null && data['routes'].isNotEmpty) {
           final coordinates = data['routes'][0]['geometry']['coordinates'] as List;
-          
-          setState(() {
-            _routePoints = coordinates.map((coord) {
-              return LatLng(coord[1].toDouble(), coord[0].toDouble());
-            }).toList();
-            
-            _polylines = [
-              Polyline(
-                points: _routePoints,
-                color: AppTheme.accentColor,
-                strokeWidth: 5.0,
-              ),
-            ];
-          });
 
-          // Fit map to show entire route
+          _routePoints = coordinates
+              .map((coord) => LatLng((coord[1] as num).toDouble(), (coord[0] as num).toDouble()))
+              .toList();
+
+          _polylines = [
+            Polyline(
+              points: _routePoints,
+              color: AppTheme.accentColor,
+              strokeWidth: 5,
+            ),
+          ];
+
+          setState(() {});
           _fitMapToRoute();
           return;
         }
       }
-    } catch (e) {
-      debugPrint('Route fetch failed: $e');
-    }
+    } catch (_) {}
 
-    // Fallback to straight line if OSRM fails
-    setState(() {
-      _routePoints = [widget.pickupLocation!, widget.dropoffLocation!];
-      _polylines = [
-        Polyline(
-          points: _routePoints,
-          color: AppTheme.accentColor,
-          strokeWidth: 5.0,
-        ),
-      ];
-    });
+    _routePoints = [widget.pickupLocation!, widget.dropoffLocation!];
+    _polylines = [
+      Polyline(
+        points: _routePoints,
+        color: AppTheme.accentColor,
+        strokeWidth: 5,
+      ),
+    ];
+    setState(() {});
     _fitMapToRoute();
   }
 
   void _fitMapToRoute() {
-    if (widget.pickupLocation == null || widget.dropoffLocation == null) return;
-    
-    // Calculate bounds
-    final minLat = widget.pickupLocation!.latitude < widget.dropoffLocation!.latitude 
-        ? widget.pickupLocation!.latitude : widget.dropoffLocation!.latitude;
-    final maxLat = widget.pickupLocation!.latitude > widget.dropoffLocation!.latitude 
-        ? widget.pickupLocation!.latitude : widget.dropoffLocation!.latitude;
-    final minLng = widget.pickupLocation!.longitude < widget.dropoffLocation!.longitude 
-        ? widget.pickupLocation!.longitude : widget.dropoffLocation!.longitude;
-    final maxLng = widget.pickupLocation!.longitude > widget.dropoffLocation!.longitude 
-        ? widget.pickupLocation!.longitude : widget.dropoffLocation!.longitude;
-    
-    // Add padding
-    final latPadding = (maxLat - minLat) * 0.2;
-    final lngPadding = (maxLng - minLng) * 0.2;
-    
+    final points = <LatLng>[];
+    if (widget.pickupLocation != null) points.add(widget.pickupLocation!);
+    if (widget.dropoffLocation != null) points.add(widget.dropoffLocation!);
+    if (_providerDisplayLocation != null) points.add(_providerDisplayLocation!);
+    if (points.isEmpty) return;
+
+    final minLat = points.map((p) => p.latitude).reduce((a, b) => a < b ? a : b);
+    final maxLat = points.map((p) => p.latitude).reduce((a, b) => a > b ? a : b);
+    final minLng = points.map((p) => p.longitude).reduce((a, b) => a < b ? a : b);
+    final maxLng = points.map((p) => p.longitude).reduce((a, b) => a > b ? a : b);
+
     final bounds = LatLngBounds(
-      LatLng(minLat - latPadding, minLng - lngPadding),
-      LatLng(maxLat + latPadding, maxLng + lngPadding),
+      LatLng(minLat - 0.008, minLng - 0.008),
+      LatLng(maxLat + 0.008, maxLng + 0.008),
     );
-    
-    _mapController?.fitCamera(CameraFit.bounds(bounds: bounds, padding: const EdgeInsets.all(50)));
+
+    _mapController.fitCamera(
+      CameraFit.bounds(bounds: bounds, padding: const EdgeInsets.fromLTRB(40, 120, 40, 250)),
+    );
+  }
+
+  double _distanceKmToDrop() {
+    if (_providerDisplayLocation != null && widget.dropoffLocation != null) {
+      final m = Geolocator.distanceBetween(
+        _providerDisplayLocation!.latitude,
+        _providerDisplayLocation!.longitude,
+        widget.dropoffLocation!.latitude,
+        widget.dropoffLocation!.longitude,
+      );
+      return m / 1000;
+    }
+
+    if (widget.pickupLocation != null && widget.dropoffLocation != null) {
+      final m = Geolocator.distanceBetween(
+        widget.pickupLocation!.latitude,
+        widget.pickupLocation!.longitude,
+        widget.dropoffLocation!.latitude,
+        widget.dropoffLocation!.longitude,
+      );
+      return m / 1000;
+    }
+
+    return 0;
+  }
+
+  int _etaMinutes(double distanceKm) {
+    final speed = _providerSpeedKmh > 5 ? _providerSpeedKmh : 30;
+    final eta = ((distanceKm / speed) * 60).ceil();
+    return eta < 1 ? 1 : eta;
+  }
+
+  String _statusText(double distanceKm) {
+    final status = (widget.bookingStatus ?? '').toLowerCase();
+    if (status == 'completed') return 'Completed';
+    if (status == 'cancelled') return 'Cancelled';
+    if (status == 'provider_arrived' || distanceKm < 0.10) return 'Arrived';
+    return 'On the way';
+  }
+
+  Color _statusColor(String status) {
+    final normalized = status.toLowerCase();
+    if (normalized == 'arrived') return AppTheme.successColor;
+    if (normalized == 'completed') return AppTheme.successColor;
+    if (normalized == 'cancelled') return AppTheme.errorColor;
+    return AppTheme.warningColor;
+  }
+
+  void _callProvider() {
+    if (widget.providerId.isEmpty) return;
+
+    context.read<CallBloc>().add(
+          InitiateCallRequested(
+            receiverId: widget.providerId,
+            receiverName: widget.providerName ?? 'Provider',
+            receiverRole: 'provider',
+            bookingId: widget.bookingId,
+            callType: 'voice',
+          ),
+        );
+
+    context.push('/call/outgoing', extra: {
+      'callId': 'pending',
+      'receiverName': widget.providerName ?? 'Provider',
+      'receiverRole': 'provider',
+      'callType': 'voice',
+    });
+  }
+
+  void _messageProvider() {
+    context.push('/chat', extra: {
+      'otherUserId': widget.providerId,
+      'otherUserName': widget.providerName ?? 'Provider',
+      'bookingId': widget.bookingId,
+    });
   }
 
   @override
   Widget build(BuildContext context) {
-    final totalDistance = (widget.pickupLocation != null && widget.dropoffLocation != null)
-        ? Geolocator.distanceBetween(
-            widget.pickupLocation!.latitude,
-            widget.pickupLocation!.longitude,
-            widget.dropoffLocation!.latitude,
-            widget.dropoffLocation!.longitude,
-          ) / 1000
-        : 0.0;
+    if (!_isActiveServiceStatus) {
+      return Scaffold(
+        backgroundColor: AppTheme.backgroundColor,
+        appBar: AppBar(
+          backgroundColor: AppTheme.primaryColor,
+          foregroundColor: Colors.white,
+          title: const Text('Tracking Unavailable'),
+        ),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Container(
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(24),
+                boxShadow: AppTheme.softShadow,
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: AppTheme.errorColor.withValues(alpha: 0.12),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(Icons.lock_outline_rounded, color: AppTheme.errorColor, size: 40),
+                  ),
+                  const SizedBox(height: 16),
+                  const Text(
+                    'Live tracking is only available during an active service.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'This booking is ${widget.bookingStatus ?? 'unavailable'}.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: Colors.grey.shade600),
+                  ),
+                  const SizedBox(height: 20),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      onPressed: () => context.go('/seeker/history'),
+                      icon: const Icon(Icons.history_rounded),
+                      label: const Text('Back to History'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppTheme.primaryColor,
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    final distanceKm = _distanceKmToDrop();
+    final etaMin = _etaMinutes(distanceKm);
+    final status = _statusText(distanceKm);
+    final statusColor = _statusColor(status);
 
     return BlocListener<LocationTrackingBloc, LocationTrackingState>(
       listener: (context, state) {
         if (state is LocationTrackingActive) {
-          // Update provider location from real-time data
-          final otherUserLoc = state.otherUserLocation;
-          if (otherUserLoc != null) {
-            setState(() {
-              _providerLocation = LatLng(otherUserLoc.latitude, otherUserLoc.longitude);
-            });
-            _updateMarkers();
-            
-            // Optionally center on provider location
-            if (_providerLocation != null) {
-              _mapController?.move(_providerLocation!, 14);
-            }
+          final other = state.otherUserLocation;
+          if (other != null) {
+            _onProviderLocationUpdate(other);
           }
         } else if (state is LocationTrackingErrorState) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Location tracking error: ${state.message}'),
-              backgroundColor: Colors.red,
-            ),
+            SnackBar(content: Text(state.message), backgroundColor: AppTheme.errorColor),
           );
         } else if (state is LocationPermissionDenied) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               content: Text('Location permission is required for tracking'),
-              backgroundColor: Colors.red,
+              backgroundColor: AppTheme.errorColor,
             ),
           );
         }
       },
       child: Scaffold(
-        backgroundColor: Colors.grey[100],
         body: Stack(
           children: [
-            // OpenStreetMap - Full Screen
             FlutterMap(
               mapController: _mapController,
               options: MapOptions(
@@ -328,648 +522,239 @@ class _TrackingScreenState extends State<TrackingScreen> {
                   urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                   userAgentPackageName: 'com.haulistry.app',
                 ),
-                PolylineLayer(
-                  polylines: _polylines,
-                ),
-                MarkerLayer(
-                  markers: _markers,
-                ),
+                PolylineLayer(polylines: _polylines),
+                MarkerLayer(markers: _markers),
               ],
             ),
 
-            // Real-time tracking indicator
-            if (_isTrackingActive)
-              Positioned(
-                top: 60,
-                right: 16,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: Colors.green,
-                    borderRadius: BorderRadius.circular(20),
-                    boxShadow: AppTheme.softShadow,
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Container(
-                        width: 8,
-                        height: 8,
-                        decoration: const BoxDecoration(
-                          color: Colors.white,
-                          shape: BoxShape.circle,
-                        ),
-                      ),
-                      const SizedBox(width: 6),
-                      const Text(
-                        'Live Tracking',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 12,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-
-            // Top App Bar with gradient styling
             SafeArea(
               child: Padding(
-                padding: const EdgeInsets.all(16),
+                padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
                 child: Row(
                   children: [
-                    Container(
-                      decoration: BoxDecoration(
-                        gradient: AppTheme.primaryGradient,
-                        shape: BoxShape.circle,
-                        boxShadow: [
-                          BoxShadow(
-                            color: AppTheme.primaryColor.withOpacity(0.3),
-                            blurRadius: 10,
-                            offset: const Offset(0, 4),
-                          ),
-                        ],
-                      ),
-                      child: IconButton(
-                        icon: const Icon(Icons.arrow_back, color: Colors.white),
-                        onPressed: () => context.go('/seeker/home'),
-                      ),
+                    _circleGlassButton(
+                      icon: Icons.arrow_back_rounded,
+                      onTap: () => context.go('/seeker/home'),
                     ),
                     const SizedBox(width: 12),
                     Expanded(
                       child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                         decoration: BoxDecoration(
                           color: Colors.white,
-                          borderRadius: BorderRadius.circular(16),
+                          borderRadius: BorderRadius.circular(14),
                           boxShadow: AppTheme.softShadow,
                         ),
                         child: Row(
                           children: [
                             Container(
-                              width: 10,
-                              height: 10,
+                              width: 8,
+                              height: 8,
                               decoration: BoxDecoration(
-                                gradient: AppTheme.secondaryGradient,
+                                color: _isTrackingActive ? AppTheme.successColor : Colors.grey,
                                 shape: BoxShape.circle,
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: AppTheme.secondaryColor.withOpacity(0.3),
-                                    blurRadius: 6,
-                                  ),
-                                ],
                               ),
                             ),
-                            const SizedBox(width: 10),
-                            const Text(
-                              'Live Tracking',
+                            const SizedBox(width: 8),
+                            const Expanded(
+                              child: Text(
+                                'Live Tracking',
+                                style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
+                              ),
+                            ),
+                            Text(
+                              _isTrackingActive ? 'LIVE' : 'OFF',
                               style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                fontSize: 16,
+                                color: _isTrackingActive ? AppTheme.successColor : Colors.grey,
+                                fontWeight: FontWeight.w700,
+                                fontSize: 11,
                               ),
                             ),
-                            const Spacer(),
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                              decoration: BoxDecoration(
-                                color: AppTheme.secondaryColor.withOpacity(0.1),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Text(
-                              'LIVE',
-                              style: TextStyle(
-                                color: AppTheme.secondaryColor,
-                                fontWeight: FontWeight.bold,
-                                fontSize: 10,
-                              ),
-                            ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
                     ),
+                  ],
+                ),
+              ),
+            ),
+
+            Positioned(
+              right: 16,
+              top: 120,
+              child: Column(
+                children: [
+                  _circleGlassButton(
+                    icon: _autoFollowProvider ? Icons.gps_fixed_rounded : Icons.gps_not_fixed_rounded,
+                    onTap: () => setState(() => _autoFollowProvider = !_autoFollowProvider),
                   ),
-                  const SizedBox(width: 12),
-                  Container(
-                    decoration: BoxDecoration(
-                      gradient: AppTheme.accentGradient,
-                      shape: BoxShape.circle,
-                      boxShadow: [
-                        BoxShadow(
-                          color: AppTheme.accentColor.withOpacity(0.3),
-                          blurRadius: 10,
-                          offset: const Offset(0, 4),
-                        ),
-                      ],
-                    ),
-                    child: IconButton(
-                      icon: const Icon(Icons.center_focus_strong, color: Colors.white),
-                      onPressed: _fitMapToRoute,
-                    ),
+                  const SizedBox(height: 10),
+                  _circleGlassButton(
+                    icon: Icons.route_rounded,
+                    onTap: _fitMapToRoute,
                   ),
                 ],
               ),
             ),
-          ),
 
-          // Modern Draggable Bottom Sheet
-          DraggableScrollableSheet(
-            initialChildSize: 0.30,
-            minChildSize: 0.15,
-            maxChildSize: 0.65,
-            builder: (context, scrollController) {
-              return Container(
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: const BorderRadius.only(
-                    topLeft: Radius.circular(28),
-                    topRight: Radius.circular(28),
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.1),
-                      blurRadius: 20,
-                      offset: const Offset(0, -5),
+            if (_isActiveServiceStatus)
+              Positioned(
+                right: 16,
+                bottom: 190,
+                child: Column(
+                  children: [
+                    FloatingActionButton.small(
+                      heroTag: 'track_call_provider',
+                      onPressed: _callProvider,
+                      backgroundColor: AppTheme.secondaryColor,
+                      child: const Icon(Icons.call_rounded, color: Colors.white),
+                    ),
+                    const SizedBox(height: 10),
+                    FloatingActionButton.small(
+                      heroTag: 'track_message_provider',
+                      onPressed: _messageProvider,
+                      backgroundColor: AppTheme.accentColor,
+                      child: const Icon(Icons.chat_bubble_rounded, color: Colors.white),
                     ),
                   ],
                 ),
-                child: SingleChildScrollView(
-                  controller: scrollController,
-                  child: Padding(
-                    padding: const EdgeInsets.all(20),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.start,
+              ),
+
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+              child: Container(
+                padding: const EdgeInsets.fromLTRB(18, 14, 18, 20),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.12),
+                      blurRadius: 18,
+                      offset: const Offset(0, -4),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Center(
+                      child: Container(
+                        width: 42,
+                        height: 4,
+                        decoration: BoxDecoration(
+                          color: Colors.grey.shade300,
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    Row(
                       children: [
-                        // Drag Handle
-                        Center(
-                          child: Container(
-                            width: 40,
-                            height: 4,
-                            decoration: BoxDecoration(
-                              color: Colors.grey[300],
-                              borderRadius: BorderRadius.circular(2),
-                            ),
-                          ),
+                        CircleAvatar(
+                          radius: 20,
+                          backgroundColor: AppTheme.primaryColor.withValues(alpha: 0.12),
+                          child: const Icon(Icons.person_rounded, color: AppTheme.primaryColor),
                         ),
-                        const SizedBox(height: 20),
-
-                        // Service Badge & Stats Row
-                        Row(
-                          children: [
-                            if (widget.serviceType != null)
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                                decoration: BoxDecoration(
-                                  gradient: AppTheme.primaryGradient,
-                                  borderRadius: BorderRadius.circular(12),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: AppTheme.primaryColor.withOpacity(0.3),
-                                      blurRadius: 8,
-                                      offset: const Offset(0, 4),
-                                    ),
-                                  ],
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    const Icon(Icons.local_shipping, size: 16, color: Colors.white),
-                                    const SizedBox(width: 6),
-                                    Text(
-                                      widget.serviceType!,
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 13,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            const Spacer(),
-                            _buildCompactStat(Icons.straighten, '${totalDistance.toStringAsFixed(1)} km', AppTheme.secondaryGradient),
-                            const SizedBox(width: 10),
-                            _buildCompactStat(Icons.payments, 'Rs ${widget.estimatedPrice?.toStringAsFixed(0) ?? '0'}', AppTheme.accentGradient),
-                          ],
-                        ),
-                        const SizedBox(height: 20),
-
-                        // Modern Route Info Card
-                        Container(
-                          padding: const EdgeInsets.all(16),
-                          decoration: BoxDecoration(
-                            color: Colors.grey.shade50,
-                            borderRadius: BorderRadius.circular(16),
-                            border: Border.all(color: Colors.grey.shade200),
-                          ),
+                        const SizedBox(width: 12),
+                        Expanded(
                           child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              _buildLocationItem('Pickup', widget.pickupAddress ?? 'Not available', AppTheme.secondaryGradient),
-                              Padding(
-                                padding: const EdgeInsets.only(left: 6),
-                                child: Row(
-                                  children: [
-                                    Container(
-                                      width: 2,
-                                      height: 24,
-                                      decoration: BoxDecoration(
-                                        gradient: LinearGradient(
-                                          colors: [AppTheme.secondaryColor, AppTheme.primaryColor],
-                                          begin: Alignment.topCenter,
-                                          end: Alignment.bottomCenter,
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
+                              Text(
+                                widget.providerName ?? 'Provider',
+                                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
                               ),
-                              _buildLocationItem('Drop', widget.dropAddress ?? 'Not available', AppTheme.primaryGradient),
+                              Text(
+                                widget.serviceType ?? 'Service',
+                                style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+                              ),
                             ],
                           ),
                         ),
-                        
-                        // Booking Status Display
-                        if (widget.bookingStatus != null) ...[
-                          const SizedBox(height: 16),
-                          Container(
-                            padding: const EdgeInsets.all(16),
-                            decoration: BoxDecoration(
-                              gradient: _getStatusGradient(widget.bookingStatus!),
-                              borderRadius: BorderRadius.circular(16),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: _getStatusColor(widget.bookingStatus!).withOpacity(0.3),
-                                  blurRadius: 8,
-                                  offset: const Offset(0, 4),
-                                ),
-                              ],
-                            ),
-                            child: Row(
-                              children: [
-                                Icon(
-                                  _getStatusIcon(widget.bookingStatus!),
-                                  color: Colors.white,
-                                  size: 24,
-                                ),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      const Text(
-                                        'Booking Status',
-                                        style: TextStyle(
-                                          color: Colors.white70,
-                                          fontSize: 12,
-                                          fontWeight: FontWeight.w500,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 4),
-                                      Text(
-                                        widget.bookingStatus!.replaceAll('_', ' ').toUpperCase(),
-                                        style: const TextStyle(
-                                          color: Colors.white,
-                                          fontSize: 16,
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ],
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: statusColor.withValues(alpha: 0.14),
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: Text(
+                            status,
+                            style: TextStyle(
+                              color: statusColor,
+                              fontWeight: FontWeight.w700,
+                              fontSize: 12,
                             ),
                           ),
-                        ],
-                        
-                        // Communication Buttons (Call & Message)
-                        if (widget.bookingStatus != 'completed' && widget.bookingStatus != 'cancelled') ...[
-                          const SizedBox(height: 20),
-                          Row(
-                            children: [
-                              // Call Button
-                              Expanded(
-                                child: Container(
-                                  height: 56,
-                                  decoration: BoxDecoration(
-                                    gradient: AppTheme.secondaryGradient,
-                                    borderRadius: BorderRadius.circular(16),
-                                    boxShadow: [
-                                      BoxShadow(
-                                        color: AppTheme.secondaryColor.withOpacity(0.3),
-                                        blurRadius: 8,
-                                        offset: const Offset(0, 4),
-                                      ),
-                                    ],
-                                  ),
-                                  child: Material(
-                                    color: Colors.transparent,
-                                    child: InkWell(
-                                      onTap: () {
-                                        // Initiate voice call through CallBloc
-                                        if (widget.providerId.isNotEmpty) {
-                                          context.read<CallBloc>().add(
-                                            InitiateCallRequested(
-                                              receiverId: widget.providerId,
-                                              receiverName: widget.providerName ?? 'Provider',
-                                              receiverRole: 'provider',
-                                              bookingId: widget.bookingId,
-                                              callType: 'voice',
-                                            ),
-                                          );
-                                          // Navigate to outgoing call screen
-                                          context.push('/call/outgoing', extra: {
-                                            'callId': 'pending',
-                                            'receiverName': widget.providerName ?? 'Provider',
-                                            'receiverRole': 'provider',
-                                            'callType': 'voice',
-                                          });
-                                        } else {
-                                          ScaffoldMessenger.of(context).showSnackBar(
-                                            const SnackBar(content: Text('Provider information not available')),
-                                          );
-                                        }
-                                      },
-                                      borderRadius: BorderRadius.circular(16),
-                                      child: Row(
-                                        mainAxisAlignment: MainAxisAlignment.center,
-                                        children: const [
-                                          Icon(Icons.phone, color: Colors.white, size: 22),
-                                          SizedBox(width: 8),
-                                          Text(
-                                            'Call',
-                                            style: TextStyle(
-                                              color: Colors.white,
-                                              fontSize: 16,
-                                              fontWeight: FontWeight.bold,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              // Video Call Button
-                              Container(
-                                width: 56,
-                                height: 56,
-                                decoration: BoxDecoration(
-                                  gradient: AppTheme.primaryGradient,
-                                  borderRadius: BorderRadius.circular(16),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: AppTheme.primaryColor.withOpacity(0.3),
-                                      blurRadius: 8,
-                                      offset: const Offset(0, 4),
-                                    ),
-                                  ],
-                                ),
-                                child: Material(
-                                  color: Colors.transparent,
-                                  child: InkWell(
-                                    onTap: () {
-                                      // Initiate video call through CallBloc
-                                      if (widget.providerId.isNotEmpty) {
-                                        context.read<CallBloc>().add(
-                                          InitiateCallRequested(
-                                            receiverId: widget.providerId,
-                                            receiverName: widget.providerName ?? 'Provider',
-                                            receiverRole: 'provider',
-                                            bookingId: widget.bookingId,
-                                            callType: 'video',
-                                          ),
-                                        );
-                                        // Navigate to outgoing call screen
-                                        context.push('/call/outgoing', extra: {
-                                          'callId': 'pending',
-                                          'receiverName': widget.providerName ?? 'Provider',
-                                          'receiverRole': 'provider',
-                                          'callType': 'video',
-                                        });
-                                      } else {
-                                        ScaffoldMessenger.of(context).showSnackBar(
-                                          const SnackBar(content: Text('Provider information not available')),
-                                        );
-                                      }
-                                    },
-                                    borderRadius: BorderRadius.circular(16),
-                                    child: const Icon(Icons.videocam, color: Colors.white, size: 26),
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              // Message Button
-                              Expanded(
-                                child: Container(
-                                  height: 56,
-                                  decoration: BoxDecoration(
-                                    gradient: AppTheme.accentGradient,
-                                    borderRadius: BorderRadius.circular(16),
-                                    boxShadow: [
-                                      BoxShadow(
-                                        color: AppTheme.accentColor.withOpacity(0.3),
-                                        blurRadius: 8,
-                                        offset: const Offset(0, 4),
-                                      ),
-                                    ],
-                                  ),
-                                  child: Material(
-                                    color: Colors.transparent,
-                                    child: InkWell(
-                                      onTap: () {
-                                        // Navigate to chat screen
-                                        context.push('/chat', extra: {
-                                          'otherUserId': widget.providerId,
-                                          'otherUserName': widget.providerName ?? 'Provider',
-                                          'bookingId': widget.bookingId,
-                                        });
-                                      },
-                                      borderRadius: BorderRadius.circular(16),
-                                      child: Row(
-                                        mainAxisAlignment: MainAxisAlignment.center,
-                                        children: const [
-                                          Icon(Icons.chat_bubble, color: Colors.white, size: 22),
-                                          SizedBox(width: 8),
-                                          Text(
-                                            'Message',
-                                            style: TextStyle(
-                                              color: Colors.white,
-                                              fontSize: 16,
-                                              fontWeight: FontWeight.bold,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
-                        
-                        // Rate Service Button for Completed Bookings
-                        if (widget.bookingStatus == 'completed') ...[
-                          const SizedBox(height: 16),
-                          SizedBox(
-                            width: double.infinity,
-                            height: 50,
-                            child: ElevatedButton.icon(
-                              onPressed: () {
-                                context.push('/feedback/seeker', extra: {
-                                  'bookingId': widget.bookingId,
-                                  'providerId': widget.providerId,
-                                  'providerName': widget.providerName ?? 'Provider',
-                                });
-                              },
-                              icon: const Icon(Icons.star_rounded),
-                              label: const Text(
-                                'Rate Service',
-                                style: TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.amber[700],
-                                foregroundColor: Colors.white,
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(16),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ],
+                        ),
                       ],
                     ),
-                  ),
+                    const SizedBox(height: 14),
+                    Row(
+                      children: [
+                        _metricChip(Icons.straighten_rounded, '${distanceKm.toStringAsFixed(1)} km'),
+                        const SizedBox(width: 10),
+                        _metricChip(Icons.schedule_rounded, '~$etaMin min'),
+                        const SizedBox(width: 10),
+                        _metricChip(
+                          Icons.payments_rounded,
+                          'Rs ${widget.estimatedPrice?.toStringAsFixed(0) ?? '0'}',
+                        ),
+                      ],
+                    ),
+                  ],
                 ),
-              );
-            },
-          ),
-        ],
-      ),
-    ), // End of Scaffold (child of BlocListener)
-  ); // End of BlocListener (return statement)
-} // End of build method
-
-Color _getStatusColor(String status) {
-    switch (status.toLowerCase()) {
-      case 'completed':
-        return AppTheme.successColor;
-      case 'in_progress':
-      case 'accepted':
-      case 'provider_arriving':
-      case 'provider_arrived':
-        return AppTheme.primaryColor;
-      case 'pending':
-        return AppTheme.warningColor;
-      case 'cancelled':
-      case 'rejected':
-        return AppTheme.errorColor;
-      default:
-        return Colors.grey;
-    }
-  }
-
-  LinearGradient _getStatusGradient(String status) {
-    final color = _getStatusColor(status);
-    return LinearGradient(
-      colors: [color, color.withOpacity(0.7)],
-    );
-  }
-
-  IconData _getStatusIcon(String status) {
-    switch (status.toLowerCase()) {
-      case 'completed':
-        return Icons.check_circle;
-      case 'in_progress':
-      case 'provider_arriving':
-      case 'provider_arrived':
-        return Icons.local_shipping;
-      case 'accepted':
-        return Icons.thumb_up;
-      case 'pending':
-        return Icons.schedule;
-      case 'cancelled':
-        return Icons.cancel;
-      case 'rejected':
-        return Icons.block;
-      default:
-        return Icons.info;
-    }
-  }
-
-  Widget _buildCompactStat(IconData icon, String value, LinearGradient gradient) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            gradient.colors.first.withOpacity(0.1),
-            gradient.colors.last.withOpacity(0.05),
+              ),
+            ),
           ],
         ),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 16, color: gradient.colors.first),
-          const SizedBox(width: 6),
-          Text(
-            value,
-            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: gradient.colors.first),
-          ),
-        ],
       ),
     );
   }
 
-  Widget _buildLocationItem(String label, String address, LinearGradient gradient) {
-    return Row(
-      children: [
-        Container(
-          width: 14,
-          height: 14,
-          decoration: BoxDecoration(
-            gradient: gradient,
-            shape: BoxShape.circle,
-            boxShadow: [
-              BoxShadow(
-                color: gradient.colors.first.withOpacity(0.3),
-                blurRadius: 4,
-              ),
-            ],
-          ),
+  Widget _circleGlassButton({required IconData icon, required VoidCallback onTap}) {
+    return Material(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(14),
+      elevation: 4,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: onTap,
+        child: SizedBox(
+          width: 44,
+          height: 44,
+          child: Icon(icon, color: AppTheme.textPrimary),
         ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
+      ),
+    );
+  }
+
+  Widget _metricChip(IconData icon, String label) {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+        decoration: BoxDecoration(
+          color: AppTheme.primaryColor.withValues(alpha: 0.07),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, size: 16, color: AppTheme.primaryColor),
+            const SizedBox(width: 6),
+            Flexible(
+              child: Text(
                 label,
-                style: TextStyle(
-                  fontSize: 11,
-                  color: Colors.grey[600],
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-              Text(
-                address,
-                style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
-                maxLines: 2,
                 overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
               ),
-            ],
-          ),
+            ),
+          ],
         ),
-      ],
+      ),
     );
   }
-
 }

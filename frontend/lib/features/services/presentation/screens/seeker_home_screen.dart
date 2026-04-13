@@ -1,11 +1,18 @@
 import 'dart:convert';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
+import '../../../../core/constants/app_constants.dart';
+import '../../../../core/data/graphql_client.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/widgets/modern_widgets.dart';
+import '../../../booking/data/datasources/booking_remote_datasource.dart';
+import '../../../booking/data/repositories/booking_repository_impl.dart';
 import '../../../auth/presentation/bloc/auth_bloc.dart';
 import '../../../auth/presentation/bloc/auth_state.dart';
+import '../../../feedback/data/datasources/feedback_remote_datasource.dart';
+import '../../../feedback/data/repositories/feedback_repository_impl.dart';
 import '../../domain/entities/service_entity.dart';
 import '../bloc/service_bloc.dart';
 import '../bloc/service_event.dart';
@@ -21,9 +28,12 @@ class SeekerHomeScreen extends StatefulWidget {
 class _SeekerHomeScreenState extends State<SeekerHomeScreen>
     with SingleTickerProviderStateMixin {
   final _searchController = TextEditingController();
+  late BookingRepositoryImpl _bookingRepository;
+  late FeedbackRepositoryImpl _feedbackRepository;
   String _selectedCategory = 'All';
   late AnimationController _animController;
   late Animation<double> _fadeAnim;
+  bool _feedbackGateChecked = false;
 
   // Categories that match backend service categories
   final List<Map<String, dynamic>> _categories = [
@@ -72,6 +82,14 @@ class _SeekerHomeScreenState extends State<SeekerHomeScreen>
   @override
   void initState() {
     super.initState();
+    _bookingRepository = BookingRepositoryImpl(
+      remoteDataSource: BookingRemoteDataSource(
+        graphQLClient: GraphQLClientService.instance,
+      ),
+    );
+    _feedbackRepository = FeedbackRepositoryImpl(
+      remoteDataSource: FeedbackRemoteDataSource(baseUrl: AppConstants.apiUrl),
+    );
     context.read<ServiceBloc>().add(const ServiceLoadRequested());
     _animController = AnimationController(
       vsync: this,
@@ -81,6 +99,45 @@ class _SeekerHomeScreenState extends State<SeekerHomeScreen>
       CurvedAnimation(parent: _animController, curve: Curves.easeOut),
     );
     _animController.forward();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _enforceMandatorySeekerFeedback();
+    });
+  }
+
+  Future<void> _enforceMandatorySeekerFeedback() async {
+    if (_feedbackGateChecked) return;
+    _feedbackGateChecked = true;
+
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) return;
+
+      final completedBookings = await _bookingRepository.getBookingHistory(
+        user.uid,
+        status: 'completed',
+      );
+
+      completedBookings.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+
+      for (final booking in completedBookings) {
+        final providerId = booking.providerId;
+        if (providerId == null || providerId.isEmpty) continue;
+
+        final exists = await _feedbackRepository.checkFeedbackExists(booking.id, 'seeker');
+        if (!mounted) return;
+
+        if (!exists) {
+          context.go('/feedback/seeker', extra: {
+            'bookingId': booking.id,
+            'providerId': providerId,
+            'providerName': booking.providerName ?? 'Provider',
+          });
+          return;
+        }
+      }
+    } catch (_) {
+      // Non-blocking: keep home usable if network check fails.
+    }
   }
 
   @override

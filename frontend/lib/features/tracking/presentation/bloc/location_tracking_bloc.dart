@@ -3,7 +3,6 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:geolocator/geolocator.dart';
 import '../../../../core/services/location_tracking_service.dart';
-import '../../../../core/services/notification_service.dart';
 import '../../../../core/services/api_service.dart';
 import 'location_tracking_event.dart';
 import 'location_tracking_state.dart';
@@ -11,17 +10,14 @@ import 'location_tracking_state.dart';
 /// BLoC for managing real-time location tracking during bookings
 class LocationTrackingBloc extends Bloc<LocationTrackingEvent, LocationTrackingState> {
   final LocationTrackingService _locationService;
-  final NotificationService _notificationService;
 
   StreamSubscription<Position>? _positionSubscription;
-  StreamSubscription<Map<String, dynamic>>? _fcmLocationSubscription;
+  StreamSubscription<Map<String, dynamic>>? _otherUserLocationSubscription;
   StreamSubscription<String>? _errorSubscription;
 
   LocationTrackingBloc({
     LocationTrackingService? locationService,
-    NotificationService? notificationService,
   })  : _locationService = locationService ?? LocationTrackingService.instance,
-        _notificationService = notificationService ?? NotificationService(),
         super(const LocationTrackingInitial()) {
     on<StartLocationTracking>(_onStartTracking);
     on<StopLocationTracking>(_onStopTracking);
@@ -63,11 +59,9 @@ class LocationTrackingBloc extends Bloc<LocationTrackingEvent, LocationTrackingS
         ));
       });
 
-      // Listen to location updates from FCM (other users)
-      _fcmLocationSubscription = _notificationService.notificationStream.listen((data) {
-        final type = data['type'] as String?;
-        if (type == 'location_update' && data['userId'] != event.userId) {
-          // Only process location updates from other users
+      // Listen to location updates from Firebase realtime stream (other user)
+      _otherUserLocationSubscription = _locationService.otherUserLocationStream.listen((data) {
+        if (data['userId'] != event.userId) {
           add(LocationUpdateReceived(
             userId: data['userId'] as String,
             latitude: double.tryParse(data['latitude']?.toString() ?? '0') ?? 0,
@@ -123,11 +117,11 @@ class LocationTrackingBloc extends Bloc<LocationTrackingEvent, LocationTrackingS
   ) async {
     await _locationService.stopTracking();
     await _positionSubscription?.cancel();
-    await _fcmLocationSubscription?.cancel();
+    await _otherUserLocationSubscription?.cancel();
     await _errorSubscription?.cancel();
 
     _positionSubscription = null;
-    _fcmLocationSubscription = null;
+    _otherUserLocationSubscription = null;
     _errorSubscription = null;
 
     emit(const LocationTrackingStopped());
@@ -215,7 +209,7 @@ class LocationTrackingBloc extends Bloc<LocationTrackingEvent, LocationTrackingS
   @override
   Future<void> close() async {
     await _positionSubscription?.cancel();
-    await _fcmLocationSubscription?.cancel();
+    await _otherUserLocationSubscription?.cancel();
     await _errorSubscription?.cancel();
     await _locationService.stopTracking();
     return super.close();

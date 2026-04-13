@@ -51,16 +51,27 @@ class _ProviderTrackingScreenState extends State<ProviderTrackingScreen> {
   List<Polyline> _polylines = [];
   List<LatLng> _routePoints = [];
   Position? _currentPosition;
-  LatLng? _seekerLocation; // Real-time seeker location
+  LatLng? _seekerDisplayLocation;
   BookingEntity? _booking;
   bool _isNearDropLocation = false;
+  bool _autoFollowSeeker = false;
+  Timer? _seekerAnimationTimer;
   static const double _completionRadiusMeters = 100;
+
+  bool get _isActiveServiceStatus {
+    final status = (widget.bookingStatus ?? '').toLowerCase();
+    return status == 'accepted' ||
+        status == 'provider_arriving' ||
+        status == 'provider_arrived' ||
+        status == 'in_progress';
+  }
 
   @override
   void initState() {
     super.initState();
     _mapController = MapController();
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!_isActiveServiceStatus) return;
       _setupMap();
       _startLocationTracking();
     });
@@ -69,8 +80,38 @@ class _ProviderTrackingScreenState extends State<ProviderTrackingScreen> {
   @override
   void dispose() {
     // Stop location tracking when leaving screen
+    _seekerAnimationTimer?.cancel();
     context.read<LocationTrackingBloc>().add(const StopLocationTracking());
     super.dispose();
+  }
+
+  void _animateSeekerMarkerTo(LatLng target) {
+    _seekerAnimationTimer?.cancel();
+
+    final start = _seekerDisplayLocation;
+    if (start == null) {
+      _seekerDisplayLocation = target;
+      _updateMarkers();
+      return;
+    }
+
+    const steps = 14;
+    var step = 0;
+    _seekerAnimationTimer = Timer.periodic(const Duration(milliseconds: 40), (timer) {
+      step++;
+      final t = Curves.easeOutCubic.transform(step / steps);
+      final lat = start.latitude + (target.latitude - start.latitude) * t;
+      final lng = start.longitude + (target.longitude - start.longitude) * t;
+
+      setState(() {
+        _seekerDisplayLocation = LatLng(lat, lng);
+      });
+      _updateMarkers();
+
+      if (step >= steps) {
+        timer.cancel();
+      }
+    });
   }
 
   void _startLocationTracking() {
@@ -254,10 +295,10 @@ class _ProviderTrackingScreenState extends State<ProviderTrackingScreen> {
     }
     
     // Seeker's real-time location
-    if (_seekerLocation != null) {
+    if (_seekerDisplayLocation != null) {
       markers.add(
         Marker(
-          point: _seekerLocation!,
+          point: _seekerDisplayLocation!,
           width: 50,
           height: 50,
           child: Container(
@@ -360,6 +401,72 @@ class _ProviderTrackingScreenState extends State<ProviderTrackingScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (!_isActiveServiceStatus) {
+      return Scaffold(
+        backgroundColor: AppTheme.backgroundColor,
+        appBar: AppBar(
+          backgroundColor: AppTheme.primaryColor,
+          foregroundColor: Colors.white,
+          title: const Text('Tracking Unavailable'),
+        ),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Container(
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(24),
+                boxShadow: AppTheme.softShadow,
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: AppTheme.errorColor.withOpacity(0.12),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(Icons.lock_outline_rounded, color: AppTheme.errorColor, size: 40),
+                  ),
+                  const SizedBox(height: 16),
+                  const Text(
+                    'Live tracking is only available during an active service.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'This booking is ${widget.bookingStatus ?? 'unavailable'}.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: Colors.grey.shade600),
+                  ),
+                  const SizedBox(height: 20),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      onPressed: () => context.go('/provider/history'),
+                      icon: const Icon(Icons.history_rounded),
+                      label: const Text('Back to History'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppTheme.primaryColor,
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
     return MultiBlocListener(
       listeners: [
         // Listen to location tracking updates
@@ -375,10 +482,12 @@ class _ProviderTrackingScreenState extends State<ProviderTrackingScreen> {
               // Update seeker location
               final seekerLoc = state.otherUserLocation;
               if (seekerLoc != null) {
-                setState(() {
-                  _seekerLocation = LatLng(seekerLoc.latitude, seekerLoc.longitude);
-                });
-                _updateMarkers();
+                final target = LatLng(seekerLoc.latitude, seekerLoc.longitude);
+                _animateSeekerMarkerTo(target);
+
+                if (_autoFollowSeeker && _seekerDisplayLocation != null) {
+                  _mapController?.move(_seekerDisplayLocation!, _mapController?.camera.zoom ?? 15);
+                }
               }
             } else if (state is loc.LocationTrackingErrorState) {
               ScaffoldMessenger.of(context).showSnackBar(
@@ -531,6 +640,27 @@ class _ProviderTrackingScreenState extends State<ProviderTrackingScreen> {
                         ],
                       ),
                       child: IconButton(
+                        icon: Icon(_autoFollowSeeker ? Icons.gps_fixed : Icons.gps_not_fixed),
+                        onPressed: () {
+                          setState(() {
+                            _autoFollowSeeker = !_autoFollowSeeker;
+                          });
+                        },
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Container(
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(12),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.1),
+                            blurRadius: 10,
+                          ),
+                        ],
+                      ),
+                      child: IconButton(
                         icon: const Icon(Icons.my_location),
                         onPressed: _centerOnCurrentLocation,
                       ),
@@ -555,6 +685,60 @@ class _ProviderTrackingScreenState extends State<ProviderTrackingScreen> {
                   ],
                 ),
               ),
+
+              // Floating communication shortcuts
+              if (_isActiveServiceStatus)
+                Positioned(
+                  right: 16,
+                  bottom: 280,
+                  child: Column(
+                    children: [
+                      FloatingActionButton.small(
+                        heroTag: 'provider_track_call',
+                        backgroundColor: AppTheme.secondaryColor,
+                        onPressed: () {
+                          final seekerId = _booking?.seekerId;
+                          final seekerName = _booking?.seekerName;
+                          if (seekerId != null) {
+                            context.read<CallBloc>().add(
+                              InitiateCallRequested(
+                                receiverId: seekerId,
+                                receiverName: seekerName ?? 'Seeker',
+                                receiverRole: 'seeker',
+                                bookingId: widget.bookingId,
+                                callType: 'voice',
+                              ),
+                            );
+                            context.push('/call/outgoing', extra: {
+                              'callId': 'pending',
+                              'receiverName': seekerName ?? 'Seeker',
+                              'receiverRole': 'seeker',
+                              'callType': 'voice',
+                            });
+                          }
+                        },
+                        child: const Icon(Icons.call_rounded, color: Colors.white),
+                      ),
+                      const SizedBox(height: 10),
+                      FloatingActionButton.small(
+                        heroTag: 'provider_track_message',
+                        backgroundColor: AppTheme.accentColor,
+                        onPressed: () {
+                          final seekerId = _booking?.seekerId;
+                          final seekerName = _booking?.seekerName;
+                          if (seekerId != null) {
+                            context.push('/chat', extra: {
+                              'otherUserId': seekerId,
+                              'otherUserName': seekerName ?? 'Seeker',
+                              'bookingId': widget.bookingId,
+                            });
+                          }
+                        },
+                        child: const Icon(Icons.chat_bubble_rounded, color: Colors.white),
+                      ),
+                    ],
+                  ),
+                ),
 
               // Bottom info panel
               Positioned(
@@ -651,7 +835,7 @@ class _ProviderTrackingScreenState extends State<ProviderTrackingScreen> {
                         ),
 
                       // Communication Buttons (Call & Message)
-                      if (currentStatus != 'completed' && currentStatus != 'cancelled') ...[
+                      if (_isActiveServiceStatus) ...[
                         Row(
                           children: [
                             // Call Button

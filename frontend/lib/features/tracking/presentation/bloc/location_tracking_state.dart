@@ -55,15 +55,12 @@ class LocationTrackingActive extends LocationTrackingState {
 
   /// Get other user's location (assumes 2 users in booking)
   LocationData? get otherUserLocation {
-    return userLocations.values.firstWhere(
-      (loc) => loc.userId != userId,
-      orElse: () => LocationData(
-        userId: '',
-        latitude: 0,
-        longitude: 0,
-        timestamp: DateTime.now(),
-      ),
-    );
+    for (final loc in userLocations.values) {
+      if (loc.userId != userId) {
+        return loc;
+      }
+    }
+    return null;
   }
 
   /// Check if we have other user's location

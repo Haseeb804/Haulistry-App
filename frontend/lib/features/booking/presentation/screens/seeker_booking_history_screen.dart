@@ -249,7 +249,7 @@ class _SeekerBookingHistoryScreenState extends State<SeekerBookingHistoryScreen>
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          onTap: () => _navigateToTracking(booking),
+          onTap: null,
           borderRadius: BorderRadius.circular(20),
           child: Column(
             children: [
@@ -456,10 +456,9 @@ class _SeekerBookingHistoryScreenState extends State<SeekerBookingHistoryScreen>
                         ),
                       ],
                     ),
-                    
                     const SizedBox(height: 12),
-                    
-                    // Date and Action Button
+
+                    // Date only
                     Row(
                       children: [
                         Container(
@@ -480,38 +479,6 @@ class _SeekerBookingHistoryScreenState extends State<SeekerBookingHistoryScreen>
                                 ),
                               ),
                             ],
-                          ),
-                        ),
-                        const Spacer(),
-                        if (booking.status == 'completed')
-                          Container(
-                            decoration: BoxDecoration(
-                              gradient: AppTheme.primaryGradient,
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            child: Material(
-                              color: Colors.transparent,
-                              child: InkWell(
-                                onTap: () => _navigateToFeedback(booking),
-                                borderRadius: BorderRadius.circular(10),
-                                child: const Padding(
-                                  padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                                  child: Row(
-                                    children: [
-                                      Icon(Icons.star_rounded, size: 16, color: Colors.white),
-                                      SizedBox(width: 6),
-                                      Text(
-                                        'Rate Service',
-                                        style: TextStyle(
-                                          color: Colors.white,
-                                          fontWeight: FontWeight.w600,
-                                          fontSize: 12,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
                             ),
                           ),
                       ],
