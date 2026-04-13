@@ -107,15 +107,19 @@ class ProviderBookingActionInProgress extends ProviderState {
 
 class ProviderBookingActionSuccess extends ProviderState {
   final String message;
+  final String? action;
   final BookingEntity? acceptedBooking;
+  final BookingEntity? updatedBooking;
 
   const ProviderBookingActionSuccess({
     required this.message,
+    this.action,
     this.acceptedBooking,
+    this.updatedBooking,
   });
 
   @override
-  List<Object?> get props => [message, acceptedBooking];
+  List<Object?> get props => [message, action, acceptedBooking, updatedBooking];
 }
 
 class ProviderVehicleActionInProgress extends ProviderState {

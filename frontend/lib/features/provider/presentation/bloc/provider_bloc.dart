@@ -225,7 +225,9 @@ class ProviderBloc extends Bloc<ProviderEvent, ProviderState> {
 
       emit(ProviderBookingActionSuccess(
         message: 'Booking accepted successfully',
+        action: 'accept',
         acceptedBooking: acceptedBooking,
+        updatedBooking: acceptedBooking,
       ));
 
       // Reload bookings
@@ -256,6 +258,7 @@ class ProviderBloc extends Bloc<ProviderEvent, ProviderState> {
 
       emit(const ProviderBookingActionSuccess(
         message: 'Booking rejected',
+        action: 'reject',
       ));
 
       // Reload bookings
@@ -275,11 +278,18 @@ class ProviderBloc extends Bloc<ProviderEvent, ProviderState> {
     ));
 
     try {
-      // TODO: Implement actual API call to start booking
-      await Future.delayed(const Duration(seconds: 1));
+      final response = await _apiService.startBooking(event.bookingId);
+      if (response['success'] != true || response['booking'] == null) {
+        throw Exception(response['message'] ?? 'Failed to start booking');
+      }
+      final updatedBooking = BookingEntity.fromJson(
+        response['booking'] as Map<String, dynamic>,
+      );
 
-      emit(const ProviderBookingActionSuccess(
+      emit(ProviderBookingActionSuccess(
         message: 'Booking started',
+        action: 'start',
+        updatedBooking: updatedBooking,
       ));
 
       // Reload bookings
@@ -300,10 +310,12 @@ class ProviderBloc extends Bloc<ProviderEvent, ProviderState> {
 
     try {
       // Call the repository to complete the booking
-      await _repository.completeBooking(event.bookingId);
+      final completedBooking = await _repository.completeBooking(event.bookingId);
 
-      emit(const ProviderBookingActionSuccess(
+      emit(ProviderBookingActionSuccess(
         message: 'Booking completed successfully',
+        action: 'complete',
+        updatedBooking: completedBooking,
       ));
 
       // Reload bookings
@@ -328,6 +340,7 @@ class ProviderBloc extends Bloc<ProviderEvent, ProviderState> {
 
       emit(const ProviderBookingActionSuccess(
         message: 'Booking cancelled',
+        action: 'cancel',
       ));
 
       // Reload bookings
@@ -830,14 +843,41 @@ class ProviderBloc extends Bloc<ProviderEvent, ProviderState> {
     }
   }
 
-  void _onOfferStatusReceived(
+  Future<void> _onOfferStatusReceived(
     ProviderOfferStatusReceived event,
     Emitter<ProviderState> emit,
-  ) {
+  ) async {
     final currentState = state;
 
     if (event.status == 'accepted') {
-      // Offer was accepted - reload dashboard to get updated booking
+      // Offer was accepted - resolve booking and trigger immediate navigation
+      try {
+        final offerResponse = await _apiService.get('/api/fare-offers/${event.offerId}');
+        if (offerResponse['success'] == true && offerResponse['offer'] != null) {
+          final offer = offerResponse['offer'] as Map<String, dynamic>;
+          final bookingId = offer['bookingId'] as String?;
+
+          if (bookingId != null && bookingId.isNotEmpty) {
+            final bookingResponse = await _apiService.getBooking(bookingId);
+            if (bookingResponse['success'] == true && bookingResponse['booking'] != null) {
+              final acceptedBooking = BookingEntity.fromJson(
+                bookingResponse['booking'] as Map<String, dynamic>,
+              );
+
+              emit(ProviderBookingActionSuccess(
+                message: 'Your offer was accepted! Opening live tracking...',
+                action: 'accept',
+                acceptedBooking: acceptedBooking,
+                updatedBooking: acceptedBooking,
+              ));
+            }
+          }
+        }
+      } catch (_) {
+        // Non-blocking fallback: still refresh dashboard below.
+      }
+
+      // Also reload dashboard to keep lists current.
       add(const ProviderLoadDashboardRequested());
     } else if (event.status == 'counter_offered' && event.counterPrice != null) {
       // Seeker sent a counter offer

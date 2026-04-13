@@ -37,6 +37,24 @@ class RatingRequest(BaseModel):
     review: Optional[str] = Field(None, description="Optional review text")
 
 
+class AcceptBookingRequest(BaseModel):
+    providerId: str = Field(..., description="Provider user ID")
+    vehicleId: Optional[str] = Field(None, description="Provider vehicle ID")
+
+
+class ProviderArrivingRequest(BaseModel):
+    estimatedMinutes: Optional[int] = Field(None, description="Estimated arrival time in minutes")
+
+
+class CompleteBookingRequest(BaseModel):
+    finalPrice: Optional[float] = Field(None, description="Final booking price")
+
+
+class CancelBookingRequest(BaseModel):
+    reason: Optional[str] = Field(None, description="Cancellation reason")
+    cancelledBy: Optional[str] = Field(None, description="User ID who cancelled")
+
+
 # ============================================
 # SEEKER ENDPOINTS
 # ============================================
@@ -256,7 +274,7 @@ async def update_booking(booking_id: str, booking_update: BookingUpdate):
 
 
 @router.put("/{booking_id}/arriving", response_model=BookingResponse)
-async def provider_arriving(booking_id: str):
+async def provider_arriving(booking_id: str, payload: Optional[ProviderArrivingRequest] = None):
     """PROVIDER: Mark that provider is on the way to pickup"""
     try:
         booking_data = Booking.update_status(booking_id, "provider_arriving")
@@ -277,7 +295,11 @@ async def provider_arriving(booking_id: str):
         
         return BookingResponse(
             success=True,
-            message="Provider is arriving - seeker notified",
+            message=(
+                f"Provider is arriving in {payload.estimatedMinutes} min - seeker notified"
+                if payload and payload.estimatedMinutes is not None
+                else "Provider is arriving - seeker notified"
+            ),
             booking=booking_data
         )
         
@@ -361,10 +383,20 @@ async def start_booking(booking_id: str):
 
 
 @router.put("/{booking_id}/complete", response_model=BookingResponse)
-async def complete_booking(booking_id: str, final_price: Optional[float] = None):
+async def complete_booking(
+    booking_id: str,
+    payload: Optional[CompleteBookingRequest] = None,
+    final_price: Optional[float] = None,
+):
     """PROVIDER: Complete the booking"""
     try:
-        booking_data = Booking.complete(booking_id, final_price)
+        resolved_final_price = (
+            payload.finalPrice
+            if payload and payload.finalPrice is not None
+            else final_price
+        )
+
+        booking_data = Booking.complete(booking_id, resolved_final_price)
         
         if not booking_data:
             raise HTTPException(
@@ -399,13 +431,23 @@ async def complete_booking(booking_id: str, final_price: Optional[float] = None)
 
 
 @router.put("/{booking_id}/cancel", response_model=BookingResponse)
-async def cancel_booking(booking_id: str, reason: Optional[str] = None, cancelled_by: Optional[str] = None):
+async def cancel_booking(
+    booking_id: str,
+    payload: Optional[CancelBookingRequest] = None,
+    reason: Optional[str] = None,
+    cancelled_by: Optional[str] = None,
+):
     """Cancel a booking (can be called by seeker or provider)"""
     try:
         # Get booking first to know who to notify
         existing = Booking.get_by_id(booking_id)
         
-        booking_data = Booking.cancel(booking_id, reason)
+        resolved_reason = payload.reason if payload and payload.reason is not None else reason
+        resolved_cancelled_by = (
+            payload.cancelledBy if payload and payload.cancelledBy is not None else cancelled_by
+        )
+
+        booking_data = Booking.cancel(booking_id, resolved_reason)
         
         if not booking_data:
             raise HTTPException(
@@ -415,9 +457,9 @@ async def cancel_booking(booking_id: str, reason: Optional[str] = None, cancelle
         
         # Notify the other party via FCM
         if existing:
-            target_user = existing['seekerId'] if cancelled_by == existing.get('providerId') else existing.get('providerId')
+            target_user = existing['seekerId'] if resolved_cancelled_by == existing.get('providerId') else existing.get('providerId')
             if target_user:
-                cancelled_by_name = existing.get('providerName') if cancelled_by == existing.get('providerId') else existing.get('seekerName', 'User')
+                cancelled_by_name = existing.get('providerName') if resolved_cancelled_by == existing.get('providerId') else existing.get('seekerName', 'User')
                 await fcm_service.notify_booking_cancelled(
                     target_user_id=target_user,
                     booking_id=booking_id,
@@ -474,13 +516,27 @@ async def rate_booking(booking_id: str, rating_req: RatingRequest):
 # ============================================
 
 @router.put("/{booking_id}/accept", response_model=BookingResponse)
-async def accept_booking(booking_id: str, provider_id: str, vehicle_id: Optional[str] = None):
+async def accept_booking(
+    booking_id: str,
+    payload: Optional[AcceptBookingRequest] = None,
+    provider_id: Optional[str] = Query(None, alias="provider_id"),
+    vehicle_id: Optional[str] = Query(None, alias="vehicle_id"),
+):
     """
     DEPRECATED: Use fare offers instead
     Provider directly accepts a booking (legacy flow)
     """
     try:
-        booking_data = Booking.accept(booking_id, provider_id, vehicle_id)
+        resolved_provider_id = provider_id or (payload.providerId if payload else None)
+        resolved_vehicle_id = vehicle_id or (payload.vehicleId if payload else None)
+
+        if not resolved_provider_id:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="provider_id (query) or providerId (body) is required"
+            )
+
+        booking_data = Booking.accept(booking_id, resolved_provider_id, resolved_vehicle_id)
         
         if not booking_data:
             raise HTTPException(
