@@ -161,7 +161,7 @@ class AuthRepositoryImpl implements AuthRepository {
 
       throw Exception(message);
     } catch (e) {
-      throw Exception(_getNetworkErrorMessage(e));
+      throw _toUserFacingException(e);
     }
   }
 
@@ -436,7 +436,7 @@ class AuthRepositoryImpl implements AuthRepository {
     } on FirebaseAuthException catch (e) {
       throw Exception(_getAuthErrorMessage(e.code));
     } catch (e) {
-      throw Exception(_getNetworkErrorMessage(e));
+      throw _toUserFacingException(e);
     }
   }
 
@@ -746,6 +746,29 @@ class AuthRepositoryImpl implements AuthRepository {
       return 'Connection timed out. Please check your internet and try again';
     }
     return 'Something went wrong. Please try again later';
+  }
+
+  Exception _toUserFacingException(dynamic error) {
+    final raw = error.toString();
+    final normalized = raw.startsWith('Exception: ')
+        ? raw.substring('Exception: '.length)
+        : raw;
+    final lower = normalized.toLowerCase();
+
+    if (error is SocketException ||
+        lower.contains('socketexception') ||
+        lower.contains('connection refused') ||
+        lower.contains('network is unreachable') ||
+        lower.contains('no address associated') ||
+        lower.contains('timeout')) {
+      return Exception(_getNetworkErrorMessage(error));
+    }
+
+    if (normalized.trim().isNotEmpty && normalized.trim() != 'null') {
+      return Exception(normalized.trim());
+    }
+
+    return Exception('Something went wrong. Please try again later');
   }
 
   @override

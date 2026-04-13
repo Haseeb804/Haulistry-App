@@ -21,17 +21,34 @@ class Neo4jDriver:
     def _initialize(self):
         """Initialize Neo4j driver"""
         try:
+            uri = self._normalize_neo4j_uri(settings.NEO4J_URI)
             self._driver = GraphDatabase.driver(
-                settings.NEO4J_URI,
+                uri,
                 auth=(settings.NEO4J_USERNAME, settings.NEO4J_PASSWORD),
                 max_connection_lifetime=3600,
                 max_connection_pool_size=50,
                 connection_acquisition_timeout=60
             )
-            logger.info("Neo4j driver initialized successfully")
+            logger.info(f"Neo4j driver initialized successfully ({uri})")
         except Exception as e:
             logger.error(f"Failed to initialize Neo4j driver: {str(e)}", exc_info=True)
             self._driver = None
+
+    @staticmethod
+    def _normalize_neo4j_uri(raw_uri: str) -> str:
+        """Normalize Neo4j URI to a driver-compatible value."""
+        uri = (raw_uri or '').strip()
+        if not uri:
+            return 'bolt://localhost:7687'
+
+        if '://' in uri:
+            return uri
+
+        host = uri.split(':')[0]
+        if host.endswith('.databases.neo4j.io'):
+            return f'neo4j+s://{host}'
+
+        return f'bolt://{uri}'
     
     def get_session(self):
         """Get a new Neo4j session"""
