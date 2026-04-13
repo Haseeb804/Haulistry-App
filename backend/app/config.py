@@ -28,6 +28,14 @@ class Settings(BaseSettings):
     ENVIRONMENT: str = "development"
     SECRET_KEY: str = "your-secret-key-here"
     OTP_EXPOSE_IN_RESPONSE: bool = True
+    OTP_DELIVERY_MODE: str = "debug"  # debug | android_gateway
+    OTP_MESSAGE_TEMPLATE: str = "{app_name} verification code: {otp}. It expires in {minutes} minutes."
+
+    # Android phone SMS gateway configuration (free/self-hosted option)
+    ANDROID_SMS_GATEWAY_URL: str = ""
+    ANDROID_SMS_GATEWAY_API_KEY: str = ""
+    ANDROID_SMS_GATEWAY_AUTH_HEADER: str = "X-API-KEY"
+    SMS_HTTP_TIMEOUT_SECONDS: int = 15
     
     # Neo4j Configuration
     NEO4J_URI: str = os.getenv("NEO4J_URI") or os.getenv("NEO4J_URL") or "bolt://localhost:7687"

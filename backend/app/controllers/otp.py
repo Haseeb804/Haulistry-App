@@ -13,6 +13,7 @@ from fastapi.responses import JSONResponse
 
 from ..config import settings
 from ..schemas.otp_schema import SendOtpRequest, VerifyOtpRequest, OtpApiResponse
+from ..services.sms_dispatcher import send_sms
 from ..services.otp_service import (
     OtpService,
     OtpRateLimitError,
@@ -36,17 +37,32 @@ async def send_otp(payload: SendOtpRequest):
     """
     try:
         expires_in, generated_otp = otp_service.send_otp(payload.phone)
+        normalized_phone = otp_service.normalize_phone(payload.phone)
+
+        otp_message = settings.OTP_MESSAGE_TEMPLATE.format(
+            app_name=settings.APP_NAME,
+            otp=generated_otp,
+            minutes=max(expires_in // 60, 1),
+        )
+
+        sms_sent, sms_detail = send_sms(normalized_phone, otp_message)
+
         response_data = {
-            "phone": otp_service.normalize_phone(payload.phone),
+            "phone": normalized_phone,
+            "deliveryMode": settings.OTP_DELIVERY_MODE,
+            "sentViaSms": sms_sent,
         }
 
         # Useful for free/dev setup where no SMS gateway is connected.
-        if settings.OTP_EXPOSE_IN_RESPONSE:
+        if settings.OTP_EXPOSE_IN_RESPONSE and not sms_sent:
             response_data["debugOtp"] = generated_otp
+
+        if not sms_sent:
+            response_data["deliveryDetail"] = sms_detail
 
         return OtpApiResponse(
             success=True,
-            message="OTP generated and sent successfully",
+            message="OTP sent successfully" if sms_sent else "OTP generated successfully",
             expiresInSeconds=expires_in,
             data=response_data,
         )
