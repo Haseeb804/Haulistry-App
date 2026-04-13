@@ -200,38 +200,66 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
         builder: (context, state) {
           final isLoading = state is AuthLoading;
 
-          return SingleChildScrollView(
-            padding: const EdgeInsets.all(20),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                const SizedBox(height: 8),
-                Text(
-                  'Enter verification code',
-                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                        fontWeight: FontWeight.bold,
-                      ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'Check your SMS inbox and enter the 6-digit code to complete signup.',
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: AppTheme.textSecondary,
-                      ),
-                ),
-                const SizedBox(height: 24),
-
-                Container(
-                  padding: const EdgeInsets.all(18),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(18),
-                    boxShadow: AppTheme.softShadow,
-                  ),
-                  child: Form(
-                    key: _otpFormKey,
+          return Container(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  AppTheme.primaryLight.withValues(alpha: 0.18),
+                  AppTheme.backgroundColor,
+                  AppTheme.backgroundColor,
+                ],
+              ),
+            ),
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      gradient: AppTheme.primaryGradient,
+                      borderRadius: BorderRadius.circular(16),
+                      boxShadow: AppTheme.buttonShadow,
+                    ),
                     child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
+                        Text(
+                          'Enter verification code',
+                          style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                              ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          'Check your SMS inbox and enter the 6-digit code to complete signup.',
+                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                color: Colors.white.withValues(alpha: 0.9),
+                              ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+
+                  Container(
+                    padding: const EdgeInsets.all(18),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFFFBF8),
+                      borderRadius: BorderRadius.circular(18),
+                      border: Border.all(
+                        color: AppTheme.primaryColor.withValues(alpha: 0.15),
+                      ),
+                      boxShadow: AppTheme.softShadow,
+                    ),
+                    child: Form(
+                      key: _otpFormKey,
+                      child: Column(
+                        children: [
                         TextFormField(
                           controller: _phoneController,
                           enabled: false,
@@ -378,11 +406,12 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
                             ),
                           ),
                         ),
-                      ],
+                        ],
+                      ),
                     ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           );
         },
