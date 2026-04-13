@@ -27,6 +27,7 @@ class Settings(BaseSettings):
     PORT: int = 4000
     ENVIRONMENT: str = "development"
     SECRET_KEY: str = "your-secret-key-here"
+    OTP_EXPOSE_IN_RESPONSE: bool = True
     
     # Neo4j Configuration
     NEO4J_URI: str = os.getenv("NEO4J_URI") or os.getenv("NEO4J_URL") or "bolt://localhost:7687"

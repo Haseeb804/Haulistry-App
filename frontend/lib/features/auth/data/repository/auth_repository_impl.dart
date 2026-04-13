@@ -105,10 +105,12 @@ class AuthRepositoryImpl implements AuthRepository {
 
       if (response.statusCode == 200 && data['success'] == true) {
         final serverPhone = (data['data']?['phone'] as String?)?.trim();
+        final debugOtp = (data['data']?['debugOtp'] as String?)?.trim();
         // Keep return shape compatible with current flow by using phone as token.
-        return (serverPhone != null && serverPhone.isNotEmpty)
+        final phoneToken = (serverPhone != null && serverPhone.isNotEmpty)
             ? serverPhone
             : normalizedPhone;
+        return _buildVerificationPayload(phone: phoneToken, debugOtp: debugOtp);
       }
 
       final message = (data['message'] ?? data['detail'] ?? 'Failed to send OTP').toString();
@@ -162,11 +164,13 @@ class AuthRepositoryImpl implements AuthRepository {
     String? email,
   }) async {
     try {
+      final verificationPhone = _extractPhoneFromVerificationPayload(verificationId);
+
       final response = await http.post(
         Uri.parse('${AppConstants.apiUrl}/verify-otp'),
         headers: {'Content-Type': 'application/json'},
         body: json.encode({
-          'phone': _normalizePkPhoneToE164(verificationId),
+          'phone': verificationPhone,
           'otp': smsCode.trim(),
         }),
       );
@@ -249,7 +253,7 @@ class AuthRepositoryImpl implements AuthRepository {
     required Map<String, dynamic> pendingSignupData,
   }) async {
     try {
-      final normalizedPhone = _normalizePkPhoneToE164(verificationId);
+      final normalizedPhone = _extractPhoneFromVerificationPayload(verificationId);
 
       // Step 1: Verify OTP against backend custom OTP service.
       final otpResponse = await http.post(
@@ -589,6 +593,33 @@ class AuthRepositoryImpl implements AuthRepository {
     }
 
     return digits;
+  }
+
+  String _buildVerificationPayload({
+    required String phone,
+    String? debugOtp,
+  }) {
+    final payload = {
+      'phone': phone,
+      if (debugOtp != null && debugOtp.isNotEmpty) 'debugOtp': debugOtp,
+    };
+    return json.encode(payload);
+  }
+
+  String _extractPhoneFromVerificationPayload(String verificationPayload) {
+    try {
+      final decoded = json.decode(verificationPayload);
+      if (decoded is Map<String, dynamic>) {
+        final phone = (decoded['phone'] as String?)?.trim();
+        if (phone != null && phone.isNotEmpty) {
+          return _normalizePkPhoneToE164(phone);
+        }
+      }
+    } catch (_) {
+      // backward compatibility: payload may already be plain phone
+    }
+
+    return _normalizePkPhoneToE164(verificationPayload);
   }
 
   /// Get user-friendly message for network errors

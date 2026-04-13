@@ -97,12 +97,12 @@ class OtpService:
 
         return digits
 
-    def send_otp(self, phone: str) -> int:
+    def send_otp(self, phone: str) -> tuple[int, str]:
         """
         Generate and store a new OTP for a phone number.
 
         Returns:
-            OTP expiry duration in seconds.
+            Tuple of (OTP expiry in seconds, generated OTP code).
 
         Raises:
             OtpRateLimitError: if rate limit is exceeded.
@@ -130,7 +130,7 @@ class OtpService:
         # Simulated OTP sending (replace with real SMS adapter later).
         print(f"[OTP SIMULATION] phone={normalized_phone} otp={otp}")
 
-        return self.OTP_EXPIRY_SECONDS
+        return self.OTP_EXPIRY_SECONDS, otp
 
     def verify_otp(self, phone: str, otp: str) -> None:
         """

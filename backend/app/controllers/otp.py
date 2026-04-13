@@ -11,6 +11,7 @@ By default OTP "sending" is simulated by printing OTP to server console.
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 
+from ..config import settings
 from ..schemas.otp_schema import SendOtpRequest, VerifyOtpRequest, OtpApiResponse
 from ..services.otp_service import (
     OtpService,
@@ -34,14 +35,20 @@ async def send_otp(payload: SendOtpRequest):
     - max 3 requests per minute per phone number.
     """
     try:
-        expires_in = otp_service.send_otp(payload.phone)
+        expires_in, generated_otp = otp_service.send_otp(payload.phone)
+        response_data = {
+            "phone": otp_service.normalize_phone(payload.phone),
+        }
+
+        # Useful for free/dev setup where no SMS gateway is connected.
+        if settings.OTP_EXPOSE_IN_RESPONSE:
+            response_data["debugOtp"] = generated_otp
+
         return OtpApiResponse(
             success=True,
             message="OTP generated and sent successfully",
             expiresInSeconds=expires_in,
-            data={
-                "phone": otp_service.normalize_phone(payload.phone),
-            },
+            data=response_data,
         )
     except OtpRateLimitError as exc:
         return JSONResponse(

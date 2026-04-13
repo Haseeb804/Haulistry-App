@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 
@@ -25,9 +26,10 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
   final _otpController = TextEditingController();
 
   String? _verificationId;
+  String? _debugOtp;
 
-  // OTP expiration timer (30 seconds)
-  static const int _otpExpirationSeconds = 30;
+  // OTP expiration timer aligned with backend TTL (5 minutes)
+  static const int _otpExpirationSeconds = 300;
   int _remainingSeconds = 0;
   Timer? _otpTimer;
   bool _isOtpExpired = false;
@@ -62,11 +64,31 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
     final phoneNumber = extra['phoneNumber'] as String?;
 
     if (isSignUpFlow && verificationId != null && pendingSignupData != null && phoneNumber != null) {
+      final parsed = _parseVerificationPayload(verificationId);
+      final parsedPhone = (parsed['phone'] as String?)?.trim();
+      final parsedDebugOtp = (parsed['debugOtp'] as String?)?.trim();
+
       _isValidSignupContext = true;
       _verificationId = verificationId;
       _pendingSignupData = pendingSignupData;
-      _phoneController.text = phoneNumber;
+      _phoneController.text = (parsedPhone != null && parsedPhone.isNotEmpty)
+          ? parsedPhone
+          : phoneNumber;
+      _debugOtp = parsedDebugOtp;
     }
+  }
+
+  Map<String, dynamic> _parseVerificationPayload(String payload) {
+    try {
+      final decoded = json.decode(payload);
+      if (decoded is Map<String, dynamic>) {
+        return decoded;
+      }
+    } catch (_) {
+      // Backward compatibility: older payloads may be plain phone strings.
+    }
+
+    return {'phone': payload};
   }
 
   @override
@@ -82,12 +104,12 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
         _verificationId != null &&
         _pendingSignupData != null) {
       context.read<AuthBloc>().add(
-            AuthSignUpWithPhoneVerifyRequested(
-              verificationId: _verificationId!,
-              smsCode: _otpController.text.trim(),
-              pendingSignupData: _pendingSignupData!,
-            ),
-          );
+        AuthSignUpWithPhoneVerifyRequested(
+          verificationId: _verificationId!,
+          smsCode: _otpController.text.trim(),
+          pendingSignupData: _pendingSignupData!,
+        ),
+      );
     }
   }
 
@@ -126,10 +148,20 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: AppTheme.backgroundColor,
       appBar: AppBar(
         title: const Text('Verify Phone Number'),
+        backgroundColor: AppTheme.primaryColor,
+        foregroundColor: Colors.white,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new_rounded),
+          icon: Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.2),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: const Icon(Icons.arrow_back_ios_new_rounded, size: 18),
+          ),
           onPressed: () => context.go('/signup'),
         ),
       ),
@@ -138,6 +170,13 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
           if (state is AuthPhoneCodeSent) {
             setState(() {
               _verificationId = state.verificationId;
+              final parsed = _parseVerificationPayload(state.verificationId);
+              final parsedPhone = (parsed['phone'] as String?)?.trim();
+              final parsedDebugOtp = (parsed['debugOtp'] as String?)?.trim();
+              if (parsedPhone != null && parsedPhone.isNotEmpty) {
+                _phoneController.text = parsedPhone;
+              }
+              _debugOtp = parsedDebugOtp;
             });
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(content: Text('OTP sent successfully.')),
@@ -182,7 +221,14 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
                 ),
                 const SizedBox(height: 24),
 
-                Form(
+                Container(
+                  padding: const EdgeInsets.all(18),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(18),
+                    boxShadow: AppTheme.softShadow,
+                  ),
+                  child: Form(
                     key: _otpFormKey,
                     child: Column(
                       children: [
@@ -199,10 +245,17 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
                           controller: _otpController,
                           keyboardType: TextInputType.number,
                           maxLength: 6,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                            fontSize: 20,
+                            letterSpacing: 6,
+                            fontWeight: FontWeight.w700,
+                          ),
                           decoration: const InputDecoration(
                             labelText: 'OTP Code',
                             hintText: '123456',
                             prefixIcon: Icon(Icons.verified_user_rounded),
+                            counterText: '',
                           ),
                           validator: (value) {
                             final code = value?.trim() ?? '';
@@ -215,6 +268,35 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
                           },
                           enabled: !isLoading && !_isOtpExpired,
                         ),
+                        if (_debugOtp != null && _debugOtp!.isNotEmpty) ...[
+                          const SizedBox(height: 8),
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: AppTheme.warningColor.withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(
+                                color: AppTheme.warningColor.withValues(alpha: 0.35),
+                              ),
+                            ),
+                            child: Row(
+                              children: [
+                                const Icon(Icons.info_rounded, color: AppTheme.warningColor),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    'Test OTP: $_debugOtp',
+                                    style: const TextStyle(
+                                      color: AppTheme.warningColor,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
                         const SizedBox(height: 8),
                         if (_isOtpExpired)
                           Container(
@@ -244,7 +326,7 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
                           Align(
                             alignment: Alignment.centerLeft,
                             child: Text(
-                              'Resend in ${_remainingSeconds}s',
+                              'Resend in ${(_remainingSeconds ~/ 60).toString().padLeft(2, '0')}:${(_remainingSeconds % 60).toString().padLeft(2, '0')}',
                               style: TextStyle(
                                 color: AppTheme.textSecondary,
                                 fontSize: 12,
@@ -283,18 +365,23 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
                             ),
                           ),
                         const SizedBox(height: 16),
-                        FilledButton.icon(
-                          onPressed: (isLoading || _isOtpExpired) ? null : _verifyOtp,
-                          icon: const Icon(Icons.login_rounded),
-                          label: Text(
-                            _isOtpExpired
-                                ? 'OTP Expired'
-                                : (isLoading ? 'Verifying...' : 'Verify & Continue'),
+                        SizedBox(
+                          width: double.infinity,
+                          height: 52,
+                          child: ElevatedButton.icon(
+                            onPressed: (isLoading || _isOtpExpired) ? null : _verifyOtp,
+                            icon: const Icon(Icons.login_rounded),
+                            label: Text(
+                              _isOtpExpired
+                                  ? 'OTP Expired'
+                                  : (isLoading ? 'Verifying...' : 'Verify & Continue'),
+                            ),
                           ),
                         ),
                       ],
                     ),
                   ),
+                ),
               ],
             ),
           );
