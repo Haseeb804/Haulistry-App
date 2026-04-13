@@ -224,16 +224,16 @@ class _ProviderDocumentsScreenState extends State<ProviderDocumentsScreen> {
     String? vehicleBase64;
     
     if (_cnicFrontImage?.bytes != null) {
-      cnicFrontBase64 = base64Encode(_cnicFrontImage!.bytes!);
+      cnicFrontBase64 = base64Encode(_cnicFrontImage!.bytes);
     }
     if (_cnicBackImage?.bytes != null) {
-      cnicBackBase64 = base64Encode(_cnicBackImage!.bytes!);
+      cnicBackBase64 = base64Encode(_cnicBackImage!.bytes);
     }
     if (_licenseImage?.bytes != null) {
-      licenseBase64 = base64Encode(_licenseImage!.bytes!);
+      licenseBase64 = base64Encode(_licenseImage!.bytes);
     }
     if (_vehicleImage?.bytes != null) {
-      vehicleBase64 = base64Encode(_vehicleImage!.bytes!);
+      vehicleBase64 = base64Encode(_vehicleImage!.bytes);
     }
     
     // If we have signup data, this is a new registration
@@ -529,7 +529,7 @@ class _ProviderDocumentsScreenState extends State<ProviderDocumentsScreen> {
                             ],
                           ),
                           child: DropdownButtonFormField<String>(
-                            value: _selectedVehicleType,
+                            initialValue: _selectedVehicleType,
                             decoration: InputDecoration(
                               labelText: 'Vehicle/Equipment Type *',
                               prefixIcon: Container(

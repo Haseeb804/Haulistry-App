@@ -512,8 +512,6 @@ class BookingBloc extends Bloc<BookingEvent, BookingState> {
     RateBookingRequested event,
     Emitter<BookingState> emit,
   ) async {
-    final currentState = state;
-
     emit(BookingActionProcessing(bookingId: event.bookingId, action: 'rating'));
 
     try {

@@ -15,10 +15,10 @@ class VoiceRecorderService {
   bool _isRecorderInitialized = false;
   bool _isPlayerInitialized = false;
   
-  StreamController<RecorderState> _recorderStateController = StreamController<RecorderState>.broadcast();
-  StreamController<PlayerState> _playerStateController = StreamController<PlayerState>.broadcast();
-  StreamController<Duration> _recordingDurationController = StreamController<Duration>.broadcast();
-  StreamController<Duration> _playbackPositionController = StreamController<Duration>.broadcast();
+  final StreamController<RecorderState> _recorderStateController = StreamController<RecorderState>.broadcast();
+  final StreamController<PlayerState> _playerStateController = StreamController<PlayerState>.broadcast();
+  final StreamController<Duration> _recordingDurationController = StreamController<Duration>.broadcast();
+  final StreamController<Duration> _playbackPositionController = StreamController<Duration>.broadcast();
   
   Stream<RecorderState> get recorderStateStream => _recorderStateController.stream;
   Stream<PlayerState> get playerStateStream => _playerStateController.stream;

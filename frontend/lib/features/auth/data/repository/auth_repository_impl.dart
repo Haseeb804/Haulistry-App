@@ -1,5 +1,6 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:http/http.dart' as http;
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
@@ -91,6 +92,114 @@ class AuthRepositoryImpl implements AuthRepository {
   }
 
   @override
+  Future<String> requestPhoneOtp({required String phoneNumber}) async {
+    final normalizedPhone = _normalizePkPhoneToE164(phoneNumber);
+    final completer = Completer<String>();
+
+    try {
+      await _firebaseAuth.verifyPhoneNumber(
+        phoneNumber: normalizedPhone,
+        timeout: const Duration(seconds: 60),
+        verificationCompleted: (PhoneAuthCredential credential) async {
+          // Auto-retrieval may complete instantly on Android in some cases.
+          // We keep this non-blocking because UI flow proceeds from verificationId.
+        },
+        verificationFailed: (FirebaseAuthException e) {
+          if (!completer.isCompleted) {
+            completer.completeError(Exception(_getAuthErrorMessage(e.code)));
+          }
+        },
+        codeSent: (String verificationId, int? resendToken) {
+          if (!completer.isCompleted) {
+            completer.complete(verificationId);
+          }
+        },
+        codeAutoRetrievalTimeout: (String verificationId) {
+          if (!completer.isCompleted) {
+            completer.complete(verificationId);
+          }
+        },
+      );
+
+      return completer.future;
+    } on FirebaseAuthException catch (e) {
+      throw Exception(_getAuthErrorMessage(e.code));
+    } catch (e) {
+      throw Exception(_getNetworkErrorMessage(e));
+    }
+  }
+
+  @override
+  Future<UserEntity> verifyPhoneOtpAndSignIn({
+    required String verificationId,
+    required String smsCode,
+    String? name,
+    required String role,
+    String? email,
+  }) async {
+    try {
+      final credential = PhoneAuthProvider.credential(
+        verificationId: verificationId,
+        smsCode: smsCode,
+      );
+
+      final userCredential = await _firebaseAuth.signInWithCredential(credential);
+      final firebaseUser = userCredential.user;
+      if (firebaseUser == null) {
+        throw Exception('Phone sign-in failed');
+      }
+
+      final idToken = await firebaseUser.getIdToken();
+      if (idToken == null) {
+        throw Exception('Failed to get auth token');
+      }
+
+      // Try existing user first
+      final meResponse = await http.get(
+        Uri.parse('$_baseUrl/auth/me'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $idToken',
+        },
+      );
+
+      if (meResponse.statusCode == 200) {
+        final meData = json.decode(meResponse.body);
+        if (meData['success'] == true && meData['user'] != null) {
+          return UserEntity.fromJson(meData['user']);
+        }
+      }
+
+      // Create/sync user for first-time phone-auth login
+      final syncResponse = await http.post(
+        Uri.parse('$_baseUrl/auth/phone/sync'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $idToken',
+        },
+        body: json.encode({
+          if (name != null && name.trim().isNotEmpty) 'name': name.trim(),
+          'role': role,
+          if (email != null && email.trim().isNotEmpty) 'email': email.trim(),
+        }),
+      );
+
+      if (syncResponse.statusCode == 200 || syncResponse.statusCode == 201) {
+        final syncData = json.decode(syncResponse.body);
+        if (syncData['success'] == true && syncData['user'] != null) {
+          return UserEntity.fromJson(syncData['user']);
+        }
+      }
+
+      throw Exception('Failed to sync phone-auth user');
+    } on FirebaseAuthException catch (e) {
+      throw Exception(_getAuthErrorMessage(e.code));
+    } catch (e) {
+      throw Exception(_getNetworkErrorMessage(e));
+    }
+  }
+
+  @override
   Future<UserEntity> signUpWithEmail({
     required String email,
     required String password,
@@ -121,6 +230,77 @@ class AuthRepositoryImpl implements AuthRepository {
         headers: {'Content-Type': 'application/json'},
         body: json.encode({
           'firebaseUid': user.uid,
+          'email': email,
+          'name': name,
+          'phone': phone,
+          'role': role,
+          'isVerified': true,
+          'isActive': true,
+          if (profileImageBase64 != null) 'profileImageUrl': profileImageBase64,
+        }),
+      );
+
+      if (response.statusCode != 201) {
+        throw Exception('Failed to sync user to database');
+      }
+
+      final data = json.decode(response.body);
+      if (data['success'] != true || data['user'] == null) {
+        throw Exception('Failed to create user in database');
+      }
+
+      return UserEntity.fromJson(data['user']);
+    } on FirebaseAuthException catch (e) {
+      throw Exception(_getAuthErrorMessage(e.code));
+    } catch (e) {
+      throw Exception(_getNetworkErrorMessage(e));
+    }
+  }
+
+  @override
+  Future<UserEntity> completeSignUpWithPhoneVerification({
+    required String verificationId,
+    required String smsCode,
+    required String firebaseUid,
+    required String email,
+    required String name,
+    required String phone,
+    required String role,
+    Uint8List? profileImage,
+  }) async {
+    try {
+      // Step 1: Verify phone OTP
+      final credential = PhoneAuthProvider.credential(
+        verificationId: verificationId,
+        smsCode: smsCode,
+      );
+
+      // Link phone credential to existing Firebase user
+      try {
+        await _firebaseAuth.currentUser?.linkWithCredential(credential);
+      } catch (e) {
+        // If already linked, continue
+      }
+
+      // Step 2: Get fresh ID token after phone verification
+      final firebaseUser = _firebaseAuth.currentUser;
+      if (firebaseUser == null) {
+        throw Exception('User not authenticated');
+      }
+
+      await firebaseUser.getIdToken(true);
+
+      // Step 3: NOW sync user to Neo4j (this was deferred)
+      String? profileImageBase64;
+      if (profileImage != null) {
+        profileImageBase64 = 'data:image/jpeg;base64,${base64Encode(profileImage)}';
+      }
+
+      final response = await http.post(
+        Uri.parse('$_baseUrl/auth/sync'),
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode({
+          'firebaseUid': firebaseUid,
           'email': email,
           'name': name,
           'phone': phone,
@@ -318,7 +498,7 @@ class AuthRepositoryImpl implements AuthRepository {
       try {
         final idToken = await user.getIdToken();
         if (idToken != null) {
-          final vehicleResponse = await http.post(
+          final response = await http.post(
             Uri.parse('$_baseUrl/vehicles'),
             headers: {
               'Content-Type': 'application/json',
@@ -335,8 +515,14 @@ class AuthRepositoryImpl implements AuthRepository {
               'isAvailable': true,
             }),
           );
+
+          if (response.statusCode != 200 && response.statusCode != 201) {
+            throw Exception('Failed to create provider vehicle profile');
+          }
         }
       } catch (vehicleError) {
+        // Vehicle creation is non-blocking for signup completion.
+        // Intentionally swallowed to avoid failing account creation.
       }
 
       return userEntity;
@@ -365,9 +551,43 @@ class AuthRepositoryImpl implements AuthRepository {
         return 'This account has been disabled';
       case 'network-request-failed':
         return 'Please check your internet connection and try again';
+      case 'invalid-phone-number':
+        return 'Invalid phone number format';
+      case 'too-many-requests':
+        return 'Too many attempts. Please try again later';
+      case 'invalid-verification-code':
+        return 'Invalid OTP code';
+      case 'session-expired':
+        return 'OTP session expired. Please request a new code';
+      case 'captcha-check-failed':
+        return 'reCAPTCHA verification failed. Please try again';
       default:
         return 'Authentication failed';
     }
+  }
+
+  String _normalizePkPhoneToE164(String phone) {
+    final digits = phone.replaceAll(RegExp(r'[^0-9+]'), '');
+
+    if (digits.startsWith('+')) {
+      return digits;
+    }
+
+    if (digits.startsWith('03') && digits.length == 11) {
+      // 03XXXXXXXXX -> +923XXXXXXXXX
+      return '+92${digits.substring(1)}';
+    }
+
+    if (digits.startsWith('92') && digits.length == 12) {
+      return '+$digits';
+    }
+
+    // If already entered as local digits without 0 (3XXXXXXXXX)
+    if (digits.startsWith('3') && digits.length == 10) {
+      return '+92$digits';
+    }
+
+    return digits;
   }
 
   /// Get user-friendly message for network errors

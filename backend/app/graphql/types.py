@@ -1,5 +1,4 @@
 import graphene
-from datetime import datetime
 
 
 class UserType(graphene.ObjectType):

@@ -127,6 +127,17 @@ class _SignupScreenState extends State<SignupScreen> with SingleTickerProviderSt
             } else {
               context.go('/seeker/home');
             }
+          } else if (state is AuthPendingPhoneVerification) {
+            // Signup successful but waiting for phone verification
+            context.go('/phone-auth', extra: {
+              'verificationId': state.verificationId,
+              'phoneNumber': state.phoneNumber,
+              'firebaseUid': state.firebaseUid,
+              'email': state.email,
+              'name': state.name,
+              'role': state.role,
+              'isSignUpFlow': true,
+            });
           } else if (state is AuthError) {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(

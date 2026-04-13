@@ -14,6 +14,9 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     on<AuthSignInRequested>(_onSignInRequested);
     on<AuthSignUpRequested>(_onSignUpRequested);
     on<AuthSignOutRequested>(_onSignOutRequested);
+    on<AuthPhoneOtpRequested>(_onPhoneOtpRequested);
+    on<AuthPhoneOtpVerifyRequested>(_onPhoneOtpVerifyRequested);
+    on<AuthSignUpWithPhoneVerifyRequested>(_onSignUpWithPhoneVerifyRequested);
     on<AuthPasswordResetRequested>(_onPasswordResetRequested);
     on<AuthProfileUpdateRequested>(_onProfileUpdateRequested);
     on<AuthUpdateProfileRequested>(_onUpdateProfileRequested);
@@ -66,17 +69,31 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
   ) async {
     emit(const AuthLoading());
     try {
-      final user = await _authRepository.signUpWithEmail(
+      // Step 1: Create Firebase user WITHOUT syncing to Neo4j yet
+      final firebaseUser = await _authRepository.signUpWithEmail(
         email: event.email,
         password: event.password,
         name: event.name,
         phone: event.phone,
-        role: event.role,        profileImage: event.profileImage,      );
-      
-      // Update FCM token after successful signup
-      _updateFcmToken();
-      
-      emit(AuthAuthenticated(user: user));
+        role: event.role,
+        profileImage: event.profileImage,
+      );
+
+      // Step 2: Request OTP for phone verification before persisting
+      emit(const AuthLoading());
+      final verificationId = await _authRepository.requestPhoneOtp(
+        phoneNumber: event.phone,
+      );
+
+      // Step 3: Show pending verification state (user must verify phone before account created)
+      emit(AuthPendingPhoneVerification(
+        verificationId: verificationId,
+        phoneNumber: event.phone,
+        firebaseUid: firebaseUser.id,
+        email: event.email,
+        name: event.name,
+        role: event.role,
+      ));
     } catch (e) {
       emit(AuthError(message: e.toString()));
     }
@@ -102,6 +119,72 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     try {
       await _authRepository.signOut();
       emit(const AuthUnauthenticated());
+    } catch (e) {
+      emit(AuthError(message: e.toString()));
+    }
+  }
+
+  Future<void> _onPhoneOtpRequested(
+    AuthPhoneOtpRequested event,
+    Emitter<AuthState> emit,
+  ) async {
+    emit(const AuthLoading());
+    try {
+      final verificationId = await _authRepository.requestPhoneOtp(
+        phoneNumber: event.phoneNumber,
+      );
+
+      emit(AuthPhoneCodeSent(
+        verificationId: verificationId,
+        phoneNumber: event.phoneNumber,
+        sentAt: DateTime.now(),
+      ));
+    } catch (e) {
+      emit(AuthError(message: e.toString()));
+    }
+  }
+
+  Future<void> _onPhoneOtpVerifyRequested(
+    AuthPhoneOtpVerifyRequested event,
+    Emitter<AuthState> emit,
+  ) async {
+    emit(const AuthLoading());
+    try {
+      final user = await _authRepository.verifyPhoneOtpAndSignIn(
+        verificationId: event.verificationId,
+        smsCode: event.smsCode,
+        name: event.name,
+        role: event.role,
+        email: event.email,
+      );
+
+      _updateFcmToken();
+      emit(AuthAuthenticated(user: user));
+    } catch (e) {
+      emit(AuthError(message: e.toString()));
+    }
+  }
+
+  Future<void> _onSignUpWithPhoneVerifyRequested(
+    AuthSignUpWithPhoneVerifyRequested event,
+    Emitter<AuthState> emit,
+  ) async {
+    emit(const AuthLoading());
+    try {
+      // Verify OTP and complete signup (now sync to Neo4j)
+      final user = await _authRepository.completeSignUpWithPhoneVerification(
+        verificationId: event.verificationId,
+        smsCode: event.smsCode,
+        firebaseUid: event.firebaseUid,
+        email: event.email,
+        name: event.name,
+        phone: event.phone,
+        role: event.role,
+        profileImage: event.profileImage,
+      );
+
+      _updateFcmToken();
+      emit(AuthAuthenticated(user: user));
     } catch (e) {
       emit(AuthError(message: e.toString()));
     }

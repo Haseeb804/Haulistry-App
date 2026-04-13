@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'dart:convert';
-import 'dart:typed_data';
 import '../../../../core/domain/entities/service_entity.dart';
 import '../../../../core/domain/entities/vehicle_entity.dart';
 import '../../../../core/theme/app_theme.dart';
@@ -847,7 +846,7 @@ class _ServiceManagementScreenState extends State<ServiceManagementScreen> {
                               )
                             else
                               DropdownButtonFormField<String>(
-                                value: selectedVehicleId,
+                                initialValue: selectedVehicleId,
                                 decoration: InputDecoration(
                                   labelText: 'Select Vehicle',
                                   prefixIcon: Container(
@@ -913,7 +912,7 @@ class _ServiceManagementScreenState extends State<ServiceManagementScreen> {
 
                             // Category
                             DropdownButtonFormField<String>(
-                              value: selectedCategory,
+                              initialValue: selectedCategory,
                               decoration: InputDecoration(
                                 labelText: 'Service Category',
                                 prefixIcon: Container(

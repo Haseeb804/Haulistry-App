@@ -889,7 +889,7 @@ class _AvailableBookingsScreenState extends State<AvailableBookingsScreen> {
         border: Border.all(color: Colors.grey.shade200),
       ),
       child: DropdownButtonFormField<VehicleEntity>(
-        value: value,
+        initialValue: value,
         decoration: InputDecoration(
           labelText: label,
           prefixIcon: Container(

@@ -208,7 +208,7 @@ class _EarningsDashboardScreenState extends State<EarningsDashboardScreen> {
           
           for (final booking in completed) {
             final amount = booking.finalPrice ?? booking.estimatedPrice;
-            final completedAt = booking.completedAt ?? booking.updatedAt ?? booking.createdAt;
+            final completedAt = booking.completedAt ?? booking.updatedAt;
             
             if (completedAt.isAfter(monthStart)) {
               thisMonth += amount;

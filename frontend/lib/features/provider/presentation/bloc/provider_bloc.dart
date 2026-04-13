@@ -641,7 +641,7 @@ class ProviderBloc extends Bloc<ProviderEvent, ProviderState> {
         final amount = booking.finalPrice ?? booking.estimatedPrice;
         totalEarnings += amount;
 
-        final completedAt = booking.completedAt ?? booking.updatedAt ?? booking.createdAt;
+        final completedAt = booking.completedAt ?? booking.updatedAt;
         
         if (completedAt.isAfter(monthStart)) {
           thisMonth += amount;

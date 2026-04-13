@@ -1,5 +1,4 @@
 import 'package:equatable/equatable.dart';
-import 'package:latlong2/latlong.dart';
 
 /// Events for Location Tracking BLoC
 abstract class LocationTrackingEvent extends Equatable {

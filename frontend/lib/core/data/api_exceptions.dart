@@ -46,10 +46,9 @@ class ErrorMessages {
 }
 
 class ServerException extends ApiException {
-  ServerException({String? message, int? statusCode})
+  ServerException({String? message, super.statusCode})
       : super(
           message: message ?? 'Server error occurred',
-          statusCode: statusCode,
         );
 }
 
@@ -64,10 +63,9 @@ class NotFoundException extends ApiException {
 }
 
 class ValidationException extends ApiException {
-  ValidationException({String? message, dynamic data})
+  ValidationException({String? message, super.data})
       : super(
           message: message ?? 'Validation error',
           statusCode: 422,
-          data: data,
         );
 }

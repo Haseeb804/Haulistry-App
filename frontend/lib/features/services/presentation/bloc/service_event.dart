@@ -1,5 +1,4 @@
 import 'package:equatable/equatable.dart';
-import '../../domain/entities/service_entity.dart';
 
 abstract class ServiceEvent extends Equatable {
   const ServiceEvent();

@@ -54,7 +54,6 @@ class _ProviderTrackingScreenState extends State<ProviderTrackingScreen> {
   LatLng? _seekerLocation; // Real-time seeker location
   BookingEntity? _booking;
   bool _isNearDropLocation = false;
-  bool _isTrackingActive = false;
   static const double _completionRadiusMeters = 100;
 
   @override
@@ -83,7 +82,6 @@ class _ProviderTrackingScreenState extends State<ProviderTrackingScreen> {
           bookingId: widget.bookingId,
         ),
       );
-      _isTrackingActive = true;
     }
   }
 
@@ -320,6 +318,7 @@ class _ProviderTrackingScreenState extends State<ProviderTrackingScreen> {
         }
       }
     } catch (e) {
+      debugPrint('Route fetch failed: $e');
     }
   }
 
@@ -439,7 +438,7 @@ class _ProviderTrackingScreenState extends State<ProviderTrackingScreen> {
         }
 
         // Use widget.bookingStatus if _booking is null
-        final _currentStatus = _booking?.status ?? widget.bookingStatus ?? 'in_progress';
+        final currentStatus = _booking?.status ?? widget.bookingStatus ?? 'in_progress';
 
         final isLoading = state is ProviderBookingActionInProgress &&
             state.bookingId == widget.bookingId;
@@ -610,7 +609,7 @@ class _ProviderTrackingScreenState extends State<ProviderTrackingScreen> {
                       const SizedBox(height: 20),
 
                       // Proximity indicator
-                      if (_currentStatus == 'in_progress')
+                      if (currentStatus == 'in_progress')
                         Container(
                           padding: const EdgeInsets.all(12),
                           margin: const EdgeInsets.only(bottom: 16),
@@ -652,7 +651,7 @@ class _ProviderTrackingScreenState extends State<ProviderTrackingScreen> {
                         ),
 
                       // Communication Buttons (Call & Message)
-                      if (_currentStatus != 'completed' && _currentStatus != 'cancelled') ...[
+                      if (currentStatus != 'completed' && currentStatus != 'cancelled') ...[
                         Row(
                           children: [
                             // Call Button
@@ -826,10 +825,10 @@ class _ProviderTrackingScreenState extends State<ProviderTrackingScreen> {
                       ],
 
                       // Complete button - show for active bookings
-                      if (_currentStatus == 'in_progress' ||
-                          _currentStatus == 'provider_arrived' ||
-                          _currentStatus == 'accepted' ||
-                          _currentStatus == 'provider_arriving')
+                      if (currentStatus == 'in_progress' ||
+                          currentStatus == 'provider_arrived' ||
+                          currentStatus == 'accepted' ||
+                          currentStatus == 'provider_arriving')
                         SizedBox(
                           width: double.infinity,
                           height: 56,

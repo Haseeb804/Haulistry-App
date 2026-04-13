@@ -4,7 +4,6 @@ Pydantic schemas for User/Auth API requests and responses
 
 from pydantic import BaseModel, Field, EmailStr
 from typing import Optional, Dict, Any
-from datetime import datetime
 
 
 class UserCreate(BaseModel):
@@ -115,5 +114,22 @@ class TokenVerifyResponse(BaseModel):
                     "name": "John Doe",
                     "role": "seeker"
                 }
+            }
+        }
+
+
+class PhoneUserSyncRequest(BaseModel):
+    """Schema for syncing a Firebase phone-authenticated user to Neo4j"""
+    name: Optional[str] = Field(None, description="Display name for first-time user creation")
+    role: Optional[str] = Field("seeker", description="User role: 'seeker' or 'provider'")
+    email: Optional[str] = Field(None, description="Optional email fallback for phone users")
+    profileImageUrl: Optional[str] = Field(None, description="Optional profile image URL")
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "name": "Ali Khan",
+                "role": "seeker",
+                "email": "optional@example.com"
             }
         }

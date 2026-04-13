@@ -70,50 +70,6 @@ class ChatStartConversation extends ChatEvent {
   List<Object?> get props => [otherUserId, otherUserName];
 }
 
-/// Internal event: conversations stream emitted new data
-class _ConversationsUpdated extends ChatEvent {
-  final List<Conversation> conversations;
-
-  const _ConversationsUpdated({required this.conversations});
-
-  @override
-  List<Object?> get props => [conversations];
-}
-
-/// Internal event: conversations stream emitted an error
-class _ConversationsError extends ChatEvent {
-  final String message;
-
-  const _ConversationsError({required this.message});
-
-  @override
-  List<Object?> get props => [message];
-}
-
-/// Internal event: messages stream emitted new data
-class _MessagesUpdated extends ChatEvent {
-  final String conversationId;
-  final List<ChatMessage> messages;
-
-  const _MessagesUpdated({
-    required this.conversationId,
-    required this.messages,
-  });
-
-  @override
-  List<Object?> get props => [conversationId, messages];
-}
-
-/// Internal event: messages stream emitted an error
-class _MessagesError extends ChatEvent {
-  final String message;
-
-  const _MessagesError({required this.message});
-
-  @override
-  List<Object?> get props => [message];
-}
-
 // Helper classes
 class ChatMessage extends Equatable {
   final String id;

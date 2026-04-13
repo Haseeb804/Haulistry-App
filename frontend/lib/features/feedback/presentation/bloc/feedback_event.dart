@@ -1,5 +1,4 @@
 import 'package:equatable/equatable.dart';
-import '../../../../core/domain/entities/feedback_entity.dart';
 
 abstract class FeedbackEvent extends Equatable {
   const FeedbackEvent();

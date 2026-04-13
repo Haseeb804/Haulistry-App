@@ -1,7 +1,6 @@
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, Field, field_validator
-from typing import Optional, List
-import re
+from typing import Optional
 from ..models.feedback import Feedback
 
 router = APIRouter(prefix="/feedback", tags=["Feedback"])

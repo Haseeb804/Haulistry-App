@@ -48,7 +48,7 @@ class BookingController:
         RETURN b
         """
         
-        result = self.db.execute_write(query, booking.to_neo4j_props())
+        self.db.execute_write(query, booking.to_neo4j_props())
         return booking
     
     def get_booking_by_id(self, booking_id: str) -> Optional[Booking]:

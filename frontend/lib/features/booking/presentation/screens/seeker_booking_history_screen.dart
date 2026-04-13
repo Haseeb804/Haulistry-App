@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
@@ -7,8 +6,6 @@ import 'package:latlong2/latlong.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/widgets/modern_widgets.dart';
 import '../../../../core/domain/entities/booking_entity.dart';
-import '../../../auth/presentation/bloc/auth_bloc.dart';
-import '../../../auth/presentation/bloc/auth_state.dart';
 import '../../data/datasources/booking_remote_datasource.dart';
 import '../../data/repositories/booking_repository_impl.dart';
 import '../../../../core/data/graphql_client.dart';
@@ -80,13 +77,9 @@ class _SeekerBookingHistoryScreenState extends State<SeekerBookingHistoryScreen>
     LatLng? pickupLocation;
     LatLng? dropoffLocation;
     
-    if (booking.pickupLatitude != null && booking.pickupLongitude != null) {
-      pickupLocation = LatLng(booking.pickupLatitude!, booking.pickupLongitude!);
-    }
-    if (booking.dropLatitude != null && booking.dropLongitude != null) {
-      dropoffLocation = LatLng(booking.dropLatitude!, booking.dropLongitude!);
-    }
-
+    pickupLocation = LatLng(booking.pickupLatitude, booking.pickupLongitude);
+      dropoffLocation = LatLng(booking.dropLatitude, booking.dropLongitude);
+  
     context.push(
       '/booking/${booking.id}/tracking',
       extra: {

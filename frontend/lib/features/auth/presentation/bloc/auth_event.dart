@@ -58,6 +58,72 @@ class AuthSignOutRequested extends AuthEvent {
   const AuthSignOutRequested();
 }
 
+class AuthPhoneOtpRequested extends AuthEvent {
+  final String phoneNumber;
+
+  const AuthPhoneOtpRequested({required this.phoneNumber});
+
+  @override
+  List<Object?> get props => [phoneNumber];
+}
+
+class AuthPhoneOtpVerifyRequested extends AuthEvent {
+  final String verificationId;
+  final String smsCode;
+  final String role;
+  final String? name;
+  final String? email;
+
+  const AuthPhoneOtpVerifyRequested({
+    required this.verificationId,
+    required this.smsCode,
+    required this.role,
+    this.name,
+    this.email,
+  });
+
+  @override
+  List<Object?> get props => [verificationId, smsCode, role, name, email];
+}
+
+/// Complete signup with phone verification
+class AuthSignUpWithPhoneVerifyRequested extends AuthEvent {
+  final String verificationId;
+  final String smsCode;
+  final String firebaseUid;
+  final String email;
+  final String password;
+  final String name;
+  final String phone;
+  final String role;
+  final Uint8List? profileImage;
+
+  const AuthSignUpWithPhoneVerifyRequested({
+    required this.verificationId,
+    required this.smsCode,
+    required this.firebaseUid,
+    required this.email,
+    required this.password,
+    required this.name,
+    required this.phone,
+    required this.role,
+    this.profileImage,
+  });
+
+  @override
+  List<Object?> get props => [
+        verificationId,
+        smsCode,
+        firebaseUid,
+        email,
+        password,
+        name,
+        phone,
+        role,
+        profileImage,
+      ];
+}
+
 class AuthPasswordResetRequested extends AuthEvent {
   final String email;
 

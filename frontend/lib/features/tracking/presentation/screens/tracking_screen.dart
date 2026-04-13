@@ -227,6 +227,7 @@ class _TrackingScreenState extends State<TrackingScreen> {
         }
       }
     } catch (e) {
+      debugPrint('Route fetch failed: $e');
     }
 
     // Fallback to straight line if OSRM fails
@@ -971,54 +972,4 @@ Color _getStatusColor(String status) {
     );
   }
 
-  Widget _buildStatCard({
-    required IconData icon,
-    required String label,
-    required String value,
-    required LinearGradient gradient,
-  }) {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            gradient.colors.first.withOpacity(0.1),
-            gradient.colors.last.withOpacity(0.05),
-          ],
-        ),
-        borderRadius: BorderRadius.circular(14),
-      ),
-      child: Column(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              gradient: gradient,
-              shape: BoxShape.circle,
-            ),
-            child: Icon(icon, size: 20, color: Colors.white),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 11,
-              color: Colors.grey[700],
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            value,
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.bold,
-              color: gradient.colors.first,
-            ),
-            textAlign: TextAlign.center,
-          ),
-        ],
-      ),
-    );
-  }
 }

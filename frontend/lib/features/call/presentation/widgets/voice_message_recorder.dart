@@ -76,9 +76,9 @@ class _VoiceMessageRecorderState extends State<VoiceMessageRecorder>
     }
 
     final result = await _recorderService.stopRecording();
-    if (result != null && result.path != null) {
+    if (result != null) {
       widget.onRecordingComplete(
-        File(result.path!),
+        File(result.path),
         result.duration.inSeconds,
       );
     }

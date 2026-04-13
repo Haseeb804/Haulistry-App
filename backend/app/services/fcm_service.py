@@ -9,7 +9,7 @@ Handles:
 - Location updates (provider arriving/arrived)
 """
 
-from typing import Dict, List, Optional, Any
+from typing import Dict, Optional, Any
 from firebase_admin import messaging
 from datetime import datetime
 import logging

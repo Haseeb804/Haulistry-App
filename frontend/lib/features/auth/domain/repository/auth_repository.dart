@@ -9,6 +9,30 @@ abstract class AuthRepository {
   
   /// Sign in with email and password
   Future<UserEntity> signInWithEmail(String email, String password);
+
+  /// Request Firebase OTP for phone authentication
+  Future<String> requestPhoneOtp({required String phoneNumber});
+
+  /// Verify OTP and sign in with phone, then sync/fetch user from backend
+  Future<UserEntity> verifyPhoneOtpAndSignIn({
+    required String verificationId,
+    required String smsCode,
+    String? name,
+    required String role,
+    String? email,
+  });
+
+  /// Complete email signup after phone OTP verification (don't persist until verified)
+  Future<UserEntity> completeSignUpWithPhoneVerification({
+    required String verificationId,
+    required String smsCode,
+    required String firebaseUid,
+    required String email,
+    required String name,
+    required String phone,
+    required String role,
+    Uint8List? profileImage,
+  });
   
   /// Sign up with email and password
   Future<UserEntity> signUpWithEmail({

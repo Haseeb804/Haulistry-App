@@ -9,7 +9,7 @@ import firebase_admin
 from firebase_admin import credentials, auth
 from ..schemas.user_schema import (
     UserCreate, UserUpdate, UserResponse,
-    TokenVerifyRequest, TokenVerifyResponse
+    TokenVerifyRequest, TokenVerifyResponse, PhoneUserSyncRequest
 )
 from ..models.user import User
 from ..config import settings
@@ -146,6 +146,120 @@ async def verify_token(token_request: TokenVerifyRequest):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Token verification failed: {str(e)}"
+        )
+
+
+@router.post("/phone/sync", response_model=UserResponse)
+async def sync_phone_user(
+    payload: PhoneUserSyncRequest,
+    authorization: Optional[str] = Header(None)
+):
+    """
+    Sync a Firebase Phone-Auth user to Neo4j.
+
+    Workflow:
+      1) Verify Firebase ID token from Authorization header
+      2) Read uid + phone_number claims from token
+      3) Return existing user if found (with minor updates)
+      4) Otherwise create a new user node in Neo4j
+    """
+    if not authorization or not authorization.startswith('Bearer '):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing or invalid authorization header"
+        )
+
+    try:
+        id_token = authorization.split('Bearer ')[1]
+        decoded_token = auth.verify_id_token(id_token)
+
+        firebase_uid = decoded_token['uid']
+        phone_number = decoded_token.get('phone_number')
+        token_email = decoded_token.get('email')
+
+        if not phone_number:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Token does not contain a verified phone number"
+            )
+
+        role = (payload.role or 'seeker').lower()
+        if role not in ('seeker', 'provider'):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid role. Must be 'seeker' or 'provider'"
+            )
+
+        # If user exists already, keep record and apply safe updates only
+        existing_user = User.get_by_id(firebase_uid)
+        if existing_user:
+            update_data = {}
+
+            if existing_user.get('phone') != phone_number:
+                update_data['phone'] = phone_number
+
+            if existing_user.get('isVerified') is not True:
+                update_data['isVerified'] = True
+
+            if payload.name and not existing_user.get('name'):
+                update_data['name'] = payload.name.strip()
+
+            if payload.profileImageUrl and not existing_user.get('profileImageUrl'):
+                update_data['profileImageUrl'] = payload.profileImageUrl
+
+            user_data = User.update(firebase_uid, update_data) if update_data else existing_user
+
+            return UserResponse(
+                success=True,
+                message="Phone-auth user synced successfully",
+                user=user_data
+            )
+
+        # Create first-time user from phone-auth context
+        fallback_email = payload.email or token_email or f"{firebase_uid}@phone.local"
+        fallback_name = (payload.name or "").strip() or f"User {phone_number[-4:]}"
+
+        create_payload = {
+            "firebaseUid": firebase_uid,
+            "email": fallback_email,
+            "name": fallback_name,
+            "phone": phone_number,
+            "role": role,
+            "isVerified": True,
+            "isActive": True,
+            "profileImageUrl": payload.profileImageUrl,
+        }
+
+        user_data = User.create(create_payload)
+        if not user_data:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to sync phone-auth user to Neo4j"
+            )
+
+        return UserResponse(
+            success=True,
+            message="Phone-auth user created successfully",
+            user=user_data
+        )
+
+    except auth.InvalidIdTokenError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid Firebase token"
+        )
+    except auth.ExpiredIdTokenError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Firebase token has expired"
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Phone-auth sync failed: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to sync phone-auth user: {str(e)}"
         )
 
 

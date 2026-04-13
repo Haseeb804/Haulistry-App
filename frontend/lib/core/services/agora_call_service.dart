@@ -9,9 +9,9 @@ class AgoraCallService {
 
   late RtcEngine _engine;
   bool _isInitialized = false;
-  StreamController<CallState> _callStateController = StreamController<CallState>.broadcast();
-  StreamController<RemoteUserState> _remoteUserController = StreamController<RemoteUserState>.broadcast();
-  StreamController<int> _volumeController = StreamController<int>.broadcast();
+  final StreamController<CallState> _callStateController = StreamController<CallState>.broadcast();
+  final StreamController<RemoteUserState> _remoteUserController = StreamController<RemoteUserState>.broadcast();
+  final StreamController<int> _volumeController = StreamController<int>.broadcast();
 
   Stream<CallState> get callStateStream => _callStateController.stream;
   Stream<RemoteUserState> get remoteUserStream => _remoteUserController.stream;

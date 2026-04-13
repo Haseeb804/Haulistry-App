@@ -92,13 +92,9 @@ class _BookingHistoryScreenState extends State<BookingHistoryScreen> {
     LatLng? pickupLocation;
     LatLng? dropoffLocation;
     
-    if (booking.pickupLatitude != null && booking.pickupLongitude != null) {
-      pickupLocation = LatLng(booking.pickupLatitude!, booking.pickupLongitude!);
-    }
-    if (booking.dropLatitude != null && booking.dropLongitude != null) {
-      dropoffLocation = LatLng(booking.dropLatitude!, booking.dropLongitude!);
-    }
-    
+    pickupLocation = LatLng(booking.pickupLatitude, booking.pickupLongitude);
+      dropoffLocation = LatLng(booking.dropLatitude, booking.dropLongitude);
+      
     // Check user role to determine which tracking screen to use
     final authState = context.read<AuthBloc>().state;
     final isProvider = authState is AuthAuthenticated && 
@@ -552,21 +548,6 @@ class _BookingHistoryScreenState extends State<BookingHistoryScreen> {
         ],
       ),
     );
-  }
-
-  String _formatDate(DateTime date) {
-    final now = DateTime.now();
-    final diff = now.difference(date);
-
-    if (diff.inDays == 0) {
-      return 'Today ${date.hour}:${date.minute.toString().padLeft(2, '0')}';
-    } else if (diff.inDays == 1) {
-      return 'Yesterday';
-    } else if (diff.inDays < 7) {
-      return '${diff.inDays} days ago';
-    } else {
-      return '${date.day}/${date.month}/${date.year}';
-    }
   }
 
   @override

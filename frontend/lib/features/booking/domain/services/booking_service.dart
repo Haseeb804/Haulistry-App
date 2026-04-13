@@ -1,5 +1,5 @@
 import 'package:latlong2/latlong.dart';
-import 'dart:math' show cos, sqrt, asin, sin;
+import 'dart:math' show sqrt, asin;
 import '../../../../core/constants/app_constants.dart';
 
 class BookingService {

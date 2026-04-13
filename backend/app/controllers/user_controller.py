@@ -2,7 +2,6 @@ from typing import List, Optional, Dict, Any
 from datetime import datetime
 from ..database import get_neo4j_driver
 from ..models.user import User
-import uuid
 
 
 class UserController:
@@ -42,7 +41,7 @@ class UserController:
         RETURN u
         """
         
-        result = self.db.execute_write(query, user.to_neo4j_props())
+        self.db.execute_write(query, user.to_neo4j_props())
         return user
     
     def get_user_by_id(self, user_id: str) -> Optional[User]:

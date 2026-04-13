@@ -112,7 +112,7 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
                   if (state.remoteUid != null)
                     AgoraVideoView(
                       controller: VideoViewController.remote(
-                        rtcEngine: agora.AgoraCallService().engine!,
+                        rtcEngine: agora.AgoraCallService().engine,
                         canvas: VideoCanvas(uid: state.remoteUid),
                         connection: const RtcConnection(),
                       ),
@@ -205,7 +205,7 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
                         child: state.isVideoOn
                             ? AgoraVideoView(
                                 controller: VideoViewController(
-                                  rtcEngine: agora.AgoraCallService().engine!,
+                                  rtcEngine: agora.AgoraCallService().engine,
                                   canvas: const VideoCanvas(uid: 0),
                                 ),
                               )

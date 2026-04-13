@@ -19,7 +19,7 @@ from pydantic import BaseModel, Field
 from ..schemas.booking_schema import BookingCreate, BookingUpdate, BookingResponse
 from ..models.booking import Booking
 from ..models.location import LocationUpdate
-from ..services.fcm_service import fcm_service, FCMNotificationType
+from ..services.fcm_service import fcm_service
 
 router = APIRouter()
 

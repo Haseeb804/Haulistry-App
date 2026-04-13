@@ -10,6 +10,7 @@ import 'features/auth/presentation/bloc/auth_bloc.dart';
 import 'features/auth/presentation/bloc/auth_event.dart';
 import 'features/auth/presentation/screens/login_screen.dart';
 import 'features/auth/presentation/screens/signup_screen.dart';
+import 'features/auth/presentation/screens/phone_auth_screen.dart';
 import 'features/auth/presentation/screens/forgot_password_screen.dart';
 import 'features/services/presentation/screens/seeker_home_screen.dart';
 import 'features/services/presentation/screens/service_detail_screen.dart';
@@ -26,7 +27,6 @@ import 'features/provider/presentation/screens/vehicle_management_screen.dart';
 import 'features/provider/presentation/screens/service_management_screen.dart';
 import 'features/provider/presentation/screens/earnings_dashboard_screen.dart';
 import 'features/provider/presentation/bloc/provider_bloc.dart';
-import 'features/provider/presentation/bloc/provider_event.dart';
 import 'features/provider/data/datasources/provider_remote_datasource.dart';
 import 'features/provider/data/repositories/provider_repository_impl.dart';
 import 'features/booking/presentation/bloc/booking_bloc.dart';
@@ -113,14 +113,11 @@ void _setupNotificationHandling() {
     } else if (tapped) {
       // Handle notification tap navigation for other types
       if (type == NotificationService.notificationTypeChat) {
-        final conversationId = data['conversationId'];
         // Navigate to chat screen
         // Note: This requires a global navigator key or context
       } else if (type == NotificationService.notificationTypeBooking) {
-        final bookingId = data['bookingId'];
         // Navigate to booking details
       } else if (type == NotificationService.notificationTypeTracking) {
-        final bookingId = data['bookingId'];
         // Navigate to tracking screen
       }
     }
@@ -204,6 +201,12 @@ final _router = GoRouter(
     GoRoute(
       path: '/signup',
       builder: (context, state) => const SignupScreen(),
+    ),
+    GoRoute(
+      path: '/phone-auth',
+      builder: (context, state) => PhoneAuthScreen(
+        extra: state.extra as Map<String, dynamic>?,
+      ),
     ),
     GoRoute(
       path: '/forgot-password',

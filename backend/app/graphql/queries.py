@@ -1,5 +1,4 @@
 import graphene
-from typing import List
 from .types import UserType, VehicleType, BookingType, ServiceType, FareOfferType
 from ..controllers.user_controller import UserController
 from ..controllers.vehicle_controller import VehicleController

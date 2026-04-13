@@ -2,121 +2,143 @@ import 'dart:async';
 import 'package:agora_rtm/agora_rtm.dart';
 import 'api_service.dart';
 
-/// Service for Agora Real-Time Messaging
-/// Use this for booking/service-related communication
-/// (Firebase Firestore can still be used for general chat)
+/// Service for Agora Real-Time Messaging (RTM SDK v2)
+/// Use this for booking/service-related communication.
 class AgoraMessagingService {
   static final AgoraMessagingService _instance = AgoraMessagingService._internal();
   factory AgoraMessagingService() => _instance;
   AgoraMessagingService._internal();
 
-  AgoraRtmClient? _client;
-  AgoraRtmChannel? _channel;
+  RtmClient? _client;
   String? _currentUserId;
   String? _currentChannelId;
-  
-  final _messageController = StreamController<AgoraRtmMessage>.broadcast();
+  bool _isConnected = false;
+
+  final _messageController = StreamController<MessageEvent>.broadcast();
   final _connectionStateController = StreamController<bool>.broadcast();
-  
-  Stream<AgoraRtmMessage> get messageStream => _messageController.stream;
+
+  Stream<MessageEvent> get messageStream => _messageController.stream;
   Stream<bool> get connectionStateStream => _connectionStateController.stream;
-  
-  bool get isConnected => _client != null;
 
-  /// Initialize Agora RTM client
-  Future<void> initialize() async {
+  bool get isConnected => _isConnected && _client != null;
+
+  Future<String?> _getAgoraAppId() async {
     try {
-      // Get Agora App ID from backend
       final config = await ApiService.instance.get('/messages/agora-config');
-      final appId = config['agoraConfig']['appId'];
-      
-      if (appId == 'your_agora_app_id') {
-        return;
+      final appId = config['agoraConfig']?['appId'] as String?;
+      if (appId == null || appId.isEmpty || appId == 'your_agora_app_id') {
+        return null;
       }
-
-      _client = await AgoraRtmClient.createInstance(appId);
-      
-      // Set up event handlers
-      _client?.onMessageReceived = (AgoraRtmMessage message, String peerId) {
-        _messageController.add(message);
-      };
-      
-      _client?.onConnectionStateChanged = (int state, int reason) {
-        _connectionStateController.add(state == 3); // 3 = Connected
-      };
-    } catch (e) {
-      // silently ignored
+      return appId;
+    } catch (_) {
+      return null;
     }
+  }
+
+  void _attachClientListeners() {
+    _client?.addListener(
+      linkState: (event) {
+        final connected = event.currentState == RtmLinkState.connected;
+        _isConnected = connected;
+        _connectionStateController.add(connected);
+      },
+      message: (event) {
+        _messageController.add(event);
+      },
+    );
   }
 
   /// Login to Agora RTM with user ID
   Future<bool> login(String userId) async {
-    if (_client == null) {
-      await initialize();
-    }
-    
     try {
-      await _client?.login(null, userId); // Token can be null for testing
-      _currentUserId = userId;
-      return true;
-    } catch (e) {
+      if (_client == null || _currentUserId != userId) {
+        final appId = await _getAgoraAppId();
+        if (appId == null) {
+          return false;
+        }
+
+        final (createStatus, client) = await RTM(appId, userId);
+        if (createStatus.error) {
+          return false;
+        }
+
+        _client = client;
+        _currentUserId = userId;
+        _attachClientListeners();
+      }
+
+      final (loginStatus, _) = await _client!.login('');
+      _isConnected = !loginStatus.error;
+      _connectionStateController.add(_isConnected);
+      return _isConnected;
+    } catch (_) {
+      _isConnected = false;
+      _connectionStateController.add(false);
       return false;
     }
   }
 
-  /// Join a channel (use booking ID as channel name)
+  /// Join a message channel (use booking ID as channel name)
   Future<bool> joinChannel(String bookingId) async {
+    if (_client == null) return false;
+
     try {
-      // Leave previous channel if exists
-      if (_channel != null) {
+      if (_currentChannelId != null && _currentChannelId != bookingId) {
         await leaveChannel();
       }
 
-      _channel = await _client?.createChannel(bookingId);
-      
-      // Set up channel message handler
-      _channel?.onMessageReceived = (AgoraRtmMessage message, AgoraRtmMember member) {
-        _messageController.add(message);
-      };
+      final (status, _) = await _client!.subscribe(
+        bookingId,
+        withMessage: true,
+        withPresence: true,
+      );
 
-      await _channel?.join();
-      _currentChannelId = bookingId;
-      return true;
-    } catch (e) {
+      final ok = !status.error;
+      if (ok) {
+        _currentChannelId = bookingId;
+      }
+      return ok;
+    } catch (_) {
       return false;
     }
   }
 
   /// Send a peer-to-peer message
   Future<bool> sendPeerMessage(String peerId, String message) async {
+    if (_client == null) return false;
+
     try {
-      final rtmMessage = AgoraRtmMessage.fromText(message);
-      await _client?.sendMessageToPeer(peerId, rtmMessage, false);
-      
-      // Also save to backend
+      final (status, _) = await _client!.publish(
+        peerId,
+        message,
+        channelType: RtmChannelType.user,
+      );
+
+      if (status.error) return false;
+
       await _saveToDB(peerId, message);
       return true;
-    } catch (e) {
+    } catch (_) {
       return false;
     }
   }
 
   /// Send a channel message
   Future<bool> sendChannelMessage(String message) async {
+    if (_client == null || _currentChannelId == null) return false;
+
     try {
-      final rtmMessage = AgoraRtmMessage.fromText(message);
-      await _channel?.sendMessage(rtmMessage);
-      return true;
-    } catch (e) {
+      final (status, _) = await _client!.publish(_currentChannelId!, message);
+      return !status.error;
+    } catch (_) {
       return false;
     }
   }
 
-  /// Save message to backend database
   Future<void> _saveToDB(String receiverId, String messageText) async {
     try {
       if (_currentUserId == null || _currentChannelId == null) return;
-      
+
       await ApiService.instance.post('/messages/send', {
         'senderId': _currentUserId,
         'receiverId': receiverId,
@@ -124,41 +146,41 @@ class AgoraMessagingService {
         'messageText': messageText,
         'messageType': 'text',
       });
-    } catch (e) {
-      // silently ignored
+    } catch (_) {
+      // Non-blocking persistence fallback.
     }
   }
 
-  /// Get message history from backend
   Future<List<Map<String, dynamic>>> getMessageHistory(String bookingId) async {
     try {
       final response = await ApiService.instance.get('/messages/booking/$bookingId');
       return List<Map<String, dynamic>>.from(response['messages'] ?? []);
-    } catch (e) {
+    } catch (_) {
       return [];
     }
   }
 
-  /// Mark messages as read
   Future<void> markAsRead(String bookingId, String userId) async {
     try {
       await ApiService.instance.post('/messages/mark-read', {
         'receiverId': userId,
         'bookingId': bookingId,
       });
-    } catch (e) {
-      // silently ignored
+    } catch (_) {
+      // Non-blocking read acknowledgment.
     }
   }
 
   /// Leave current channel
   Future<void> leaveChannel() async {
     try {
-      await _channel?.leave();
-      _channel = null;
+      if (_client != null && _currentChannelId != null) {
+        await _client!.unsubscribe(_currentChannelId!);
+      }
+    } catch (_) {
+      // Best-effort channel leave.
+    } finally {
       _currentChannelId = null;
-    } catch (e) {
-      // silently ignored
     }
   }
 
@@ -167,17 +189,28 @@ class AgoraMessagingService {
     try {
       await leaveChannel();
       await _client?.logout();
+      _isConnected = false;
+      _connectionStateController.add(false);
       _currentUserId = null;
-    } catch (e) {
-      // silently ignored
+    } catch (_) {
+      // Best-effort logout.
     }
   }
 
   /// Dispose resources
-  void dispose() {
-    _messageController.close();
-    _connectionStateController.close();
-    _client?.destroy();
+  Future<void> dispose() async {
+    try {
+      await _client?.release();
+    } catch (_) {
+      // Best-effort client release.
+    }
+
     _client = null;
+    _isConnected = false;
+    _currentUserId = null;
+    _currentChannelId = null;
+
+    await _messageController.close();
+    await _connectionStateController.close();
   }
 }

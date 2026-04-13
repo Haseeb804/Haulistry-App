@@ -33,7 +33,7 @@ class VehicleController:
         RETURN v
         """
         
-        result = self.db.execute_write(query, vehicle.to_neo4j_props())
+        self.db.execute_write(query, vehicle.to_neo4j_props())
         return vehicle
     
     def get_vehicle_by_id(self, vehicle_id: str) -> Optional[Vehicle]:

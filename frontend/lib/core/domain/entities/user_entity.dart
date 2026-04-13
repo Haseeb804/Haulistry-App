@@ -130,7 +130,7 @@ class UserEntity extends Equatable {
   factory UserEntity.fromJson(Map<String, dynamic> json) {
     return UserEntity(
       id: json['id'] as String,
-      email: json['email'] as String,
+      email: (json['email'] ?? '') as String,
       name: json['name'] as String,
       phone: (json['phone'] ?? json['phoneNumber'] ?? '') as String,
       role: json['role'] as String,

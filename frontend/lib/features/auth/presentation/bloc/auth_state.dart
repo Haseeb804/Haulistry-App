@@ -45,3 +45,41 @@ class AuthPasswordResetSent extends AuthState {
 class AuthDocumentsUploaded extends AuthState {
   const AuthDocumentsUploaded();
 }
+
+class AuthPhoneCodeSent extends AuthState {
+  final String verificationId;
+  final String phoneNumber;
+  final DateTime sentAt;
+
+  const AuthPhoneCodeSent({
+    required this.verificationId,
+    required this.phoneNumber,
+    required this.sentAt,
+  });
+
+  @override
+  List<Object?> get props => [verificationId, phoneNumber, sentAt];
+}
+
+/// Pending phone verification after email signup
+class AuthPendingPhoneVerification extends AuthState {
+  final String verificationId;
+  final String phoneNumber;
+  final String firebaseUid;
+  final String email;
+  final String name;
+  final String role;
+
+  const AuthPendingPhoneVerification({
+    required this.verificationId,
+    required this.phoneNumber,
+    required this.firebaseUid,
+    required this.email,
+    required this.name,
+    required this.role,
+  });
+
+  @override
+  List<Object?> get props =>
+      [verificationId, phoneNumber, firebaseUid, email, name, role];
+}

@@ -1,8 +1,5 @@
 import 'package:equatable/equatable.dart';
 import '../../../../core/domain/entities/booking_entity.dart';
-import '../../../../core/domain/entities/vehicle_entity.dart';
-import '../../../../core/domain/entities/fare_offer_entity.dart';
-import '../../../../core/domain/entities/service_entity.dart';
 
 abstract class ProviderEvent extends Equatable {
   const ProviderEvent();

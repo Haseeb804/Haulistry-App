@@ -6,7 +6,6 @@ from fastapi import APIRouter, HTTPException, status, UploadFile, File, Form
 from pydantic import BaseModel
 from typing import Optional, List
 import os
-import secrets
 import time
 from ..models.call import Call
 from ..models.voice_message import VoiceMessage
@@ -135,9 +134,9 @@ async def send_call_notification(
             token=fcm_token,
         )
         
-        response = messaging.send(message)
+        messaging.send(message)
         return True
-    except Exception as e:
+    except Exception:
         return False
 
 

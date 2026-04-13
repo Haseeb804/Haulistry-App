@@ -5,7 +5,6 @@ Clean, minimal model for service management
 
 from typing import Optional, Dict, Any, List
 from datetime import datetime
-import uuid
 from ..database import neo4j_driver
 
 
@@ -71,7 +70,6 @@ class Service:
             elif isinstance(value, str) and 'T' in value and ('+' in value or 'Z' in value):
                 # Handle ISO format strings with timezone
                 try:
-                    from datetime import datetime as dt
                     # Remove nanoseconds if present (keep only microseconds)
                     clean_value = value
                     if '.' in value:
@@ -249,7 +247,6 @@ class Service:
                 if record['s']:
                     service = Service._serialize_neo4j_data(record['s'])
                     service_rating = record['providerRating']
-                    overall_rating = record['overallProviderRating']
                     review_count = record['totalReviews']
                     
                     service['providerName'] = record['providerName']

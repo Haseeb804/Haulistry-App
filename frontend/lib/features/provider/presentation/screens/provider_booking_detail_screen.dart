@@ -12,7 +12,7 @@ import '../bloc/provider_state.dart';
 
 class ProviderBookingDetailScreen extends StatefulWidget {
   final String bookingId;
-  const ProviderBookingDetailScreen({Key? key, required this.bookingId}) : super(key: key);
+  const ProviderBookingDetailScreen({super.key, required this.bookingId});
 
   @override
   State<ProviderBookingDetailScreen> createState() => _ProviderBookingDetailScreenState();

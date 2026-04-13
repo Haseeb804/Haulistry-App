@@ -4,7 +4,6 @@ Pydantic schemas for Booking API requests and responses
 
 from pydantic import BaseModel, Field
 from typing import Optional, Dict, Any
-from datetime import datetime
 
 
 class BookingCreate(BaseModel):

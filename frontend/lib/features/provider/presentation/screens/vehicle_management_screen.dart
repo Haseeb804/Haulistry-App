@@ -706,7 +706,7 @@ class _VehicleManagementScreenState extends State<VehicleManagementScreen> {
                       _buildFormSectionHeader('Vehicle Type', Icons.category_rounded),
                       const SizedBox(height: 12),
                       DropdownButtonFormField<String>(
-                        value: selectedServiceType,
+                        initialValue: selectedServiceType,
                         decoration: InputDecoration(
                           hintText: 'Select vehicle type',
                           filled: true,

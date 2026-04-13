@@ -3,7 +3,7 @@ Location Update Model - Handles real-time location tracking
 For seeker-provider location sharing during active bookings
 """
 
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any
 from datetime import datetime
 from ..database import neo4j_driver
 

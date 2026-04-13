@@ -1,5 +1,4 @@
 import 'package:equatable/equatable.dart';
-import 'call_event.dart';
 
 abstract class CallState extends Equatable {
   const CallState();
