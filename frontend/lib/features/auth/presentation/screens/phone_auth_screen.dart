@@ -5,7 +5,6 @@ import 'package:go_router/go_router.dart';
 
 import '../../../../core/constants/app_constants.dart';
 import '../../../../core/theme/app_theme.dart';
-import '../../../../core/utils/validators.dart';
 import '../bloc/auth_bloc.dart';
 import '../bloc/auth_event.dart';
 import '../bloc/auth_state.dart';
@@ -20,66 +19,53 @@ class PhoneAuthScreen extends StatefulWidget {
 }
 
 class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
-  final _phoneFormKey = GlobalKey<FormState>();
   final _otpFormKey = GlobalKey<FormState>();
 
   final _phoneController = TextEditingController();
   final _otpController = TextEditingController();
-  final _nameController = TextEditingController();
-  final _emailController = TextEditingController();
 
-  String _selectedRole = AppConstants.roleSeeker;
   String? _verificationId;
-  
-  // Signup flow context (if coming from signup)
-  late bool _isSignUpFlow;
-  
-    // OTP expiration timer (30 seconds)
-    static const int _otpExpirationSeconds = 30;
-    int _remainingSeconds = 0;
-    Timer? _otpTimer;
-    bool _isOtpExpired = false;
-  late String? _firebaseUid;
-  late String? _signupEmail;
-  late String? _signupName;
-  late String? _signupPassword;
+
+  // OTP expiration timer (30 seconds)
+  static const int _otpExpirationSeconds = 30;
+  int _remainingSeconds = 0;
+  Timer? _otpTimer;
+  bool _isOtpExpired = false;
+
+  bool _isValidSignupContext = false;
+  Map<String, dynamic>? _pendingSignupData;
 
   @override
   void initState() {
     super.initState();
     _parseExtraData();
-    if (_verificationId != null) {
+    if (_isValidSignupContext && _verificationId != null) {
       _startOtpTimer();
+    } else {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('OTP is only available during signup flow.')),
+        );
+        context.go('/signup');
+      });
     }
   }
 
   void _parseExtraData() {
     final extra = widget.extra;
-    if (extra != null) {
-      _isSignUpFlow = extra['isSignUpFlow'] ?? false;
-      _verificationId = extra['verificationId'];
-      _firebaseUid = extra['firebaseUid'];
-      _signupEmail = extra['email'];
-      _signupName = extra['name'];
-      _signupPassword = extra['password'];
-      _selectedRole = extra['role'] ?? AppConstants.roleSeeker;
-      
-      // Pre-fill fields from signup context
-      if (extra['phoneNumber'] != null) {
-        _phoneController.text = extra['phoneNumber'];
-      }
-      if (_signupName != null) {
-        _nameController.text = _signupName!;
-      }
-      if (_signupEmail != null) {
-        _emailController.text = _signupEmail!;
-      }
-    } else {
-      _isSignUpFlow = false;
-      _firebaseUid = null;
-      _signupEmail = null;
-      _signupName = null;
-      _signupPassword = null;
+    if (extra == null) return;
+
+    final isSignUpFlow = extra['isSignUpFlow'] == true;
+    final verificationId = extra['verificationId'] as String?;
+    final pendingSignupData = extra['pendingSignupData'] as Map<String, dynamic>?;
+    final phoneNumber = extra['phoneNumber'] as String?;
+
+    if (isSignUpFlow && verificationId != null && pendingSignupData != null && phoneNumber != null) {
+      _isValidSignupContext = true;
+      _verificationId = verificationId;
+      _pendingSignupData = pendingSignupData;
+      _phoneController.text = phoneNumber;
     }
   }
 
@@ -87,52 +73,21 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
   void dispose() {
     _phoneController.dispose();
     _otpController.dispose();
-    _nameController.dispose();
-    _emailController.dispose();
     _otpTimer?.cancel();
     super.dispose();
   }
 
-  void _requestOtp() {
-    if (_phoneFormKey.currentState!.validate()) {
-      context.read<AuthBloc>().add(
-            AuthPhoneOtpRequested(phoneNumber: _phoneController.text.trim()),
-          );
-    }
-  }
-
   void _verifyOtp() {
-    if (_otpFormKey.currentState!.validate() && _verificationId != null) {
-      if (_isSignUpFlow && _firebaseUid != null) {
-        // Signup flow: emit AuthSignUpWithPhoneVerifyRequested
-        context.read<AuthBloc>().add(
-              AuthSignUpWithPhoneVerifyRequested(
-                verificationId: _verificationId!,
-                smsCode: _otpController.text.trim(),
-                firebaseUid: _firebaseUid!,
-                email: _signupEmail ?? '',
-                password: _signupPassword ?? '',
-                name: _signupName ?? '',
-                phone: _phoneController.text.trim(),
-                role: _selectedRole,
-              ),
-            );
-      } else {
-        // Direct phone login flow: emit AuthPhoneOtpVerifyRequested
-        context.read<AuthBloc>().add(
-              AuthPhoneOtpVerifyRequested(
-                verificationId: _verificationId!,
-                smsCode: _otpController.text.trim(),
-                role: _selectedRole,
-                name: _nameController.text.trim().isEmpty
-                    ? null
-                    : _nameController.text.trim(),
-                email: _emailController.text.trim().isEmpty
-                    ? null
-                    : _emailController.text.trim(),
-              ),
-            );
-      }
+    if (_otpFormKey.currentState!.validate() &&
+        _verificationId != null &&
+        _pendingSignupData != null) {
+      context.read<AuthBloc>().add(
+            AuthSignUpWithPhoneVerifyRequested(
+              verificationId: _verificationId!,
+              smsCode: _otpController.text.trim(),
+              pendingSignupData: _pendingSignupData!,
+            ),
+          );
     }
   }
 
@@ -161,27 +116,21 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
   void _resetOtpFlow() {
     _otpTimer?.cancel();
     setState(() {
-      _verificationId = null;
       _otpController.clear();
       _remainingSeconds = 0;
       _isOtpExpired = false;
     });
+    context.go('/signup');
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Phone Verification'),
+        title: const Text('Verify Phone Number'),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios_new_rounded),
-          onPressed: () {
-            if (_isSignUpFlow) {
-              context.go('/signup');
-            } else {
-              context.go('/login');
-            }
-          },
+          onPressed: () => context.go('/signup'),
         ),
       ),
       body: BlocConsumer<AuthBloc, AuthState>(
@@ -221,103 +170,33 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
               children: [
                 const SizedBox(height: 8),
                 Text(
-                  _verificationId == null
-                      ? 'Sign in with OTP'
-                      : 'Enter verification code',
+                  'Enter verification code',
                   style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                         fontWeight: FontWeight.bold,
                       ),
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  _verificationId == null
-                      ? 'We will send a one-time password to your phone number.'
-                      : 'Check your SMS inbox and enter the 6-digit code.',
+                  'Check your SMS inbox and enter the 6-digit code to complete signup.',
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                         color: AppTheme.textSecondary,
                       ),
                 ),
                 const SizedBox(height: 24),
 
-                if (_verificationId == null)
-                  Form(
-                    key: _phoneFormKey,
+                Form(
+                    key: _otpFormKey,
                     child: Column(
                       children: [
                         TextFormField(
                           controller: _phoneController,
-                          keyboardType: TextInputType.phone,
+                          enabled: false,
                           decoration: const InputDecoration(
                             labelText: 'Phone Number',
-                            hintText: '03001234567',
                             prefixIcon: Icon(Icons.phone_rounded),
                           ),
-                          validator: Validators.phone,
-                          enabled: !isLoading,
                         ),
                         const SizedBox(height: 16),
-                        if (!_isSignUpFlow)
-                          Column(
-                            children: [
-                              DropdownButtonFormField<String>(
-                                initialValue: _selectedRole,
-                                decoration: const InputDecoration(
-                                  labelText: 'Role',
-                                  prefixIcon: Icon(Icons.badge_rounded),
-                                ),
-                                items: const [
-                                  DropdownMenuItem(
-                                    value: AppConstants.roleSeeker,
-                                    child: Text('Seeker'),
-                                  ),
-                                  DropdownMenuItem(
-                                    value: AppConstants.roleProvider,
-                                    child: Text('Provider'),
-                                  ),
-                                ],
-                                onChanged: isLoading
-                                    ? null
-                                    : (value) {
-                                        if (value != null) {
-                                          setState(() => _selectedRole = value);
-                                        }
-                                      },
-                              ),
-                              const SizedBox(height: 16),
-                              TextFormField(
-                                controller: _nameController,
-                                decoration: const InputDecoration(
-                                  labelText: 'Name (optional for first login)',
-                                  prefixIcon: Icon(Icons.person_rounded),
-                                ),
-                                enabled: !isLoading,
-                              ),
-                              const SizedBox(height: 16),
-                              TextFormField(
-                                controller: _emailController,
-                                keyboardType: TextInputType.emailAddress,
-                                decoration: const InputDecoration(
-                                  labelText: 'Email (optional)',
-                                  prefixIcon: Icon(Icons.email_rounded),
-                                ),
-                                enabled: !isLoading,
-                              ),
-                            ],
-                          ),
-                        const SizedBox(height: 24),
-                        FilledButton.icon(
-                          onPressed: isLoading ? null : _requestOtp,
-                          icon: const Icon(Icons.sms_rounded),
-                          label: Text(isLoading ? 'Sending...' : 'Send OTP'),
-                        ),
-                      ],
-                    ),
-                  )
-                else
-                  Form(
-                    key: _otpFormKey,
-                    child: Column(
-                      children: [
                         TextFormField(
                           controller: _otpController,
                           keyboardType: TextInputType.number,
@@ -379,7 +258,9 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
                           SizedBox(
                             width: double.infinity,
                             child: OutlinedButton.icon(
-                              onPressed: () {
+                              onPressed: isLoading
+                                  ? null
+                                  : () {
                                 ScaffoldMessenger.of(context).showSnackBar(
                                   const SnackBar(content: Text('Requesting new OTP...')),
                                 );

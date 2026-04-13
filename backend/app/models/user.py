@@ -138,6 +138,10 @@ class User:
             u.cnicFrontImageBase64 = $cnicFrontImageBase64,
             u.cnicBackImageBase64 = $cnicBackImageBase64,
             u.licenseImageBase64 = $licenseImageBase64,
+            u.cnicFrontImageUrl = $cnicFrontImageUrl,
+            u.cnicBackImageUrl = $cnicBackImageUrl,
+            u.licenseImageUrl = $licenseImageUrl,
+            u.vehicleImageUrl = $vehicleImageUrl,
             u.isVerified = $isVerified,
             u.isActive = $isActive,
             u.rating = 0.0,
@@ -153,6 +157,10 @@ class User:
             u.cnicFrontImageBase64 = COALESCE($cnicFrontImageBase64, u.cnicFrontImageBase64),
             u.cnicBackImageBase64 = COALESCE($cnicBackImageBase64, u.cnicBackImageBase64),
             u.licenseImageBase64 = COALESCE($licenseImageBase64, u.licenseImageBase64),
+            u.cnicFrontImageUrl = COALESCE($cnicFrontImageUrl, u.cnicFrontImageUrl),
+            u.cnicBackImageUrl = COALESCE($cnicBackImageUrl, u.cnicBackImageUrl),
+            u.licenseImageUrl = COALESCE($licenseImageUrl, u.licenseImageUrl),
+            u.vehicleImageUrl = COALESCE($vehicleImageUrl, u.vehicleImageUrl),
             u.isVerified = $isVerified,
             u.isActive = $isActive,
             u.updatedAt = datetime()
@@ -165,6 +173,10 @@ class User:
         user_data.setdefault('cnicFrontImageBase64', None)
         user_data.setdefault('cnicBackImageBase64', None)
         user_data.setdefault('licenseImageBase64', None)
+        user_data.setdefault('cnicFrontImageUrl', None)
+        user_data.setdefault('cnicBackImageUrl', None)
+        user_data.setdefault('licenseImageUrl', None)
+        user_data.setdefault('vehicleImageUrl', None)
         
         result = neo4j_driver.execute_write(query, user_data)
         
@@ -209,6 +221,42 @@ class User:
             if user_node:
                 return User._serialize_neo4j_data(dict(user_node))
         
+        return None
+
+    @staticmethod
+    def get_by_phone(phone: str) -> Optional[Dict[str, Any]]:
+        """Get user by phone from Neo4j (works with Seeker, Provider, or legacy User labels)"""
+        query = """
+        MATCH (u {phone: $phone})
+        WHERE u:Seeker OR u:Provider OR u:User
+        RETURN u
+        """
+
+        result = neo4j_driver.execute_read(query, {"phone": phone})
+
+        if result and len(result) > 0:
+            user_node = result[0].get('u') if hasattr(result[0], 'get') else result[0]['u']
+            if user_node:
+                return User._serialize_neo4j_data(dict(user_node))
+
+        return None
+
+    @staticmethod
+    def get_by_cnic(cnic: str) -> Optional[Dict[str, Any]]:
+        """Get provider by CNIC from Neo4j"""
+        query = """
+        MATCH (u {cnic: $cnic})
+        WHERE u:Provider OR u:User
+        RETURN u
+        """
+
+        result = neo4j_driver.execute_read(query, {"cnic": cnic})
+
+        if result and len(result) > 0:
+            user_node = result[0].get('u') if hasattr(result[0], 'get') else result[0]['u']
+            if user_node:
+                return User._serialize_neo4j_data(dict(user_node))
+
         return None
     
     @staticmethod

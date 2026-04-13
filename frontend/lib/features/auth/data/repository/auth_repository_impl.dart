@@ -1,4 +1,5 @@
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import 'package:http/http.dart' as http;
 import 'dart:async';
 import 'dart:convert';
@@ -124,6 +125,41 @@ class AuthRepositoryImpl implements AuthRepository {
       return completer.future;
     } on FirebaseAuthException catch (e) {
       throw Exception(_getAuthErrorMessage(e.code));
+    } catch (e) {
+      throw Exception(_getNetworkErrorMessage(e));
+    }
+  }
+
+  @override
+  Future<void> precheckSignup({
+    required String email,
+    required String phone,
+    required String role,
+    String? cnic,
+  }) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$_baseUrl/auth/signup/precheck'),
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode({
+          'email': email.trim(),
+          'phone': _normalizePkPhoneToE164(phone),
+          'role': role,
+          if (cnic != null && cnic.trim().isNotEmpty) 'cnic': cnic.trim(),
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        return;
+      }
+
+      String message = 'Signup precheck failed';
+      try {
+        final data = json.decode(response.body);
+        message = (data['detail'] ?? data['message'] ?? message).toString();
+      } catch (_) {}
+
+      throw Exception(message);
     } catch (e) {
       throw Exception(_getNetworkErrorMessage(e));
     }
@@ -261,12 +297,7 @@ class AuthRepositoryImpl implements AuthRepository {
   Future<UserEntity> completeSignUpWithPhoneVerification({
     required String verificationId,
     required String smsCode,
-    required String firebaseUid,
-    required String email,
-    required String name,
-    required String phone,
-    required String role,
-    Uint8List? profileImage,
+    required Map<String, dynamic> pendingSignupData,
   }) async {
     try {
       // Step 1: Verify phone OTP
@@ -275,49 +306,130 @@ class AuthRepositoryImpl implements AuthRepository {
         smsCode: smsCode,
       );
 
-      // Link phone credential to existing Firebase user
-      try {
-        await _firebaseAuth.currentUser?.linkWithCredential(credential);
-      } catch (e) {
-        // If already linked, continue
-      }
-
-      // Step 2: Get fresh ID token after phone verification
-      final firebaseUser = _firebaseAuth.currentUser;
+      final userCredential = await _firebaseAuth.signInWithCredential(credential);
+      final firebaseUser = userCredential.user;
       if (firebaseUser == null) {
         throw Exception('User not authenticated');
       }
 
-      await firebaseUser.getIdToken(true);
+      final email = (pendingSignupData['email'] as String?)?.trim() ?? '';
+      final password = (pendingSignupData['password'] as String?) ?? '';
+      final name = (pendingSignupData['name'] as String?)?.trim() ?? '';
+      final role = (pendingSignupData['role'] as String?)?.trim() ?? 'seeker';
+      final phone = (pendingSignupData['phone'] as String?)?.trim() ?? '';
+      final profileImage = pendingSignupData['profileImage'] as Uint8List?;
 
-      // Step 3: NOW sync user to Neo4j (this was deferred)
+      // Step 2: Link email/password credential after OTP success (if provided)
+      if (email.isNotEmpty && password.isNotEmpty) {
+        final emailCredential = EmailAuthProvider.credential(
+          email: email,
+          password: password,
+        );
+        try {
+          await firebaseUser.linkWithCredential(emailCredential);
+        } on FirebaseAuthException catch (e) {
+          if (e.code != 'provider-already-linked') {
+            throw Exception(_getAuthErrorMessage(e.code));
+          }
+        }
+      }
+
+      await firebaseUser.getIdToken(true);
+      final idToken = await firebaseUser.getIdToken();
+      if (idToken == null) {
+        throw Exception('Failed to get auth token');
+      }
+
+      // Step 3: Finalize signup in backend after OTP verification
       String? profileImageBase64;
       if (profileImage != null) {
         profileImageBase64 = 'data:image/jpeg;base64,${base64Encode(profileImage)}';
       }
 
+      String? cnicFrontImageUrl;
+      String? cnicBackImageUrl;
+      String? licenseImageUrl;
+      String? vehicleImageUrl;
+
+      if (role == 'provider') {
+        cnicFrontImageUrl = await _uploadProviderDocFromBase64(
+          uid: firebaseUser.uid,
+          base64Data: pendingSignupData['cnicFrontImageBase64'] as String?,
+          fileName: 'cnic_front.jpg',
+        );
+        cnicBackImageUrl = await _uploadProviderDocFromBase64(
+          uid: firebaseUser.uid,
+          base64Data: pendingSignupData['cnicBackImageBase64'] as String?,
+          fileName: 'cnic_back.jpg',
+        );
+        licenseImageUrl = await _uploadProviderDocFromBase64(
+          uid: firebaseUser.uid,
+          base64Data: pendingSignupData['licenseImageBase64'] as String?,
+          fileName: 'license.jpg',
+        );
+        vehicleImageUrl = await _uploadProviderDocFromBase64(
+          uid: firebaseUser.uid,
+          base64Data: pendingSignupData['vehicleImageBase64'] as String?,
+          fileName: 'vehicle.jpg',
+        );
+      }
+
       final response = await http.post(
-        Uri.parse('$_baseUrl/auth/sync'),
-        headers: {'Content-Type': 'application/json'},
+        Uri.parse('$_baseUrl/auth/signup/complete'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $idToken',
+        },
         body: json.encode({
-          'firebaseUid': firebaseUid,
           'email': email,
           'name': name,
           'phone': phone,
           'role': role,
-          'isVerified': true,
-          'isActive': true,
           if (profileImageBase64 != null) 'profileImageUrl': profileImageBase64,
+          if (pendingSignupData['cnic'] != null) 'cnic': pendingSignupData['cnic'],
+          if (pendingSignupData['cnicFrontImageBase64'] != null)
+            'cnicFrontImageBase64': pendingSignupData['cnicFrontImageBase64'],
+          if (pendingSignupData['cnicBackImageBase64'] != null)
+            'cnicBackImageBase64': pendingSignupData['cnicBackImageBase64'],
+          if (pendingSignupData['licenseImageBase64'] != null)
+            'licenseImageBase64': pendingSignupData['licenseImageBase64'],
+          if (pendingSignupData['vehicleImageBase64'] != null)
+            'vehicleImageBase64': pendingSignupData['vehicleImageBase64'],
+          if (cnicFrontImageUrl != null) 'cnicFrontImageUrl': cnicFrontImageUrl,
+          if (cnicBackImageUrl != null) 'cnicBackImageUrl': cnicBackImageUrl,
+          if (licenseImageUrl != null) 'licenseImageUrl': licenseImageUrl,
+          if (vehicleImageUrl != null) 'vehicleImageUrl': vehicleImageUrl,
+          if (pendingSignupData['vehicleType'] != null)
+            'vehicleType': pendingSignupData['vehicleType'],
+          if (pendingSignupData['vehicleNumber'] != null)
+            'vehicleNumber': pendingSignupData['vehicleNumber'],
+          if (pendingSignupData['vehicleModel'] != null)
+            'vehicleModel': pendingSignupData['vehicleModel'],
+          if (pendingSignupData['vehicleYear'] != null)
+            'vehicleYear': pendingSignupData['vehicleYear'],
+          if (pendingSignupData['vehicleCapacity'] != null)
+            'vehicleCapacity': pendingSignupData['vehicleCapacity'],
         }),
       );
 
-      if (response.statusCode != 201) {
-        throw Exception('Failed to sync user to database');
+      if (response.statusCode != 200 && response.statusCode != 201) {
+        try {
+          await firebaseUser.delete();
+        } catch (_) {
+          // best effort rollback of Firebase Auth account
+        }
+
+        String message = 'Failed to complete signup';
+        try {
+          final data = json.decode(response.body);
+          message = (data['detail'] ?? data['message'] ?? message).toString();
+        } catch (_) {}
+        throw Exception(message);
       }
 
       final data = json.decode(response.body);
       if (data['success'] != true || data['user'] == null) {
-        throw Exception('Failed to create user in database');
+        throw Exception('Failed to finalize signup');
       }
 
       return UserEntity.fromJson(data['user']);
@@ -326,6 +438,37 @@ class AuthRepositoryImpl implements AuthRepository {
     } catch (e) {
       throw Exception(_getNetworkErrorMessage(e));
     }
+  }
+
+  String _stripDataUrlPrefix(String input) {
+    final commaIndex = input.indexOf(',');
+    if (commaIndex != -1) {
+      return input.substring(commaIndex + 1);
+    }
+    return input;
+  }
+
+  Future<String?> _uploadProviderDocFromBase64({
+    required String uid,
+    required String? base64Data,
+    required String fileName,
+  }) async {
+    if (base64Data == null || base64Data.trim().isEmpty) {
+      return null;
+    }
+
+    final cleaned = _stripDataUrlPrefix(base64Data.trim());
+    final bytes = base64Decode(cleaned);
+
+    final ref = FirebaseStorage.instance
+        .ref()
+        .child('provider_documents')
+        .child(uid)
+        .child(fileName);
+
+    final metadata = SettableMetadata(contentType: 'image/jpeg');
+    await ref.putData(bytes, metadata);
+    return ref.getDownloadURL();
   }
 
   @override

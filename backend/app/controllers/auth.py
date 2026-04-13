@@ -9,9 +9,11 @@ import firebase_admin
 from firebase_admin import credentials, auth
 from ..schemas.user_schema import (
     UserCreate, UserUpdate, UserResponse,
-    TokenVerifyRequest, TokenVerifyResponse, PhoneUserSyncRequest
+    TokenVerifyRequest, TokenVerifyResponse, PhoneUserSyncRequest,
+    SignupPrecheckRequest, SignupPrecheckResponse, SignupCompleteRequest
 )
 from ..models.user import User
+from ..models.vehicle import Vehicle
 from ..config import settings
 import os
 import json
@@ -69,6 +71,213 @@ except ValueError:
 async def test_endpoint():
     """Test endpoint to verify auth router is working"""
     return {"message": "Auth router is working!", "status": "ok"}
+
+
+def _normalize_phone(phone: str) -> str:
+    digits = ''.join(ch for ch in phone if ch.isdigit() or ch == '+')
+    if digits.startswith('+'):
+        return digits
+    if digits.startswith('03') and len(digits) == 11:
+        return f"+92{digits[1:]}"
+    if digits.startswith('92') and len(digits) == 12:
+        return f"+{digits}"
+    if digits.startswith('3') and len(digits) == 10:
+        return f"+92{digits}"
+    return digits
+
+
+@router.post("/signup/precheck", response_model=SignupPrecheckResponse)
+async def signup_precheck(payload: SignupPrecheckRequest):
+    """
+    Validate duplicate constraints before OTP is sent.
+    No permanent writes happen here.
+    """
+    try:
+        normalized_phone = _normalize_phone(payload.phone)
+        role = (payload.role or 'seeker').lower()
+
+        existing_phone = User.get_by_phone(normalized_phone)
+        existing_email = User.get_by_email(payload.email)
+
+        cnic_available = None
+        if role == 'provider' and payload.cnic:
+            cnic_available = User.get_by_cnic(payload.cnic.strip()) is None
+
+        if existing_phone:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="An account already exists with this phone number"
+            )
+
+        if existing_email:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="An account already exists with this email"
+            )
+
+        if cnic_available is False:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="A provider account already exists with this CNIC"
+            )
+
+        return SignupPrecheckResponse(
+            success=True,
+            message="Signup precheck passed",
+            isPhoneAvailable=True,
+            isEmailAvailable=True,
+            isCnicAvailable=cnic_available,
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Signup precheck failed: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Signup precheck failed: {str(e)}"
+        )
+
+
+@router.post("/signup/complete", response_model=UserResponse)
+async def signup_complete(
+    payload: SignupCompleteRequest,
+    authorization: Optional[str] = Header(None)
+):
+    """
+    Finalize signup after OTP verification.
+    Requires Firebase ID token from verified phone-auth session.
+    """
+    if not authorization or not authorization.startswith('Bearer '):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing or invalid authorization header"
+        )
+
+    try:
+        id_token = authorization.split('Bearer ')[1]
+        decoded_token = auth.verify_id_token(id_token)
+
+        firebase_uid = decoded_token['uid']
+        verified_phone = decoded_token.get('phone_number')
+
+        if not verified_phone:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Phone number is not verified in Firebase token"
+            )
+
+        normalized_payload_phone = _normalize_phone(payload.phone)
+        normalized_verified_phone = _normalize_phone(verified_phone)
+
+        if normalized_payload_phone != normalized_verified_phone:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Phone mismatch between signup payload and verified OTP phone"
+            )
+
+        role = (payload.role or 'seeker').lower()
+        if role not in ('seeker', 'provider'):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid role. Must be 'seeker' or 'provider'"
+            )
+
+        # Duplicate checks with ownership allowance for same firebase uid
+        existing_phone = User.get_by_phone(normalized_payload_phone)
+        if existing_phone and existing_phone.get('id') != firebase_uid:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="An account already exists with this phone number"
+            )
+
+        existing_email = User.get_by_email(payload.email)
+        if existing_email and existing_email.get('id') != firebase_uid:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="An account already exists with this email"
+            )
+
+        if role == 'provider' and payload.cnic:
+            existing_cnic = User.get_by_cnic(payload.cnic.strip())
+            if existing_cnic and existing_cnic.get('id') != firebase_uid:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="A provider account already exists with this CNIC"
+                )
+
+        user_data = User.create({
+            'firebaseUid': firebase_uid,
+            'email': payload.email,
+            'name': payload.name,
+            'phone': normalized_payload_phone,
+            'role': role,
+            'profileImageUrl': payload.profileImageUrl,
+            'cnic': payload.cnic,
+            'cnicFrontImageBase64': payload.cnicFrontImageBase64,
+            'cnicBackImageBase64': payload.cnicBackImageBase64,
+            'licenseImageBase64': payload.licenseImageBase64,
+            'cnicFrontImageUrl': payload.cnicFrontImageUrl,
+            'cnicBackImageUrl': payload.cnicBackImageUrl,
+            'licenseImageUrl': payload.licenseImageUrl,
+            'vehicleImageUrl': payload.vehicleImageUrl,
+            'isVerified': True,
+            'isActive': True,
+        })
+
+        if not user_data:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to create user profile"
+            )
+
+        # Provider post-verification setup
+        if role == 'provider':
+            if not payload.vehicleType or not payload.vehicleNumber:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Vehicle details are required for provider signup"
+                )
+
+            vehicle_created = Vehicle.create({
+                'providerId': firebase_uid,
+                'vehicleType': payload.vehicleType,
+                'vehicleNumber': payload.vehicleNumber,
+                'vehicleModel': payload.vehicleModel,
+                'vehicleYear': payload.vehicleYear,
+                'capacity': payload.vehicleCapacity or 0.0,
+                'vehicleImageBase64': payload.vehicleImageBase64 or payload.vehicleImageUrl,
+                'isAvailable': True,
+            })
+
+            if not vehicle_created:
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Failed to finalize provider vehicle profile"
+                )
+
+        return UserResponse(
+            success=True,
+            message="Signup completed successfully",
+            user=user_data,
+        )
+    except auth.InvalidIdTokenError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid Firebase token"
+        )
+    except auth.ExpiredIdTokenError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Firebase token has expired"
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Signup completion failed: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to complete signup: {str(e)}"
+        )
 
 
 @router.post("/sync", response_model=UserResponse, status_code=status.HTTP_201_CREATED)

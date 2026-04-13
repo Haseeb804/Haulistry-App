@@ -319,14 +319,6 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                                     isLoading: isLoading,
                                     onPressed: isLoading ? null : _handleLogin,
                                   ),
-                                  const SizedBox(height: 12),
-                                  OutlinedButton.icon(
-                                    onPressed: isLoading
-                                        ? null
-                                        : () => context.go('/phone-auth'),
-                                    icon: const Icon(Icons.sms_rounded),
-                                    label: const Text('Continue with Phone OTP'),
-                                  ),
                                 ],
                               ),
                             ),

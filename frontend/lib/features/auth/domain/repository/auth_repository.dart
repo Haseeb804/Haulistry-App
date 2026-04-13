@@ -13,6 +13,14 @@ abstract class AuthRepository {
   /// Request Firebase OTP for phone authentication
   Future<String> requestPhoneOtp({required String phoneNumber});
 
+  /// Precheck duplicate signup constraints before sending OTP
+  Future<void> precheckSignup({
+    required String email,
+    required String phone,
+    required String role,
+    String? cnic,
+  });
+
   /// Verify OTP and sign in with phone, then sync/fetch user from backend
   Future<UserEntity> verifyPhoneOtpAndSignIn({
     required String verificationId,
@@ -26,12 +34,7 @@ abstract class AuthRepository {
   Future<UserEntity> completeSignUpWithPhoneVerification({
     required String verificationId,
     required String smsCode,
-    required String firebaseUid,
-    required String email,
-    required String name,
-    required String phone,
-    required String role,
-    Uint8List? profileImage,
+    required Map<String, dynamic> pendingSignupData,
   });
   
   /// Sign up with email and password

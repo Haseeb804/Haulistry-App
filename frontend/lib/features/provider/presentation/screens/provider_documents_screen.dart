@@ -296,8 +296,15 @@ class _ProviderDocumentsScreenState extends State<ProviderDocumentsScreen> {
       backgroundColor: AppTheme.backgroundColor,
       body: BlocConsumer<AuthBloc, AuthState>(
         listener: (context, state) {
-          if (state is AuthAuthenticated) {
-            // New provider signup completed successfully
+          if (state is AuthPendingPhoneVerification) {
+            context.go('/phone-auth', extra: {
+              'verificationId': state.verificationId,
+              'phoneNumber': state.phoneNumber,
+              'role': state.role,
+              'isSignUpFlow': true,
+              'pendingSignupData': state.pendingSignupData,
+            });
+          } else if (state is AuthAuthenticated) {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
                 content: Row(

@@ -1,5 +1,6 @@
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../domain/repository/auth_repository.dart';
+import '../../../../core/constants/app_constants.dart';
 import '../../../../core/services/notification_service.dart';
 import 'auth_event.dart';
 import 'auth_state.dart';
@@ -69,30 +70,33 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
   ) async {
     emit(const AuthLoading());
     try {
-      // Step 1: Create Firebase user WITHOUT syncing to Neo4j yet
-      final firebaseUser = await _authRepository.signUpWithEmail(
+      // Step 1: Precheck duplicates before sending OTP
+      await _authRepository.precheckSignup(
         email: event.email,
-        password: event.password,
-        name: event.name,
         phone: event.phone,
         role: event.role,
-        profileImage: event.profileImage,
       );
 
-      // Step 2: Request OTP for phone verification before persisting
-      emit(const AuthLoading());
+      // Step 2: Request OTP for phone verification
       final verificationId = await _authRepository.requestPhoneOtp(
         phoneNumber: event.phone,
       );
 
-      // Step 3: Show pending verification state (user must verify phone before account created)
+      // Step 3: Keep full signup data in memory and continue on OTP screen
+      final pendingSignupData = {
+        'email': event.email,
+        'password': event.password,
+        'name': event.name,
+        'phone': event.phone,
+        'role': event.role,
+        'profileImage': event.profileImage,
+      };
+
       emit(AuthPendingPhoneVerification(
         verificationId: verificationId,
         phoneNumber: event.phone,
-        firebaseUid: firebaseUser.id,
-        email: event.email,
-        name: event.name,
         role: event.role,
+        pendingSignupData: pendingSignupData,
       ));
     } catch (e) {
       emit(AuthError(message: e.toString()));
@@ -171,16 +175,11 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
   ) async {
     emit(const AuthLoading());
     try {
-      // Verify OTP and complete signup (now sync to Neo4j)
+      // Verify OTP and finalize signup in Firebase + backend
       final user = await _authRepository.completeSignUpWithPhoneVerification(
         verificationId: event.verificationId,
         smsCode: event.smsCode,
-        firebaseUid: event.firebaseUid,
-        email: event.email,
-        name: event.name,
-        phone: event.phone,
-        role: event.role,
-        profileImage: event.profileImage,
+        pendingSignupData: event.pendingSignupData,
       );
 
       _updateFcmToken();
@@ -278,24 +277,42 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
   ) async {
     emit(const AuthLoading());
     try {
-      final user = await _authRepository.signUpProviderWithDocuments(
+      await _authRepository.precheckSignup(
         email: event.email,
-        password: event.password,
-        name: event.name,
         phone: event.phone,
-        profileImage: event.profileImage,
+        role: AppConstants.roleProvider,
         cnic: event.cnic,
-        vehicleNumber: event.vehicleNumber,
-        vehicleType: event.vehicleType,
-        vehicleModel: event.vehicleModel,
-        vehicleYear: event.vehicleYear,
-        vehicleCapacity: event.vehicleCapacity,
-        cnicFrontImageBase64: event.cnicFrontImageBase64,
-        cnicBackImageBase64: event.cnicBackImageBase64,
-        licenseImageBase64: event.licenseImageBase64,
-        vehicleImageBase64: event.vehicleImageBase64,
       );
-      emit(AuthAuthenticated(user: user));
+
+      final verificationId = await _authRepository.requestPhoneOtp(
+        phoneNumber: event.phone,
+      );
+
+      final pendingSignupData = {
+        'email': event.email,
+        'password': event.password,
+        'name': event.name,
+        'phone': event.phone,
+        'role': AppConstants.roleProvider,
+        'profileImage': event.profileImage,
+        'cnic': event.cnic,
+        'vehicleNumber': event.vehicleNumber,
+        'vehicleType': event.vehicleType,
+        'vehicleModel': event.vehicleModel,
+        'vehicleYear': event.vehicleYear,
+        'vehicleCapacity': event.vehicleCapacity,
+        'cnicFrontImageBase64': event.cnicFrontImageBase64,
+        'cnicBackImageBase64': event.cnicBackImageBase64,
+        'licenseImageBase64': event.licenseImageBase64,
+        'vehicleImageBase64': event.vehicleImageBase64,
+      };
+
+      emit(AuthPendingPhoneVerification(
+        verificationId: verificationId,
+        phoneNumber: event.phone,
+        role: AppConstants.roleProvider,
+        pendingSignupData: pendingSignupData,
+      ));
     } catch (e) {
       emit(AuthError(message: e.toString()));
     }

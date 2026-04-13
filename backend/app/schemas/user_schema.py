@@ -133,3 +133,46 @@ class PhoneUserSyncRequest(BaseModel):
                 "email": "optional@example.com"
             }
         }
+
+
+class SignupPrecheckRequest(BaseModel):
+    """Schema for validating duplicate constraints before OTP is sent"""
+    email: EmailStr = Field(..., description="User email")
+    phone: str = Field(..., description="User phone number in E.164")
+    role: str = Field(..., description="User role: 'seeker' or 'provider'")
+    cnic: Optional[str] = Field(None, description="CNIC for providers")
+
+
+class SignupPrecheckResponse(BaseModel):
+    """Schema for signup precheck response"""
+    success: bool = Field(..., description="Whether precheck succeeded")
+    message: str = Field(..., description="Response message")
+    isPhoneAvailable: bool = Field(..., description="Phone availability")
+    isEmailAvailable: bool = Field(..., description="Email availability")
+    isCnicAvailable: Optional[bool] = Field(None, description="CNIC availability for provider")
+
+
+class SignupCompleteRequest(BaseModel):
+    """Schema for finalizing signup after OTP verification"""
+    email: EmailStr = Field(..., description="User email")
+    name: str = Field(..., description="User full name")
+    phone: str = Field(..., description="User phone number")
+    role: str = Field(..., description="User role: 'seeker' or 'provider'")
+    profileImageUrl: Optional[str] = Field(None, description="Profile image data/url")
+
+    # Provider-specific fields
+    cnic: Optional[str] = Field(None, description="CNIC number for provider")
+    cnicFrontImageBase64: Optional[str] = Field(None, description="Base64 CNIC front image")
+    cnicBackImageBase64: Optional[str] = Field(None, description="Base64 CNIC back image")
+    licenseImageBase64: Optional[str] = Field(None, description="Base64 license image")
+    vehicleImageBase64: Optional[str] = Field(None, description="Base64 vehicle image")
+    cnicFrontImageUrl: Optional[str] = Field(None, description="Finalized CNIC front image URL")
+    cnicBackImageUrl: Optional[str] = Field(None, description="Finalized CNIC back image URL")
+    licenseImageUrl: Optional[str] = Field(None, description="Finalized license image URL")
+    vehicleImageUrl: Optional[str] = Field(None, description="Finalized vehicle image URL")
+
+    vehicleType: Optional[str] = Field(None, description="Vehicle type")
+    vehicleNumber: Optional[str] = Field(None, description="Vehicle registration number")
+    vehicleModel: Optional[str] = Field(None, description="Vehicle model")
+    vehicleYear: Optional[str] = Field(None, description="Vehicle year")
+    vehicleCapacity: Optional[float] = Field(None, description="Vehicle capacity")

@@ -90,37 +90,19 @@ class AuthPhoneOtpVerifyRequested extends AuthEvent {
 class AuthSignUpWithPhoneVerifyRequested extends AuthEvent {
   final String verificationId;
   final String smsCode;
-  final String firebaseUid;
-  final String email;
-  final String password;
-  final String name;
-  final String phone;
-  final String role;
-  final Uint8List? profileImage;
+  final Map<String, dynamic> pendingSignupData;
 
   const AuthSignUpWithPhoneVerifyRequested({
     required this.verificationId,
     required this.smsCode,
-    required this.firebaseUid,
-    required this.email,
-    required this.password,
-    required this.name,
-    required this.phone,
-    required this.role,
-    this.profileImage,
+    required this.pendingSignupData,
   });
 
   @override
   List<Object?> get props => [
         verificationId,
         smsCode,
-        firebaseUid,
-        email,
-        password,
-        name,
-        phone,
-        role,
-        profileImage,
+        pendingSignupData,
       ];
 }
 

@@ -65,21 +65,17 @@ class AuthPhoneCodeSent extends AuthState {
 class AuthPendingPhoneVerification extends AuthState {
   final String verificationId;
   final String phoneNumber;
-  final String firebaseUid;
-  final String email;
-  final String name;
   final String role;
+  final Map<String, dynamic> pendingSignupData;
 
   const AuthPendingPhoneVerification({
     required this.verificationId,
     required this.phoneNumber,
-    required this.firebaseUid,
-    required this.email,
-    required this.name,
     required this.role,
+    required this.pendingSignupData,
   });
 
   @override
   List<Object?> get props =>
-      [verificationId, phoneNumber, firebaseUid, email, name, role];
+      [verificationId, phoneNumber, role, pendingSignupData];
 }
