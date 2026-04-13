@@ -316,7 +316,8 @@ class AuthRepositoryImpl implements AuthRepository {
       final password = (pendingSignupData['password'] as String?) ?? '';
       final name = (pendingSignupData['name'] as String?)?.trim() ?? '';
       final role = (pendingSignupData['role'] as String?)?.trim() ?? 'seeker';
-      final phone = (pendingSignupData['phone'] as String?)?.trim() ?? '';
+      final rawPhone = (pendingSignupData['phone'] as String?)?.trim() ?? '';
+      final phone = _normalizePkPhoneToE164(rawPhone);
       final profileImage = pendingSignupData['profileImage'] as Uint8List?;
 
       // Step 2: Link email/password credential after OTP success (if provided)
@@ -704,6 +705,8 @@ class AuthRepositoryImpl implements AuthRepository {
         return 'Missing app client identifier. Recheck Firebase configuration files.';
       case 'quota-exceeded':
         return 'SMS quota exceeded. Please try again later.';
+      case 'billing-not-enabled':
+        return 'Phone authentication requires billing to be enabled for this Firebase project. Please enable billing in Google Cloud/Firebase and try again.';
       case 'internal-error':
         return 'Firebase temporary error. Please try again.';
       case 'too-many-requests':

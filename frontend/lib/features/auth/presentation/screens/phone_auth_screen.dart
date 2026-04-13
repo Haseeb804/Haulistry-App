@@ -144,9 +144,7 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
             );
             _startOtpTimer();
           } else if (state is AuthAuthenticated) {
-            if (state.user.role == AppConstants.roleProvider && !state.user.isVerified) {
-              context.go('/provider/documents');
-            } else if (state.user.role == AppConstants.roleProvider) {
+            if (state.user.role == AppConstants.roleProvider) {
               context.go('/provider/home');
             } else {
               context.go('/seeker/home');
