@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:async';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -34,6 +35,8 @@ class _SeekerHomeScreenState extends State<SeekerHomeScreen>
   late AnimationController _animController;
   late Animation<double> _fadeAnim;
   bool _feedbackGateChecked = false;
+  Timer? _activeBookingPollTimer;
+  bool _hasAutoNavigatedToTracking = false;
 
   // Categories that match backend service categories
   final List<Map<String, dynamic>> _categories = [
@@ -101,7 +104,67 @@ class _SeekerHomeScreenState extends State<SeekerHomeScreen>
     _animController.forward();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _enforceMandatorySeekerFeedback();
+      _startAcceptedBookingWatcher();
     });
+  }
+
+  void _startAcceptedBookingWatcher() {
+    _checkForAcceptedBookingAndNavigate();
+    _activeBookingPollTimer?.cancel();
+    _activeBookingPollTimer = Timer.periodic(const Duration(seconds: 8), (_) {
+      _checkForAcceptedBookingAndNavigate();
+    });
+  }
+
+  Future<void> _checkForAcceptedBookingAndNavigate() async {
+    if (!mounted || _hasAutoNavigatedToTracking) return;
+
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) return;
+
+      final bookings = await _bookingRepository.getBookingHistory(user.uid);
+      if (!mounted || _hasAutoNavigatedToTracking) return;
+
+      final activeStatuses = {
+        'accepted',
+        'provider_arriving',
+        'provider_arrived',
+        'in_progress',
+      };
+
+      final activeBookings = bookings
+          .where((b) => activeStatuses.contains(b.status.toLowerCase()))
+          .toList()
+        ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+
+      if (activeBookings.isEmpty) return;
+
+      final booking = activeBookings.first;
+      _hasAutoNavigatedToTracking = true;
+
+      context.push(
+        '/booking/${booking.id}/tracking',
+        extra: {
+          'providerId': booking.providerId ?? '',
+          'pickupLocation': {
+            'latitude': booking.pickupLatitude,
+            'longitude': booking.pickupLongitude,
+          },
+          'dropoffLocation': {
+            'latitude': booking.dropLatitude,
+            'longitude': booking.dropLongitude,
+          },
+          'pickupAddress': booking.pickupAddress,
+          'dropAddress': booking.dropAddress,
+          'estimatedPrice': booking.estimatedPrice,
+          'serviceType': booking.serviceType,
+          'providerName': booking.providerName,
+        },
+      );
+    } catch (_) {
+      // Non-blocking: stay on home screen if polling fails.
+    }
   }
 
   Future<void> _enforceMandatorySeekerFeedback() async {
@@ -142,6 +205,7 @@ class _SeekerHomeScreenState extends State<SeekerHomeScreen>
 
   @override
   void dispose() {
+    _activeBookingPollTimer?.cancel();
     _searchController.dispose();
     _animController.dispose();
     super.dispose();

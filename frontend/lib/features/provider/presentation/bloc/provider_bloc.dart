@@ -221,10 +221,11 @@ class ProviderBloc extends Bloc<ProviderEvent, ProviderState> {
       }
 
       // Accept booking via backend
-      await _repository.acceptBooking(event.bookingId, user.uid);
+      final acceptedBooking = await _repository.acceptBooking(event.bookingId, user.uid);
 
-      emit(const ProviderBookingActionSuccess(
+      emit(ProviderBookingActionSuccess(
         message: 'Booking accepted successfully',
+        acceptedBooking: acceptedBooking,
       ));
 
       // Reload bookings

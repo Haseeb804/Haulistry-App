@@ -104,6 +104,28 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen> {
                 margin: const EdgeInsets.all(16),
               ),
             );
+
+            final acceptedBooking = state.acceptedBooking;
+            if (acceptedBooking != null) {
+              context.push(
+                '/provider/tracking/${acceptedBooking.id}',
+                extra: {
+                  'pickupLocation': {
+                    'latitude': acceptedBooking.pickupLatitude,
+                    'longitude': acceptedBooking.pickupLongitude,
+                  },
+                  'dropoffLocation': {
+                    'latitude': acceptedBooking.dropLatitude,
+                    'longitude': acceptedBooking.dropLongitude,
+                  },
+                  'pickupAddress': acceptedBooking.pickupAddress,
+                  'dropAddress': acceptedBooking.dropAddress,
+                  'estimatedPrice': acceptedBooking.estimatedPrice,
+                  'serviceType': acceptedBooking.serviceType,
+                  'bookingStatus': acceptedBooking.status,
+                },
+              );
+            }
           } else if (state is ProviderError) {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
