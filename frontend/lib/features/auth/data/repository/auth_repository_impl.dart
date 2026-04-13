@@ -1,7 +1,5 @@
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:firebase_storage/firebase_storage.dart';
 import 'package:http/http.dart' as http;
-import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
@@ -94,39 +92,29 @@ class AuthRepositoryImpl implements AuthRepository {
 
   @override
   Future<String> requestPhoneOtp({required String phoneNumber}) async {
-    final normalizedPhone = _normalizePkPhoneToE164(phoneNumber);
-    final completer = Completer<String>();
-
     try {
-      await _firebaseAuth.verifyPhoneNumber(
-        phoneNumber: normalizedPhone,
-        timeout: const Duration(seconds: 60),
-        verificationCompleted: (PhoneAuthCredential credential) async {
-          // Auto-retrieval may complete instantly on Android in some cases.
-          // We keep this non-blocking because UI flow proceeds from verificationId.
-        },
-        verificationFailed: (FirebaseAuthException e) {
-          if (!completer.isCompleted) {
-            completer.completeError(Exception(_getAuthErrorMessage(e.code)));
-          }
-        },
-        codeSent: (String verificationId, int? resendToken) {
-          if (!completer.isCompleted) {
-            completer.complete(verificationId);
-          }
-        },
-        codeAutoRetrievalTimeout: (String verificationId) {
-          if (!completer.isCompleted) {
-            completer.complete(verificationId);
-          }
-        },
+      final normalizedPhone = _normalizePkPhoneToE164(phoneNumber);
+
+      final response = await http.post(
+        Uri.parse('${AppConstants.apiUrl}/send-otp'),
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode({'phone': normalizedPhone}),
       );
 
-      return completer.future;
-    } on FirebaseAuthException catch (e) {
-      throw Exception(_getAuthErrorMessage(e.code));
+      final data = json.decode(response.body);
+
+      if (response.statusCode == 200 && data['success'] == true) {
+        final serverPhone = (data['data']?['phone'] as String?)?.trim();
+        // Keep return shape compatible with current flow by using phone as token.
+        return (serverPhone != null && serverPhone.isNotEmpty)
+            ? serverPhone
+            : normalizedPhone;
+      }
+
+      final message = (data['message'] ?? data['detail'] ?? 'Failed to send OTP').toString();
+      throw Exception(message);
     } catch (e) {
-      throw Exception(_getNetworkErrorMessage(e));
+      throw _toUserFacingException(e);
     }
   }
 
@@ -174,64 +162,25 @@ class AuthRepositoryImpl implements AuthRepository {
     String? email,
   }) async {
     try {
-      final credential = PhoneAuthProvider.credential(
-        verificationId: verificationId,
-        smsCode: smsCode,
-      );
-
-      final userCredential = await _firebaseAuth.signInWithCredential(credential);
-      final firebaseUser = userCredential.user;
-      if (firebaseUser == null) {
-        throw Exception('Phone sign-in failed');
-      }
-
-      final idToken = await firebaseUser.getIdToken();
-      if (idToken == null) {
-        throw Exception('Failed to get auth token');
-      }
-
-      // Try existing user first
-      final meResponse = await http.get(
-        Uri.parse('$_baseUrl/auth/me'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $idToken',
-        },
-      );
-
-      if (meResponse.statusCode == 200) {
-        final meData = json.decode(meResponse.body);
-        if (meData['success'] == true && meData['user'] != null) {
-          return UserEntity.fromJson(meData['user']);
-        }
-      }
-
-      // Create/sync user for first-time phone-auth login
-      final syncResponse = await http.post(
-        Uri.parse('$_baseUrl/auth/phone/sync'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $idToken',
-        },
+      final response = await http.post(
+        Uri.parse('${AppConstants.apiUrl}/verify-otp'),
+        headers: {'Content-Type': 'application/json'},
         body: json.encode({
-          if (name != null && name.trim().isNotEmpty) 'name': name.trim(),
-          'role': role,
-          if (email != null && email.trim().isNotEmpty) 'email': email.trim(),
+          'phone': _normalizePkPhoneToE164(verificationId),
+          'otp': smsCode.trim(),
         }),
       );
 
-      if (syncResponse.statusCode == 200 || syncResponse.statusCode == 201) {
-        final syncData = json.decode(syncResponse.body);
-        if (syncData['success'] == true && syncData['user'] != null) {
-          return UserEntity.fromJson(syncData['user']);
-        }
+      final data = json.decode(response.body);
+      if (response.statusCode != 200 || data['success'] != true) {
+        final message = (data['message'] ?? data['detail'] ?? 'OTP verification failed').toString();
+        throw Exception(message);
       }
 
-      throw Exception('Failed to sync phone-auth user');
-    } on FirebaseAuthException catch (e) {
-      throw Exception(_getAuthErrorMessage(e.code));
+      // Custom OTP verifies phone only. App sign-in remains email/password based.
+      throw Exception('Phone OTP verified. Please sign in with email and password.');
     } catch (e) {
-      throw Exception(_getNetworkErrorMessage(e));
+      throw _toUserFacingException(e);
     }
   }
 
@@ -300,16 +249,22 @@ class AuthRepositoryImpl implements AuthRepository {
     required Map<String, dynamic> pendingSignupData,
   }) async {
     try {
-      // Step 1: Verify phone OTP
-      final credential = PhoneAuthProvider.credential(
-        verificationId: verificationId,
-        smsCode: smsCode,
+      final normalizedPhone = _normalizePkPhoneToE164(verificationId);
+
+      // Step 1: Verify OTP against backend custom OTP service.
+      final otpResponse = await http.post(
+        Uri.parse('${AppConstants.apiUrl}/verify-otp'),
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode({
+          'phone': normalizedPhone,
+          'otp': smsCode.trim(),
+        }),
       );
 
-      final userCredential = await _firebaseAuth.signInWithCredential(credential);
-      final firebaseUser = userCredential.user;
-      if (firebaseUser == null) {
-        throw Exception('User not authenticated');
+      final otpData = json.decode(otpResponse.body);
+      if (otpResponse.statusCode != 200 || otpData['success'] != true) {
+        final message = (otpData['message'] ?? otpData['detail'] ?? 'OTP verification failed').toString();
+        throw Exception(message);
       }
 
       final email = (pendingSignupData['email'] as String?)?.trim() ?? '';
@@ -318,158 +273,42 @@ class AuthRepositoryImpl implements AuthRepository {
       final role = (pendingSignupData['role'] as String?)?.trim() ?? 'seeker';
       final rawPhone = (pendingSignupData['phone'] as String?)?.trim() ?? '';
       final phone = _normalizePkPhoneToE164(rawPhone);
-      final profileImage = pendingSignupData['profileImage'] as Uint8List?;
+      if (phone != normalizedPhone) {
+        throw Exception('Phone mismatch. Please request OTP again.');
+      }
 
-      // Step 2: Link email/password credential after OTP success (if provided)
-      if (email.isNotEmpty && password.isNotEmpty) {
-        final emailCredential = EmailAuthProvider.credential(
+      // Step 2: OTP is verified, now create account through existing flows.
+      if (role == AppConstants.roleProvider) {
+        return signUpProviderWithDocuments(
           email: email,
           password: password,
-        );
-        try {
-          await firebaseUser.linkWithCredential(emailCredential);
-        } on FirebaseAuthException catch (e) {
-          if (e.code != 'provider-already-linked') {
-            throw Exception(_getAuthErrorMessage(e.code));
-          }
-        }
-      }
-
-      await firebaseUser.getIdToken(true);
-      final idToken = await firebaseUser.getIdToken();
-      if (idToken == null) {
-        throw Exception('Failed to get auth token');
-      }
-
-      // Step 3: Finalize signup in backend after OTP verification
-      String? profileImageBase64;
-      if (profileImage != null) {
-        profileImageBase64 = 'data:image/jpeg;base64,${base64Encode(profileImage)}';
-      }
-
-      String? cnicFrontImageUrl;
-      String? cnicBackImageUrl;
-      String? licenseImageUrl;
-      String? vehicleImageUrl;
-
-      if (role == 'provider') {
-        cnicFrontImageUrl = await _uploadProviderDocFromBase64(
-          uid: firebaseUser.uid,
-          base64Data: pendingSignupData['cnicFrontImageBase64'] as String?,
-          fileName: 'cnic_front.jpg',
-        );
-        cnicBackImageUrl = await _uploadProviderDocFromBase64(
-          uid: firebaseUser.uid,
-          base64Data: pendingSignupData['cnicBackImageBase64'] as String?,
-          fileName: 'cnic_back.jpg',
-        );
-        licenseImageUrl = await _uploadProviderDocFromBase64(
-          uid: firebaseUser.uid,
-          base64Data: pendingSignupData['licenseImageBase64'] as String?,
-          fileName: 'license.jpg',
-        );
-        vehicleImageUrl = await _uploadProviderDocFromBase64(
-          uid: firebaseUser.uid,
-          base64Data: pendingSignupData['vehicleImageBase64'] as String?,
-          fileName: 'vehicle.jpg',
+          name: name,
+          phone: phone,
+          profileImage: pendingSignupData['profileImage'] as Uint8List?,
+          cnic: (pendingSignupData['cnic'] as String?)?.trim() ?? '',
+          vehicleNumber: (pendingSignupData['vehicleNumber'] as String?)?.trim() ?? '',
+          vehicleType: (pendingSignupData['vehicleType'] as String?)?.trim() ?? '',
+          vehicleModel: (pendingSignupData['vehicleModel'] as String?)?.trim() ?? '',
+          vehicleYear: (pendingSignupData['vehicleYear'] as String?)?.trim() ?? '',
+          vehicleCapacity: (pendingSignupData['vehicleCapacity'] as num?)?.toDouble() ?? 0.0,
+          cnicFrontImageBase64: pendingSignupData['cnicFrontImageBase64'] as String?,
+          cnicBackImageBase64: pendingSignupData['cnicBackImageBase64'] as String?,
+          licenseImageBase64: pendingSignupData['licenseImageBase64'] as String?,
+          vehicleImageBase64: pendingSignupData['vehicleImageBase64'] as String?,
         );
       }
 
-      final response = await http.post(
-        Uri.parse('$_baseUrl/auth/signup/complete'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $idToken',
-        },
-        body: json.encode({
-          'email': email,
-          'name': name,
-          'phone': phone,
-          'role': role,
-          if (profileImageBase64 != null) 'profileImageUrl': profileImageBase64,
-          if (pendingSignupData['cnic'] != null) 'cnic': pendingSignupData['cnic'],
-          if (pendingSignupData['cnicFrontImageBase64'] != null)
-            'cnicFrontImageBase64': pendingSignupData['cnicFrontImageBase64'],
-          if (pendingSignupData['cnicBackImageBase64'] != null)
-            'cnicBackImageBase64': pendingSignupData['cnicBackImageBase64'],
-          if (pendingSignupData['licenseImageBase64'] != null)
-            'licenseImageBase64': pendingSignupData['licenseImageBase64'],
-          if (pendingSignupData['vehicleImageBase64'] != null)
-            'vehicleImageBase64': pendingSignupData['vehicleImageBase64'],
-          if (cnicFrontImageUrl != null) 'cnicFrontImageUrl': cnicFrontImageUrl,
-          if (cnicBackImageUrl != null) 'cnicBackImageUrl': cnicBackImageUrl,
-          if (licenseImageUrl != null) 'licenseImageUrl': licenseImageUrl,
-          if (vehicleImageUrl != null) 'vehicleImageUrl': vehicleImageUrl,
-          if (pendingSignupData['vehicleType'] != null)
-            'vehicleType': pendingSignupData['vehicleType'],
-          if (pendingSignupData['vehicleNumber'] != null)
-            'vehicleNumber': pendingSignupData['vehicleNumber'],
-          if (pendingSignupData['vehicleModel'] != null)
-            'vehicleModel': pendingSignupData['vehicleModel'],
-          if (pendingSignupData['vehicleYear'] != null)
-            'vehicleYear': pendingSignupData['vehicleYear'],
-          if (pendingSignupData['vehicleCapacity'] != null)
-            'vehicleCapacity': pendingSignupData['vehicleCapacity'],
-        }),
+      return signUpWithEmail(
+        email: email,
+        password: password,
+        name: name,
+        phone: phone,
+        role: role,
+        profileImage: pendingSignupData['profileImage'] as Uint8List?,
       );
-
-      if (response.statusCode != 200 && response.statusCode != 201) {
-        try {
-          await firebaseUser.delete();
-        } catch (_) {
-          // best effort rollback of Firebase Auth account
-        }
-
-        String message = 'Failed to complete signup';
-        try {
-          final data = json.decode(response.body);
-          message = (data['detail'] ?? data['message'] ?? message).toString();
-        } catch (_) {}
-        throw Exception(message);
-      }
-
-      final data = json.decode(response.body);
-      if (data['success'] != true || data['user'] == null) {
-        throw Exception('Failed to finalize signup');
-      }
-
-      return UserEntity.fromJson(data['user']);
-    } on FirebaseAuthException catch (e) {
-      throw Exception(_getAuthErrorMessage(e.code));
     } catch (e) {
       throw _toUserFacingException(e);
     }
-  }
-
-  String _stripDataUrlPrefix(String input) {
-    final commaIndex = input.indexOf(',');
-    if (commaIndex != -1) {
-      return input.substring(commaIndex + 1);
-    }
-    return input;
-  }
-
-  Future<String?> _uploadProviderDocFromBase64({
-    required String uid,
-    required String? base64Data,
-    required String fileName,
-  }) async {
-    if (base64Data == null || base64Data.trim().isEmpty) {
-      return null;
-    }
-
-    final cleaned = _stripDataUrlPrefix(base64Data.trim());
-    final bytes = base64Decode(cleaned);
-
-    final ref = FirebaseStorage.instance
-        .ref()
-        .child('provider_documents')
-        .child(uid)
-        .child(fileName);
-
-    final metadata = SettableMetadata(contentType: 'image/jpeg');
-    await ref.putData(bytes, metadata);
-    return ref.getDownloadURL();
   }
 
   @override

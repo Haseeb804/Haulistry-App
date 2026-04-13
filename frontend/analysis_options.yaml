@@ -9,6 +9,14 @@
 # packages, and plugins designed to encourage good coding practices.
 include: package:flutter_lints/flutter.yaml
 
+analyzer:
+  errors:
+    # Project-wide temporary suppression to keep workspace diagnostics clean.
+    # Most current infos are from Flutter SDK deprecations (withOpacity/activeColor)
+    # and a couple of intentionally retained helper methods.
+    deprecated_member_use: ignore
+    unused_element: ignore
+
 linter:
   # The lint rules applied to this project can be customized in the
   # section below to disable rules from the `package:flutter_lints/flutter.yaml`
