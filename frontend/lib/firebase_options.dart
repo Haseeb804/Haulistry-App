@@ -58,7 +58,7 @@ class DefaultFirebaseOptions {
 
   static const FirebaseOptions android = FirebaseOptions(
     apiKey: 'AIzaSyAkAS9nPC6RIXOLC9G96VeRNu60b2lHLKA',
-    appId: '1:791087831841:android:2472fa5eb91d2744317c60',
+    appId: '1:791087831841:android:2243c36684a22579317c60',
     messagingSenderId: '791087831841',
     projectId: 'haulistry-1b835',
     authDomain: 'haulistry-1b835.firebaseapp.com',
@@ -67,11 +67,11 @@ class DefaultFirebaseOptions {
 
   static const FirebaseOptions ios = FirebaseOptions(
     apiKey: 'AIzaSyDu9UBQy3QJyrML2fydRL5iGQlIwcE4fhA',
-    appId: '1:791087831841:ios:3a588087b1a56d8d317c60',
+    appId: '1:791087831841:ios:ea8ee65ad1e31593317c60',
     messagingSenderId: '791087831841',
     projectId: 'haulistry-1b835',
     authDomain: 'haulistry-1b835.firebaseapp.com',
     storageBucket: 'haulistry-1b835.firebasestorage.app',
-    iosBundleId: 'com.example.haulistry',
+    iosBundleId: 'com.haulistry.app',
   );
 }

@@ -696,16 +696,32 @@ class AuthRepositoryImpl implements AuthRepository {
         return 'Please check your internet connection and try again';
       case 'invalid-phone-number':
         return 'Invalid phone number format';
+      case 'invalid-app-credential':
+        return 'Phone authentication is misconfigured for this app build. Check Firebase app package/bundle and SHA fingerprints.';
+      case 'app-not-authorized':
+        return 'This app is not authorized to use Firebase Authentication. Check Firebase app setup.';
+      case 'missing-client-identifier':
+        return 'Missing app client identifier. Recheck Firebase configuration files.';
+      case 'quota-exceeded':
+        return 'SMS quota exceeded. Please try again later.';
+      case 'internal-error':
+        return 'Firebase temporary error. Please try again.';
       case 'too-many-requests':
         return 'Too many attempts. Please try again later';
       case 'invalid-verification-code':
         return 'Invalid OTP code';
+      case 'invalid-verification-id':
+        return 'Invalid OTP session. Please request a new code.';
       case 'session-expired':
         return 'OTP session expired. Please request a new code';
       case 'captcha-check-failed':
         return 'reCAPTCHA verification failed. Please try again';
+      case 'credential-already-in-use':
+        return 'This phone number is already linked to another account.';
+      case 'provider-already-linked':
+        return 'This sign-in method is already linked to your account.';
       default:
-        return 'Authentication failed';
+        return 'Authentication failed ($code)';
     }
   }
 
