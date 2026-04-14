@@ -190,7 +190,7 @@ class Booking:
             vehicleId: $vehicleId,
             serviceType: $serviceType,
             serviceId: $serviceId,
-            status: BookingStatus.PENDING,
+            status: $pendingStatus,
             pickupLatitude: $pickupLatitude,
             pickupLongitude: $pickupLongitude,
             pickupAddress: $pickupAddress,
@@ -212,6 +212,7 @@ class Booking:
         
         # Ensure serviceId is in the params
         booking_data.setdefault('serviceId', None)
+        booking_data['pendingStatus'] = BookingStatus.PENDING
         
         result = neo4j_driver.execute_write(query, booking_data)
         if result and result[0]['b']:

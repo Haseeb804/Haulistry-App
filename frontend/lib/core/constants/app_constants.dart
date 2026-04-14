@@ -59,6 +59,8 @@ class AppConstants {
   static const String statusCancelled = 'cancelled';
   static const String statusRejected = 'rejected';
   static const String statusConfirmed = 'confirmed';
+  static const String callTypeVoice = 'voice';
+  static const String callTypeVideo = 'video';
   static const String callStatusRejected = 'rejected';
   static const String callStatusMissed = 'missed';
   static const String callStatusEnded = 'ended';
