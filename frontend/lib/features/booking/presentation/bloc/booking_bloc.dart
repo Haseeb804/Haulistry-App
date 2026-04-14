@@ -9,6 +9,7 @@ import '../../../../core/services/api_service.dart';
 import '../../../../core/services/notification_service.dart';
 import '../../../../core/domain/entities/booking_entity.dart';
 import '../../../../core/domain/entities/location_entity.dart';
+import '../../../../core/constants/app_constants.dart';
 
 class BookingBloc extends Bloc<BookingEvent, BookingState> {
   final BookingService _bookingService;
@@ -610,25 +611,26 @@ class BookingBloc extends Bloc<BookingEvent, BookingState> {
 
   BookingState _getStateForBooking(BookingEntity booking) {
     switch (booking.status) {
-      case 'pending':
+      case AppConstants.statusPending:
         return BookingTracking(booking: booking);
-      case 'accepted':
-      case 'provider_arriving':
+      case AppConstants.statusAccepted:
+      case AppConstants.statusActive:
+      case AppConstants.statusProviderArriving:
         return ProviderArrivingState(booking: booking);
-      case 'provider_arrived':
+      case AppConstants.statusProviderArrived:
         return ProviderArrivedState(booking: booking);
-      case 'in_progress':
+      case AppConstants.statusInProgress:
         return BookingInProgressState(
           booking: booking,
           startedAt: booking.startedAt ?? DateTime.now(),
         );
-      case 'completed':
+      case AppConstants.statusCompleted:
         return BookingCompletedState(
           booking: booking,
           finalPrice: booking.finalPrice ?? booking.estimatedPrice,
           hasRated: booking.rating != null,
         );
-      case 'cancelled':
+      case AppConstants.statusCancelled:
         return BookingCancelledState(
           booking: booking,
           reason: booking.cancellationReason ?? 'Cancelled',

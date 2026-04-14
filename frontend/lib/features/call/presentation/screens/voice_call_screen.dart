@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../bloc/call_bloc.dart';
 import '../bloc/call_event.dart';
 import '../bloc/call_state.dart';
+import '../../../../core/constants/app_constants.dart';
 
 class VoiceCallScreen extends StatefulWidget {
   final String callId;
@@ -16,7 +17,7 @@ class VoiceCallScreen extends StatefulWidget {
     super.key,
     required this.callId,
     this.otherUserName = '',
-    this.otherUserRole = 'user',
+    this.otherUserRole = AppConstants.roleUser,
     this.otherUserProfileImageUrl,
   });
 
@@ -97,9 +98,9 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> {
                     : widget.otherUserName.isNotEmpty
                         ? widget.otherUserName
                         : 'Voice Call';
-                final displayRole = state.otherUserRole != 'user'
+                final displayRole = state.otherUserRole != AppConstants.roleUser
                     ? state.otherUserRole
-                    : widget.otherUserRole != 'user'
+                  : widget.otherUserRole != AppConstants.roleUser
                         ? widget.otherUserRole
                         : '';
                 final displayImageUrl = state.otherUserProfileImageUrl ?? widget.otherUserProfileImageUrl;

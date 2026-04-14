@@ -5,6 +5,7 @@ import 'package:latlong2/latlong.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
+import '../../../../core/constants/app_constants.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/widgets/modern_widgets.dart';
 
@@ -97,7 +98,7 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
     try {
       // Use Nominatim (OpenStreetMap) for reverse geocoding - completely free!
       final url = Uri.parse(
-        'https://nominatim.openstreetmap.org/reverse?'
+        '${MapEndpoints.nominatimReverse}?'
         'format=json&'
         'lat=${location.latitude}&'
         'lon=${location.longitude}&'
@@ -107,7 +108,7 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
       
       final response = await http.get(
         url,
-        headers: {'User-Agent': 'Haulistry Mobile App'},
+        headers: {'User-Agent': MapEndpoints.userAgent},
       );
 
       if (response.statusCode == 200) {
@@ -143,7 +144,7 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
     try {
       // Use Nominatim for forward geocoding (search)
       final url = Uri.parse(
-        'https://nominatim.openstreetmap.org/search?'
+        '${MapEndpoints.nominatimSearch}?'
         'format=json&'
         'q=$query&'
         'limit=1'
@@ -151,7 +152,7 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
       
       final response = await http.get(
         url,
-        headers: {'User-Agent': 'Haulistry Mobile App'},
+        headers: {'User-Agent': MapEndpoints.userAgent},
       );
 
       if (response.statusCode == 200) {
@@ -231,7 +232,7 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
             ),
             children: [
               TileLayer(
-                urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                urlTemplate: MapEndpoints.osmTileTemplate,
                 userAgentPackageName: 'com.haulistry.app',
               ),
               MarkerLayer(

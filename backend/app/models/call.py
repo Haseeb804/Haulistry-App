@@ -5,6 +5,7 @@ Manages voice/video calls between users
 from typing import Optional, Dict, Any, List
 from datetime import datetime
 from ..database.neo4j_driver import neo4j_driver
+from ..constants import LIVE_COMMUNICATION_STATUSES
 
 
 class Call:
@@ -48,7 +49,7 @@ class Call:
         MATCH (caller) WHERE (caller:Seeker OR caller:Provider OR caller:User) AND caller.id = $callerId
         MATCH (receiver) WHERE (receiver:Seeker OR receiver:Provider OR receiver:User) AND receiver.id = $receiverId
                 MATCH (b:Booking {id: $bookingId})
-                WHERE toLower(coalesce(b.status, '')) IN ['confirmed', 'accepted', 'provider_arriving', 'provider_arrived', 'in_progress']
+                WHERE toLower(coalesce(b.status, '')) IN $activeStatuses
                     AND (
                         (b.seekerId = $callerId AND b.providerId = $receiverId)
                         OR
@@ -82,7 +83,8 @@ class Call:
             "bookingId": booking_id,
             "callType": call_type,
             "agoraChannel": agora_channel,
-            "agoraToken": agora_token
+            "agoraToken": agora_token,
+            "activeStatuses": list(LIVE_COMMUNICATION_STATUSES),
         }
         
         result = neo4j_driver.execute_write(query, params)

@@ -7,6 +7,7 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
+import '../../../../core/constants/app_constants.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/utils/image_helper.dart';
 import '../../../../core/utils/cross_platform_image_picker.dart';
@@ -44,27 +45,36 @@ class _ChatScreenState extends State<ChatScreen> {
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   Timer? _communicationStatusTimer;
+  Timer? _backendMessagesPollingTimer;
   bool _isSending = false;
   bool _isCommunicationAllowed = false;
   bool _isCheckingCommunication = true;
+  bool _isBackendMessagesLoading = false;
+  String? _backendMessagesError;
+  List<ChatMessage> _backendMessages = const [];
 
   static const Set<String> _activeStatuses = {
-    'confirmed',
-    'accepted',
-    'provider_arriving',
-    'provider_arrived',
-    'in_progress',
+    AppConstants.statusConfirmed,
+    AppConstants.statusAccepted,
+    AppConstants.statusActive,
+    AppConstants.statusProviderArriving,
+    AppConstants.statusProviderArrived,
+    AppConstants.statusInProgress,
   };
+
+  bool get _useBackendMessaging => widget.bookingId != null && widget.bookingId!.isNotEmpty;
 
   @override
   void initState() {
     super.initState();
-    context
+    if (!_useBackendMessaging) {
+      context
         .read<ChatBloc>()
         .add(ChatLoadMessagesRequested(conversationId: widget.conversationId));
-    context
+      context
         .read<ChatBloc>()
         .add(ChatMarkAsRead(conversationId: widget.conversationId));
+    }
     
     // Listen for text changes to toggle between send and voice button
     _messageController.addListener(() {
@@ -76,6 +86,12 @@ class _ChatScreenState extends State<ChatScreen> {
       _communicationStatusTimer = Timer.periodic(
         const Duration(seconds: 5),
         (_) => _checkCommunicationPermission(),
+      );
+
+      _loadBackendMessages();
+      _backendMessagesPollingTimer = Timer.periodic(
+        const Duration(seconds: 2),
+        (_) => _loadBackendMessages(),
       );
     }
   }
@@ -118,9 +134,68 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
+  DateTime _parseBackendTimestamp(Map<String, dynamic> message) {
+    final raw = message['createdAt'] ?? message['timestamp'] ?? message['updatedAt'];
+    if (raw is String && raw.isNotEmpty) {
+      return DateTime.tryParse(raw)?.toLocal() ?? DateTime.now();
+    }
+    return DateTime.now();
+  }
+
+  Future<void> _loadBackendMessages() async {
+    if (!_useBackendMessaging || !mounted) return;
+
+    final currentUser = FirebaseAuth.instance.currentUser;
+    if (currentUser == null) return;
+
+    if (_isBackendMessagesLoading) return;
+    _isBackendMessagesLoading = true;
+
+    try {
+      final response = await ApiService.instance.get(
+        ApiEndpoints.conversationMessages(currentUser.uid, widget.otherUserId, widget.bookingId!),
+      );
+
+      if (response['success'] == true) {
+        final rows = (response['messages'] as List<dynamic>? ?? const [])
+            .cast<Map<String, dynamic>>();
+
+        final parsed = rows.map((row) {
+          final messageType = (row['messageType'] as String? ?? 'text').toLowerCase();
+          final messageText = (row['messageText'] as String? ?? '').trim();
+          final isImage = messageType == 'image' && messageText.startsWith('http');
+
+          return ChatMessage(
+            id: row['id']?.toString() ?? '',
+            senderId: row['senderId']?.toString() ?? '',
+            senderName: row['senderName']?.toString() ?? 'User',
+            message: isImage ? '' : messageText,
+            imageUrl: isImage ? messageText : null,
+            timestamp: _parseBackendTimestamp(row),
+            isRead: row['isRead'] == true,
+          );
+        }).toList();
+
+        if (!mounted) return;
+        setState(() {
+          _backendMessages = parsed;
+          _backendMessagesError = null;
+        });
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _backendMessagesError = e.toString();
+      });
+    } finally {
+      _isBackendMessagesLoading = false;
+    }
+  }
+
   @override
   void dispose() {
     _communicationStatusTimer?.cancel();
+    _backendMessagesPollingTimer?.cancel();
     _messageController.dispose();
     _scrollController.dispose();
     super.dispose();
@@ -201,7 +276,7 @@ class _ChatScreenState extends State<ChatScreen> {
     final bookingId = widget.bookingId!;
 
     // Determine the receiver's role for display
-    final receiverRole = widget.otherUserRole ?? 'user';
+    final receiverRole = widget.otherUserRole ?? AppConstants.roleUser;
 
     context.read<CallBloc>().add(
           InitiateCallRequested(
@@ -215,7 +290,7 @@ class _ChatScreenState extends State<ChatScreen> {
         );
 
     // Navigate to outgoing call screen
-    context.push('/call/outgoing', extra: {
+    context.push(AppRoutes.callOutgoing, extra: {
       'callId': 'pending', // Will be set by bloc
       'receiverName': widget.otherUserName,
       'receiverRole': receiverRole,
@@ -234,7 +309,24 @@ class _ChatScreenState extends State<ChatScreen> {
       await ref.putData(imageBytes);
       final imageUrl = await ref.getDownloadURL();
 
-      if (mounted) {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) {
+        throw Exception('User not authenticated');
+      }
+
+      if (_useBackendMessaging) {
+        final response = await ApiService.instance.post(ApiEndpoints.messageSend, {
+          'senderId': user.uid,
+          'receiverId': widget.otherUserId,
+          'bookingId': widget.bookingId,
+          'messageText': imageUrl,
+          'messageType': 'image',
+        });
+        if (response['success'] != true) {
+          throw Exception(response['message'] ?? 'Failed to send image');
+        }
+        await _loadBackendMessages();
+      } else if (mounted) {
         context.read<ChatBloc>().add(
               ChatSendMessageRequested(
                 conversationId: widget.conversationId,
@@ -284,6 +376,11 @@ class _ChatScreenState extends State<ChatScreen> {
     final message = _messageController.text.trim();
     if (message.isEmpty) return;
 
+    if (_useBackendMessaging) {
+      _sendMessageViaBackend(message);
+      return;
+    }
+
     context.read<ChatBloc>().add(
           ChatSendMessageRequested(
             conversationId: widget.conversationId,
@@ -293,6 +390,41 @@ class _ChatScreenState extends State<ChatScreen> {
 
     _messageController.clear();
     _scrollToBottom();
+  }
+
+  Future<void> _sendMessageViaBackend(String message) async {
+    try {
+      final currentUser = FirebaseAuth.instance.currentUser;
+      if (currentUser == null) {
+        throw Exception('User not authenticated');
+      }
+
+      final response = await ApiService.instance.post(ApiEndpoints.messageSend, {
+        'senderId': currentUser.uid,
+        'receiverId': widget.otherUserId,
+        'bookingId': widget.bookingId,
+        'messageText': message,
+        'messageType': 'text',
+      });
+
+      if (response['success'] != true) {
+        throw Exception(response['message'] ?? 'Failed to send message');
+      }
+
+      _messageController.clear();
+      await _loadBackendMessages();
+      _scrollToBottom();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to send message: $e'),
+          backgroundColor: AppTheme.errorColor,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ),
+      );
+    }
   }
 
   void _scrollToBottom() {
@@ -370,7 +502,7 @@ class _ChatScreenState extends State<ChatScreen> {
                     overflow: TextOverflow.ellipsis,
                   ),
                   Text(
-                    widget.otherUserRole != null && widget.otherUserRole!.isNotEmpty && widget.otherUserRole != 'user'
+                    widget.otherUserRole != null && widget.otherUserRole!.isNotEmpty && widget.otherUserRole != AppConstants.roleUser
                         ? widget.otherUserRole![0].toUpperCase() + widget.otherUserRole!.substring(1)
                         : 'Online',
                     style: const TextStyle(
@@ -392,7 +524,7 @@ class _ChatScreenState extends State<ChatScreen> {
             ),
             child: IconButton(
               icon: const Icon(Icons.phone_rounded, color: Colors.white, size: 22),
-              onPressed: _isCheckingCommunication ? null : () => _initiateCall('voice'),
+              onPressed: _isCheckingCommunication ? null : () => _initiateCall(AppConstants.callTypeVoice),
             ),
           ),
           Container(
@@ -403,7 +535,7 @@ class _ChatScreenState extends State<ChatScreen> {
             ),
             child: IconButton(
               icon: const Icon(Icons.videocam_rounded, color: Colors.white, size: 22),
-              onPressed: _isCheckingCommunication ? null : () => _initiateCall('video'),
+              onPressed: _isCheckingCommunication ? null : () => _initiateCall(AppConstants.callTypeVideo),
             ),
           ),
           Container(
@@ -440,7 +572,9 @@ class _ChatScreenState extends State<ChatScreen> {
               ),
             ),
           Expanded(
-            child: BlocConsumer<ChatBloc, ChatState>(
+            child: _useBackendMessaging
+                ? _buildBackendMessagesView()
+                : BlocConsumer<ChatBloc, ChatState>(
               listener: (context, state) {
                 if (state is MessageSent) {
                   _scrollToBottom();
@@ -685,6 +819,110 @@ class _ChatScreenState extends State<ChatScreen> {
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildBackendMessagesView() {
+    if (_backendMessagesError != null && _backendMessages.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: AppTheme.errorColor.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: const Icon(
+                Icons.error_outline_rounded,
+                size: 48,
+                color: AppTheme.errorColor,
+              ),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Failed to load messages',
+              style: const TextStyle(fontSize: 16),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 16),
+            GestureDetector(
+              onTap: _loadBackendMessages,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                decoration: BoxDecoration(
+                  gradient: AppTheme.primaryGradient,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.refresh_rounded, color: Colors.white),
+                    SizedBox(width: 8),
+                    Text(
+                      'Retry',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    if (_backendMessages.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                gradient: AppTheme.primaryGradient.scale(0.3),
+                borderRadius: BorderRadius.circular(24),
+              ),
+              child: const Icon(
+                Icons.chat_bubble_outline_rounded,
+                size: 56,
+                color: AppTheme.primaryColor,
+              ),
+            ),
+            const SizedBox(height: 20),
+            const Text(
+              'No messages yet',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Start the conversation!',
+              style: TextStyle(
+                fontSize: 14,
+                color: AppTheme.textSecondary,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return ListView.builder(
+      controller: _scrollController,
+      reverse: true,
+      padding: const EdgeInsets.all(16),
+      itemCount: _backendMessages.length,
+      itemBuilder: (context, index) {
+        final message = _backendMessages[_backendMessages.length - 1 - index];
+        return _MessageBubble(message: message);
+      },
     );
   }
 }

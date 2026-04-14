@@ -7,6 +7,7 @@ from typing import Optional, Dict, Any, List
 from datetime import datetime
 from enum import Enum
 from ..database import neo4j_driver
+from ..constants import BookingStatus
 
 
 class OfferStatus(str, Enum):
@@ -101,7 +102,7 @@ class FareOffer:
             providerId: $providerId,
             vehicleId: $vehicleId,
             offeredPrice: $offeredPrice,
-            status: 'pending',
+            status: $pendingStatus,
             message: $message,
             estimatedArrivalMinutes: $estimatedArrivalMinutes,
             createdAt: datetime(),
@@ -121,6 +122,7 @@ class FareOffer:
             'offeredPrice': offer_data.get('offeredPrice'),
             'message': offer_data.get('message'),
             'estimatedArrivalMinutes': offer_data.get('estimatedArrivalMinutes'),
+            'pendingStatus': OfferStatus.PENDING.value,
         }
         
         result = neo4j_driver.execute_write(query, params)
@@ -162,13 +164,16 @@ class FareOffer:
         MATCH (p)-[:MADE_OFFER]->(o)
         WHERE p:Provider OR p:User OR p:Seeker
         OPTIONAL MATCH (v:Vehicle {id: o.vehicleId})
-        WHERE o.status IN ['pending', 'counter_offered']
+        WHERE o.status IN $activeOfferStatuses
         RETURN o, p.id as providerId, p.name as providerName, p.rating as providerRating,
                p.phone as providerPhone, p.profileImageUrl as providerImage,
                v.vehicleType as vehicleType, v.vehicleNumber as vehicleNumber
         ORDER BY o.createdAt DESC
         """
-        result = neo4j_driver.execute_read(query, {'bookingId': booking_id})
+        result = neo4j_driver.execute_read(query, {
+            'bookingId': booking_id,
+            'activeOfferStatuses': [OfferStatus.PENDING.value, OfferStatus.COUNTER_OFFERED.value],
+        })
         offers = []
         if result:
             for record in result:
@@ -229,13 +234,13 @@ class FareOffer:
         MATCH (b:Booking)-[:HAS_OFFER]->(o:FareOffer {id: $offerId})
         // Reject all other pending offers for this booking
         OPTIONAL MATCH (b)-[:HAS_OFFER]->(other:FareOffer)
-        WHERE other.id <> $offerId AND other.status = 'pending'
-        SET other.status = 'rejected', other.updatedAt = datetime()
+        WHERE other.id <> $offerId AND other.status = $pendingStatus
+        SET other.status = $rejectedStatus, other.updatedAt = datetime()
         
         WITH b, o
-        SET o.status = 'accepted',
+        SET o.status = $acceptedOfferStatus,
             o.updatedAt = datetime(),
-            b.status = 'accepted',
+            b.status = $acceptedBookingStatus,
             b.providerId = o.providerId,
             b.vehicleId = o.vehicleId,
             b.finalPrice = COALESCE(o.counterPrice, o.offeredPrice),
@@ -243,7 +248,13 @@ class FareOffer:
         RETURN o, b
         """
         
-        result = neo4j_driver.execute_write(query, {'offerId': offer_id})
+        result = neo4j_driver.execute_write(query, {
+            'offerId': offer_id,
+            'pendingStatus': OfferStatus.PENDING.value,
+            'rejectedStatus': OfferStatus.REJECTED.value,
+            'acceptedOfferStatus': OfferStatus.ACCEPTED.value,
+            'acceptedBookingStatus': BookingStatus.ACCEPTED,
+        })
         if result and result[0]['o']:
             offer = FareOffer._serialize_neo4j_data(result[0]['o'])
             offer['booking'] = FareOffer._serialize_neo4j_data(result[0]['b'])
@@ -255,12 +266,15 @@ class FareOffer:
         """Reject an offer"""
         query = """
         MATCH (o:FareOffer {id: $offerId})
-        SET o.status = 'rejected',
+        SET o.status = $rejectedStatus,
             o.updatedAt = datetime()
         RETURN o
         """
         
-        result = neo4j_driver.execute_write(query, {'offerId': offer_id})
+        result = neo4j_driver.execute_write(query, {
+            'offerId': offer_id,
+            'rejectedStatus': OfferStatus.REJECTED.value,
+        })
         if result and result[0]['o']:
             return FareOffer._serialize_neo4j_data(result[0]['o'])
         return None
@@ -270,7 +284,7 @@ class FareOffer:
         """Seeker makes a counter offer"""
         query = """
         MATCH (o:FareOffer {id: $offerId})
-        SET o.status = 'counter_offered',
+        SET o.status = $counterOfferedStatus,
             o.counterPrice = $counterPrice,
             o.updatedAt = datetime()
         RETURN o
@@ -278,7 +292,8 @@ class FareOffer:
         
         result = neo4j_driver.execute_write(query, {
             'offerId': offer_id,
-            'counterPrice': counter_price
+            'counterPrice': counter_price,
+            'counterOfferedStatus': OfferStatus.COUNTER_OFFERED.value,
         })
         if result and result[0]['o']:
             return FareOffer._serialize_neo4j_data(result[0]['o'])
@@ -289,12 +304,15 @@ class FareOffer:
         """Provider withdraws their offer"""
         query = """
         MATCH (o:FareOffer {id: $offerId})
-        SET o.status = 'withdrawn',
+        SET o.status = $withdrawnStatus,
             o.updatedAt = datetime()
         RETURN o
         """
         
-        result = neo4j_driver.execute_write(query, {'offerId': offer_id})
+        result = neo4j_driver.execute_write(query, {
+            'offerId': offer_id,
+            'withdrawnStatus': OfferStatus.WITHDRAWN.value,
+        })
         if result and result[0]['o']:
             return FareOffer._serialize_neo4j_data(result[0]['o'])
         return None
@@ -305,7 +323,7 @@ class FareOffer:
         query = """
         MATCH (o:FareOffer {id: $offerId})
         SET o.offeredPrice = $newPrice,
-            o.status = 'pending',
+            o.status = $pendingStatus,
             o.message = COALESCE($message, o.message),
             o.updatedAt = datetime()
         RETURN o
@@ -314,7 +332,8 @@ class FareOffer:
         result = neo4j_driver.execute_write(query, {
             'offerId': offer_id,
             'newPrice': new_price,
-            'message': message
+            'message': message,
+            'pendingStatus': OfferStatus.PENDING.value,
         })
         if result and result[0]['o']:
             return FareOffer._serialize_neo4j_data(result[0]['o'])

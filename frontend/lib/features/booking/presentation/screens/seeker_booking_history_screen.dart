@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:latlong2/latlong.dart';
 import '../../../../core/theme/app_theme.dart';
+import '../../../../core/constants/app_constants.dart';
 import '../../../../core/widgets/modern_widgets.dart';
 import '../../../../core/domain/entities/booking_entity.dart';
 import '../../data/datasources/booking_remote_datasource.dart';
@@ -81,7 +82,7 @@ class _SeekerBookingHistoryScreenState extends State<SeekerBookingHistoryScreen>
       dropoffLocation = LatLng(booking.dropLatitude, booking.dropLongitude);
   
     context.push(
-      '/booking/${booking.id}/tracking',
+      AppRoutes.seekerTracking(booking.id),
       extra: {
         'providerId': booking.providerId ?? '',
         'pickupLocation': pickupLocation,
@@ -96,7 +97,7 @@ class _SeekerBookingHistoryScreenState extends State<SeekerBookingHistoryScreen>
   }
 
   void _navigateToFeedback(BookingEntity booking) {
-    context.push('/feedback/seeker', extra: {
+    context.push(AppRoutes.feedbackSeeker, extra: {
       'bookingId': booking.id,
       'providerId': booking.providerId ?? '',
       'providerName': booking.providerName ?? 'Provider',
@@ -217,7 +218,7 @@ class _SeekerBookingHistoryScreenState extends State<SeekerBookingHistoryScreen>
                   title: 'No bookings yet',
                   subtitle: 'Your booking history will appear here',
                   buttonText: 'Find Services',
-                  onButtonPressed: () => context.go('/seeker/home'),
+                  onButtonPressed: () => context.go(AppRoutes.seekerHome),
                 ),
               ),
             )

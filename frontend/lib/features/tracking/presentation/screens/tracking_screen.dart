@@ -14,9 +14,6 @@ import '../../../../core/services/api_service.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../feedback/data/datasources/feedback_remote_datasource.dart';
 import '../../../feedback/data/repositories/feedback_repository_impl.dart';
-import '../../../chat/presentation/bloc/chat_bloc.dart';
-import '../../../chat/presentation/bloc/chat_event.dart';
-import '../../../chat/presentation/bloc/chat_state.dart';
 import '../../../call/presentation/bloc/call_bloc.dart';
 import '../../../call/presentation/bloc/call_event.dart';
 import '../bloc/location_tracking_bloc.dart';
@@ -72,7 +69,9 @@ class _TrackingScreenState extends State<TrackingScreen> {
   bool _autoFollowProvider = true;
   bool _isTrackingActive = false;
   bool _feedbackRedirectChecked = false;
-  String? _pendingChatUserId;
+  bool _isBookingStatusLoaded = false;
+  bool _hasInitializedTracking = false;
+  String? _currentBookingStatus;
 
   Timer? _markerAnimationTimer;
   Timer? _clockTimer;
@@ -80,22 +79,20 @@ class _TrackingScreenState extends State<TrackingScreen> {
   DateTime _now = DateTime.now();
 
   bool get _isActiveServiceStatus {
-    final status = (widget.bookingStatus ?? '').toLowerCase();
-    if (status == 'confirmed') return true;
-    return status == 'accepted' ||
-        status == 'provider_arriving' ||
-        status == 'provider_arrived' ||
-        status == 'in_progress';
+    final status = (_currentBookingStatus ?? widget.bookingStatus ?? '').toLowerCase();
+    return AppConstants.activeServiceStatuses.contains(status);
   }
 
   bool get _isCompletedServiceStatus {
-    final status = (widget.bookingStatus ?? '').toLowerCase();
-    return status == 'completed';
+    final status = (_currentBookingStatus ?? widget.bookingStatus ?? '').toLowerCase();
+    return status == AppConstants.statusCompleted;
   }
 
   @override
   void initState() {
     super.initState();
+    _currentBookingStatus = widget.bookingStatus;
+    _isBookingStatusLoaded = (widget.bookingStatus?.isNotEmpty ?? false);
     _clockTimer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!mounted) return;
       setState(() {
@@ -103,14 +100,19 @@ class _TrackingScreenState extends State<TrackingScreen> {
       });
     });
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      _startBookingStatusPolling();
+      _ensureTrackingStarted();
       if (!_isActiveServiceStatus) {
         _checkMandatorySeekerFeedback();
-        return;
       }
-      _setupMap();
-      _startLocationTracking();
-      _startBookingStatusPolling();
     });
+  }
+
+  void _ensureTrackingStarted() {
+    if (!_isActiveServiceStatus || _hasInitializedTracking) return;
+    _hasInitializedTracking = true;
+    _setupMap();
+    _startLocationTracking();
   }
 
   Future<void> _checkMandatorySeekerFeedback() async {
@@ -120,10 +122,10 @@ class _TrackingScreenState extends State<TrackingScreen> {
     if (widget.providerId.isEmpty) return;
 
     try {
-      final exists = await _feedbackRepository.checkFeedbackExists(widget.bookingId, 'seeker');
+      final exists = await _feedbackRepository.checkFeedbackExists(widget.bookingId, AppConstants.roleSeeker);
       if (!mounted || exists) return;
 
-      context.go('/feedback/seeker', extra: {
+      context.go(AppRoutes.feedbackSeeker, extra: {
         'bookingId': widget.bookingId,
         'providerId': widget.providerId,
         'providerName': widget.providerName ?? 'Provider',
@@ -160,7 +162,14 @@ class _TrackingScreenState extends State<TrackingScreen> {
       final booking = response['booking'] as Map<String, dynamic>;
       final status = (booking['status'] as String? ?? '').toLowerCase();
 
-      if (status == 'completed') {
+      _currentBookingStatus = status;
+      _isBookingStatusLoaded = true;
+      _ensureTrackingStarted();
+      if (mounted) {
+        setState(() {});
+      }
+
+      if (status == AppConstants.statusCompleted) {
         final providerId =
             (booking['providerId'] ?? booking['provider_id'] ?? widget.providerId)?.toString() ?? '';
         final providerName =
@@ -169,11 +178,11 @@ class _TrackingScreenState extends State<TrackingScreen> {
 
         if (providerId.isEmpty) return;
 
-        final exists = await _feedbackRepository.checkFeedbackExists(widget.bookingId, 'seeker');
+        final exists = await _feedbackRepository.checkFeedbackExists(widget.bookingId, AppConstants.roleSeeker);
         if (!mounted || exists) return;
 
         _feedbackRedirectChecked = true;
-        context.go('/feedback/seeker', extra: {
+        context.go(AppRoutes.feedbackSeeker, extra: {
           'bookingId': widget.bookingId,
           'providerId': providerId,
           'providerName': providerName,
@@ -370,7 +379,7 @@ class _TrackingScreenState extends State<TrackingScreen> {
     if (widget.pickupLocation == null || widget.dropoffLocation == null) return;
 
     try {
-      final url = 'https://router.project-osrm.org/route/v1/driving/'
+        final url = '${MapEndpoints.osrmRouteBase}/'
           '${widget.pickupLocation!.longitude},${widget.pickupLocation!.latitude};'
           '${widget.dropoffLocation!.longitude},${widget.dropoffLocation!.latitude}'
           '?overview=full&geometries=geojson';
@@ -466,10 +475,10 @@ class _TrackingScreenState extends State<TrackingScreen> {
   }
 
   String _statusText(double distanceKm) {
-    final status = (widget.bookingStatus ?? '').toLowerCase();
-    if (status == 'completed') return 'Completed';
-    if (status == 'cancelled') return 'Cancelled';
-    if (status == 'provider_arrived' || distanceKm < 0.10) return 'Arrived';
+    final status = (_currentBookingStatus ?? widget.bookingStatus ?? '').toLowerCase();
+    if (status == AppConstants.statusCompleted) return 'Completed';
+    if (status == AppConstants.statusCancelled) return 'Cancelled';
+    if (status == AppConstants.statusProviderArrived || distanceKm < 0.10) return 'Arrived';
     return 'On the way';
   }
 
@@ -482,39 +491,69 @@ class _TrackingScreenState extends State<TrackingScreen> {
   }
 
   void _startCall(String callType) {
+    if (!_isActiveServiceStatus || widget.providerId.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Communication is available only during active service.'),
+          backgroundColor: AppTheme.errorColor,
+        ),
+      );
+      return;
+    }
+
     if (widget.providerId.isEmpty) return;
 
     context.read<CallBloc>().add(
           InitiateCallRequested(
             receiverId: widget.providerId,
             receiverName: widget.providerName ?? 'Provider',
-            receiverRole: 'provider',
+            receiverRole: AppConstants.roleProvider,
             bookingId: widget.bookingId,
             callType: callType,
           ),
         );
 
-    context.push('/call/outgoing', extra: {
+    context.push(AppRoutes.callOutgoing, extra: {
       'callId': 'pending',
       'receiverName': widget.providerName ?? 'Provider',
-      'receiverRole': 'provider',
+      'receiverRole': AppConstants.roleProvider,
       'callType': callType,
     });
   }
 
   void _messageProvider() {
-    if (widget.providerId.isEmpty) return;
-    _pendingChatUserId = widget.providerId;
-    context.read<ChatBloc>().add(
-          ChatStartConversation(
-            otherUserId: widget.providerId,
-            otherUserName: widget.providerName ?? 'Provider',
-          ),
-        );
+    if (!_isActiveServiceStatus || widget.providerId.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Communication is available only during active service.'),
+          backgroundColor: AppTheme.errorColor,
+        ),
+      );
+      return;
+    }
+
+    context.push(AppRoutes.chat(widget.bookingId), extra: {
+      'otherUserId': widget.providerId,
+      'otherUserName': widget.providerName ?? 'Provider',
+      'otherUserRole': AppConstants.roleProvider,
+      'bookingId': widget.bookingId,
+    });
   }
 
   @override
   Widget build(BuildContext context) {
+    if (!_isBookingStatusLoaded && (widget.bookingStatus == null || widget.bookingStatus!.isEmpty)) {
+      return Scaffold(
+        backgroundColor: AppTheme.backgroundColor,
+        appBar: AppBar(
+          backgroundColor: AppTheme.primaryColor,
+          foregroundColor: Colors.white,
+          title: const Text('Loading Booking Status'),
+        ),
+        body: const Center(child: CircularProgressIndicator()),
+      );
+    }
+
     if (!_isActiveServiceStatus) {
       return Scaffold(
         backgroundColor: AppTheme.backgroundColor,
@@ -552,7 +591,7 @@ class _TrackingScreenState extends State<TrackingScreen> {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    'This booking is ${widget.bookingStatus ?? 'unavailable'}.',
+                    'This booking is ${_currentBookingStatus ?? widget.bookingStatus ?? 'unavailable'}.',
                     textAlign: TextAlign.center,
                     style: TextStyle(color: Colors.grey.shade600),
                   ),
@@ -560,7 +599,7 @@ class _TrackingScreenState extends State<TrackingScreen> {
                   SizedBox(
                     width: double.infinity,
                     child: ElevatedButton.icon(
-                      onPressed: () => context.go('/seeker/history'),
+                      onPressed: () => context.go(AppRoutes.seekerHistory),
                       icon: const Icon(Icons.history_rounded),
                       label: const Text('Back to History'),
                       style: ElevatedButton.styleFrom(
@@ -615,28 +654,6 @@ class _TrackingScreenState extends State<TrackingScreen> {
             }
           },
         ),
-        BlocListener<ChatBloc, ChatState>(
-          listener: (context, state) {
-            if (state is ConversationStarted) {
-              if (_pendingChatUserId != null && state.conversation.otherUserId == _pendingChatUserId) {
-                final conversation = state.conversation;
-                _pendingChatUserId = null;
-                context.push('/chat/${conversation.id}', extra: {
-                  'otherUserId': conversation.otherUserId,
-                  'otherUserName': conversation.otherUserName,
-                  'otherUserImage': conversation.otherUserImage,
-                  'otherUserRole': 'provider',
-                  'bookingId': widget.bookingId,
-                });
-              }
-            } else if (state is ChatError && _pendingChatUserId != null) {
-              _pendingChatUserId = null;
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text(state.message), backgroundColor: AppTheme.errorColor),
-              );
-            }
-          },
-        ),
       ],
       child: Scaffold(
         body: Stack(
@@ -649,7 +666,7 @@ class _TrackingScreenState extends State<TrackingScreen> {
               ),
               children: [
                 TileLayer(
-                  urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                  urlTemplate: MapEndpoints.osmTileTemplate,
                   userAgentPackageName: 'com.haulistry.app',
                 ),
                 PolylineLayer(polylines: _polylines),
@@ -664,7 +681,7 @@ class _TrackingScreenState extends State<TrackingScreen> {
                   children: [
                     _circleGlassButton(
                       icon: Icons.chevron_left_rounded,
-                      onTap: () => context.go('/seeker/home'),
+                      onTap: () => context.go(AppRoutes.seekerHome),
                     ),
                     const SizedBox(width: 12),
                     Expanded(
@@ -845,7 +862,7 @@ class _TrackingScreenState extends State<TrackingScreen> {
                               icon: Icons.call_rounded,
                               label: 'Voice',
                               gradient: AppTheme.secondaryGradient,
-                              onTap: () => _startCall('voice'),
+                              onTap: () => _startCall(AppConstants.callTypeVoice),
                             ),
                           ),
                           const SizedBox(width: 10),
@@ -854,7 +871,7 @@ class _TrackingScreenState extends State<TrackingScreen> {
                               icon: Icons.videocam_rounded,
                               label: 'Video',
                               gradient: AppTheme.primaryGradient,
-                              onTap: () => _startCall('video'),
+                              onTap: () => _startCall(AppConstants.callTypeVideo),
                             ),
                           ),
                           const SizedBox(width: 10),

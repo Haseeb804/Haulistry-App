@@ -592,7 +592,7 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
               ),
               children: [
                 TileLayer(
-                  urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                  urlTemplate: MapEndpoints.osmTileTemplate,
                   userAgentPackageName: 'com.haulistry.app',
                 ),
                 if (polylines.isNotEmpty)

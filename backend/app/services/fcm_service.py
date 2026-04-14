@@ -13,6 +13,7 @@ from typing import Dict, Optional, Any
 from firebase_admin import messaging
 from datetime import datetime
 import logging
+from ..constants import BookingStatus
 
 logger = logging.getLogger(__name__)
 
@@ -395,10 +396,10 @@ class FCMService:
         """Generic booking status update notification"""
         # Map status to notification type
         status_type_map = {
-            "provider_arriving": FCMNotificationType.PROVIDER_ARRIVING,
-            "provider_arrived": FCMNotificationType.PROVIDER_ARRIVED,
-            "in_progress": FCMNotificationType.BOOKING_STARTED,
-            "completed": FCMNotificationType.BOOKING_COMPLETED,
+            BookingStatus.PROVIDER_ARRIVING: FCMNotificationType.PROVIDER_ARRIVING,
+            BookingStatus.PROVIDER_ARRIVED: FCMNotificationType.PROVIDER_ARRIVED,
+            BookingStatus.IN_PROGRESS: FCMNotificationType.BOOKING_STARTED,
+            BookingStatus.COMPLETED: FCMNotificationType.BOOKING_COMPLETED,
         }
         
         notification_type = status_type_map.get(
@@ -408,10 +409,10 @@ class FCMService:
         
         # Map status to emoji
         status_emoji_map = {
-            "provider_arriving": "🚗",
-            "provider_arrived": "📍",
-            "in_progress": "▶️",
-            "completed": "✅",
+            BookingStatus.PROVIDER_ARRIVING: "🚗",
+            BookingStatus.PROVIDER_ARRIVED: "📍",
+            BookingStatus.IN_PROGRESS: "▶️",
+            BookingStatus.COMPLETED: "✅",
         }
         
         emoji = status_emoji_map.get(status, "📋")

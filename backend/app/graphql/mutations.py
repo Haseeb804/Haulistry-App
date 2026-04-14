@@ -7,6 +7,7 @@ from ..controllers.user_controller import UserController
 from ..controllers.vehicle_controller import VehicleController
 from ..controllers.booking_controller import BookingController
 from ..models.fare_offer import FareOffer
+from ..constants import BookingStatus
 
 
 class CreateUser(graphene.Mutation):
@@ -104,7 +105,7 @@ class CreateBooking(graphene.Mutation):
         try:
             controller = BookingController()
             booking_data = input.__dict__
-            booking_data['status'] = 'pending'
+            booking_data['status'] = BookingStatus.PENDING
             booking = controller.create_booking(booking_data)
             return CreateBooking(booking=booking, success=True, message="Booking created successfully")
         except Exception as e:

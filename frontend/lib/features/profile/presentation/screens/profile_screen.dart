@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
+import '../../../../core/constants/app_constants.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/utils/image_helper.dart';
 import '../../../../core/widgets/modern_widgets.dart';
@@ -26,7 +27,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     // Load vehicles when profile screen opens for providers
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final authState = context.read<AuthBloc>().state;
-      if (authState is AuthAuthenticated && authState.user.role == 'provider') {
+      if (authState is AuthAuthenticated && authState.user.role == AppConstants.roleProvider) {
         context.read<ProviderBloc>().add(const ProviderLoadVehiclesRequested());
       }
     });
@@ -49,7 +50,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           }
 
           final user = state.user;
-          final isProvider = user.role == 'provider';
+          final isProvider = user.role == AppConstants.roleProvider;
 
           return CustomScrollView(
             slivers: [
@@ -79,7 +80,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ),
                     child: IconButton(
                       icon: const Icon(Icons.edit_rounded, color: Colors.white),
-                      onPressed: () => context.push('/profile/edit'),
+                      onPressed: () => context.push(AppRoutes.profileEdit),
                     ),
                   ),
                 ],
@@ -329,7 +330,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           title: 'Manage Services',
                           subtitle: 'Add, edit or remove your services',
                           gradient: AppTheme.primaryGradient,
-                          onTap: () => context.push('/provider/services'),
+                          onTap: () => context.push(AppRoutes.providerServices),
                         ),
                         const SizedBox(height: 12),
                         _buildActionCard(
@@ -337,7 +338,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           title: 'View Vehicles',
                           subtitle: 'Manage your registered vehicles',
                           gradient: AppTheme.secondaryGradient,
-                          onTap: () => context.push('/provider/vehicles'),
+                          onTap: () => context.push(AppRoutes.providerVehicles),
                         ),
                         const SizedBox(height: 12),
                       ],
@@ -349,9 +350,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         gradient: AppTheme.accentGradient,
                         onTap: () {
                           if (isProvider) {
-                            context.push('/provider/history');
+                            context.push(AppRoutes.providerHistory);
                           } else {
-                            context.push('/seeker/history');
+                            context.push(AppRoutes.seekerHistory);
                           }
                         },
                       ),
@@ -791,7 +792,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
         // No vehicle found
         return GestureDetector(
-          onTap: () => context.push('/provider/vehicles'),
+          onTap: () => context.push(AppRoutes.providerVehicles),
           child: Container(
             padding: const EdgeInsets.all(24),
             decoration: BoxDecoration(
@@ -899,7 +900,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             onPressed: () {
               Navigator.pop(dialogContext);
               context.read<AuthBloc>().add(const AuthSignOutRequested());
-              context.go('/login');
+              context.go(AppRoutes.login);
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: AppTheme.errorColor,

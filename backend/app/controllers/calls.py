@@ -10,6 +10,7 @@ import time
 from ..models.call import Call
 from ..models.voice_message import VoiceMessage
 from firebase_admin import storage, messaging
+from ..constants import LIVE_COMMUNICATION_STATUSES
 
 router = APIRouter(prefix="/calls", tags=["calls"])
 
@@ -27,13 +28,7 @@ class InitiateCallRequest(BaseModel):
     callType: str  # 'voice' or 'video'
     callerName: Optional[str] = None  # Caller's display name
     callerRole: Optional[str] = None  # Caller's role ('seeker' or 'provider')
-ACTIVE_COMMUNICATION_STATUSES = {
-    'confirmed',
-    'accepted',
-    'provider_arriving',
-    'provider_arrived',
-    'in_progress',
-}
+ACTIVE_COMMUNICATION_STATUSES = LIVE_COMMUNICATION_STATUSES
 
 
 class UpdateCallStatusRequest(BaseModel):

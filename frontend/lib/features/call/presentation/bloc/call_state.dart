@@ -1,4 +1,5 @@
 import 'package:equatable/equatable.dart';
+import '../../../../core/constants/app_constants.dart';
 
 abstract class CallState extends Equatable {
   const CallState();
@@ -28,7 +29,7 @@ class CallInitiated extends CallState {
     required this.callId,
     required this.receiverId,
     required this.receiverName,
-    this.receiverRole = 'user',
+    this.receiverRole = AppConstants.roleUser,
     this.receiverProfileImageUrl,
     required this.callType,
     required this.agoraConfig,
@@ -51,7 +52,7 @@ class CallRinging extends CallState {
     required this.callId,
     required this.callerId,
     required this.callerName,
-    this.callerRole = 'user',
+    this.callerRole = AppConstants.roleUser,
     this.callerProfileImageUrl,
     required this.callType,
     required this.agoraConfig,
@@ -74,7 +75,7 @@ class CallConnecting extends CallState {
     required this.callType,
     required this.isCaller,
     this.otherUserName = '',
-    this.otherUserRole = 'user',
+    this.otherUserRole = AppConstants.roleUser,
     this.otherUserProfileImageUrl,
   });
 
@@ -103,7 +104,7 @@ class CallConnected extends CallState {
     this.remoteUid,
     required this.connectedAt,
     this.otherUserName = '',
-    this.otherUserRole = 'user',
+    this.otherUserRole = AppConstants.roleUser,
     this.otherUserProfileImageUrl,
   });
 
@@ -194,10 +195,10 @@ class CallHistoryItem extends Equatable {
     required this.id,
     required this.callerId,
     required this.callerName,
-    this.callerRole = 'user',
+    this.callerRole = AppConstants.roleUser,
     required this.receiverId,
     required this.receiverName,
-    this.receiverRole = 'user',
+    this.receiverRole = AppConstants.roleUser,
     required this.callType,
     required this.status,
     required this.startedAt,
@@ -210,10 +211,10 @@ class CallHistoryItem extends Equatable {
       id: json['id'] ?? '',
       callerId: json['callerId'] ?? '',
       callerName: json['callerName'] ?? 'Unknown',
-      callerRole: json['callerRole'] ?? 'user',
+      callerRole: json['callerRole'] ?? AppConstants.roleUser,
       receiverId: json['receiverId'] ?? '',
       receiverName: json['receiverName'] ?? 'Unknown',
-      receiverRole: json['receiverRole'] ?? 'user',
+      receiverRole: json['receiverRole'] ?? AppConstants.roleUser,
       callType: json['callType'] ?? 'voice',
       status: json['status'] ?? 'ended',
       startedAt: DateTime.parse(json['startedAt'] ?? DateTime.now().toIso8601String()),

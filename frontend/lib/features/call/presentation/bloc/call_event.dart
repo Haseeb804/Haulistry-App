@@ -1,4 +1,5 @@
 import 'package:equatable/equatable.dart';
+import '../../../../core/constants/app_constants.dart';
 
 abstract class CallEvent extends Equatable {
   const CallEvent();
@@ -18,7 +19,7 @@ class InitiateCallRequested extends CallEvent {
   const InitiateCallRequested({
     required this.receiverId,
     required this.receiverName,
-    this.receiverRole = 'user',
+    this.receiverRole = AppConstants.roleUser,
     this.receiverProfileImageUrl,
     required this.bookingId,
     required this.callType,
@@ -128,7 +129,7 @@ class IncomingCallReceived extends CallEvent {
     required this.callId,
     required this.callerId,
     required this.callerName,
-    this.callerRole = 'user',
+    this.callerRole = AppConstants.roleUser,
     this.callerProfileImageUrl,
     required this.callType,
     required this.agoraConfig,

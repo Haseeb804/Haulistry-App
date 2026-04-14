@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
+import '../../../../core/constants/app_constants.dart';
 import '../bloc/call_bloc.dart';
 import '../bloc/call_event.dart';
 import '../bloc/call_state.dart';
@@ -19,7 +20,7 @@ class IncomingCallScreen extends StatelessWidget {
     required this.callId,
     required this.callerId,
     required this.callerName,
-    this.callerRole = 'user',
+    this.callerRole = AppConstants.roleUser,
     this.callerProfileImageUrl,
     required this.callType,
     required this.agoraConfig,
@@ -31,7 +32,9 @@ class IncomingCallScreen extends StatelessWidget {
       listener: (context, state) {
         if (state is CallConnecting) {
           // Navigate to voice or video call screen
-          final route = callType == 'voice' ? '/call/voice' : '/call/video';
+            final route = callType == AppConstants.callTypeVoice
+              ? AppRoutes.callVoice
+              : AppRoutes.callVideo;
           context.go(route, extra: {
             'callId': callId,
             'otherUserName': callerName,
@@ -93,7 +96,7 @@ class IncomingCallScreen extends StatelessWidget {
                         color: Colors.white,
                       ),
                     ),
-                    if (callerRole != 'user' && callerRole.isNotEmpty) ...[
+                    if (callerRole != AppConstants.roleUser && callerRole.isNotEmpty) ...[
                       const SizedBox(height: 6),
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),

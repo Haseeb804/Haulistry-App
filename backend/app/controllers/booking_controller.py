@@ -3,6 +3,7 @@ from datetime import datetime
 from ..database import get_neo4j_driver
 from ..models.booking import Booking
 from ..config import settings
+from ..constants import BookingStatus
 
 
 class BookingController:
@@ -139,13 +140,13 @@ class BookingController:
             if vehicle_id:
                 updates['vehicle_id'] = vehicle_id
         
-        if status == settings.STATUS_IN_PROGRESS:
+        if status == BookingStatus.IN_PROGRESS:
             updates['started_at'] = datetime.now().isoformat()
         
-        if status == settings.STATUS_COMPLETED:
+        if status == BookingStatus.COMPLETED:
             updates['completed_at'] = datetime.now().isoformat()
         
-        if status == settings.STATUS_CANCELLED:
+        if status == BookingStatus.CANCELLED:
             updates['cancelled_at'] = datetime.now().isoformat()
         
         set_clause = ', '.join([f'b.{key} = ${key}' for key in updates.keys()])
@@ -212,7 +213,7 @@ class BookingController:
         }
         
         query = """
-        MATCH (b:Booking {id: $booking_id, status: 'completed'})
+        MATCH (b:Booking {id: $booking_id, status: $completedStatus})
         SET b.rating = $rating,
             b.review = $review,
             b.updated_at = datetime($updated_at)
@@ -221,7 +222,8 @@ class BookingController:
         
         result = self.db.execute_write(query, {
             'booking_id': booking_id,
-            **updates
+            **updates,
+            'completedStatus': BookingStatus.COMPLETED,
         })
         
         if result and len(result) > 0:
@@ -257,8 +259,8 @@ class BookingController:
         """Cancel a booking"""
         query = """
         MATCH (b:Booking {id: $booking_id})
-        WHERE b.status IN ['pending', 'accepted']
-        SET b.status = 'cancelled',
+        WHERE b.status IN $cancellableStatuses
+        SET b.status = $cancelledStatus,
             b.cancelled_at = datetime(),
             b.cancellation_reason = $cancellation_reason,
             b.updated_at = datetime()
@@ -267,7 +269,9 @@ class BookingController:
         
         result = self.db.execute_write(query, {
             'booking_id': booking_id,
-            'cancellation_reason': cancellation_reason
+            'cancellation_reason': cancellation_reason,
+            'cancellableStatuses': [BookingStatus.PENDING, BookingStatus.ACCEPTED],
+            'cancelledStatus': BookingStatus.CANCELLED,
         })
         
         if result and len(result) > 0:
@@ -280,11 +284,11 @@ class BookingController:
         query = """
         MATCH (b:Booking {
             service_type: $service_type,
-            status: 'pending'
+            status: $pendingStatus
         })
         RETURN b
         ORDER BY b.created_at ASC
         """
         
-        result = self.db.execute_read(query, {'service_type': service_type})
+        result = self.db.execute_read(query, {'service_type': service_type, 'pendingStatus': BookingStatus.PENDING})
         return [Booking.from_dict(record['b']) for record in result]

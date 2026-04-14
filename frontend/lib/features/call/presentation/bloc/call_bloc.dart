@@ -6,6 +6,7 @@ import 'call_state.dart';
 import '../../../../core/services/agora_call_service.dart' as agora;
 import '../../../../core/services/api_service.dart';
 import '../../../../core/services/notification_service.dart';
+import '../../../../core/constants/app_constants.dart';
 
 class CallBloc extends Bloc<CallEvent, CallState> {
   final agora.AgoraCallService _agoraService;
@@ -18,7 +19,7 @@ class CallBloc extends Bloc<CallEvent, CallState> {
   DateTime? _callStartTime;
   String? _currentCallId;
   String _otherUserName = '';
-  String _otherUserRole = 'user';
+  String _otherUserRole = AppConstants.roleUser;
   String? _otherUserProfileImageUrl;
   int? _pendingRemoteUid; // Stores remote uid if they join before CallConnected
 
@@ -91,13 +92,15 @@ class CallBloc extends Bloc<CallEvent, CallState> {
       }
 
       // Call backend to initiate call
-      final response = await _apiService.post('/api/calls/initiate', {
+      final response = await _apiService.post(ApiEndpoints.callInitiate, {
         'callerId': user.uid,
         'receiverId': event.receiverId,
         'bookingId': event.bookingId,
         'callType': event.callType,
         'callerName': user.displayName ?? 'User',
-        'callerRole': event.receiverRole == 'provider' ? 'seeker' : 'provider',
+        'callerRole': event.receiverRole == AppConstants.roleProvider
+            ? AppConstants.roleSeeker
+            : AppConstants.roleProvider,
       });
 
       if (response['success'] == true) {
@@ -161,7 +164,7 @@ class CallBloc extends Bloc<CallEvent, CallState> {
       _currentCallId = event.callId;
 
       // Update call status to answered
-      await _apiService.post('/api/calls/update-status', {
+      await _apiService.post(ApiEndpoints.callUpdateStatus, {
         'callId': event.callId,
         'status': 'answered',
       });
@@ -213,7 +216,7 @@ class CallBloc extends Bloc<CallEvent, CallState> {
       await NotificationService().cancelCallNotification(event.callId);
 
       // Update call status
-      await _apiService.post('/api/calls/update-status', {
+      await _apiService.post(ApiEndpoints.callUpdateStatus, {
         'callId': event.callId,
         'status': 'ended',
         'duration': event.duration,
@@ -228,7 +231,7 @@ class CallBloc extends Bloc<CallEvent, CallState> {
       _currentCallId = null;
       _callStartTime = null;
       _otherUserName = '';
-      _otherUserRole = 'user';
+      _otherUserRole = AppConstants.roleUser;
     } catch (e) {
       emit(CallError(message: 'Failed to end call: $e'));
     }
@@ -242,7 +245,7 @@ class CallBloc extends Bloc<CallEvent, CallState> {
       // Cancel call notification
       await NotificationService().cancelCallNotification(event.callId);
       
-      await _apiService.post('/api/calls/update-status', {
+      await _apiService.post(ApiEndpoints.callUpdateStatus, {
         'callId': event.callId,
         'status': 'rejected',
       });
@@ -262,7 +265,7 @@ class CallBloc extends Bloc<CallEvent, CallState> {
     Emitter<CallState> emit,
   ) async {
     try {
-      await _apiService.post('/api/calls/update-status', {
+      await _apiService.post(ApiEndpoints.callUpdateStatus, {
         'callId': event.callId,
         'status': 'missed',
       });
@@ -353,7 +356,7 @@ class CallBloc extends Bloc<CallEvent, CallState> {
         final duration = DateTime.now().difference(_callStartTime!).inSeconds;
         
         // Update backend
-        await _apiService.post('/api/calls/update-status', {
+        await _apiService.post(ApiEndpoints.callUpdateStatus, {
           'callId': _currentCallId,
           'status': 'ended',
           'duration': duration,
@@ -368,7 +371,7 @@ class CallBloc extends Bloc<CallEvent, CallState> {
         _currentCallId = null;
         _callStartTime = null;
         _otherUserName = '';
-        _otherUserRole = 'user';
+        _otherUserRole = AppConstants.roleUser;
       }
     }
   }

@@ -5,6 +5,7 @@ import 'dart:async';
 import '../bloc/call_bloc.dart';
 import '../bloc/call_event.dart';
 import '../bloc/call_state.dart';
+import '../../../../core/constants/app_constants.dart';
 import '../../../../core/services/api_service.dart';
 
 class OutgoingCallScreen extends StatefulWidget {
@@ -18,7 +19,7 @@ class OutgoingCallScreen extends StatefulWidget {
     super.key,
     required this.callId,
     required this.receiverName,
-    this.receiverRole = 'user',
+    this.receiverRole = AppConstants.roleUser,
     this.receiverProfileImageUrl,
     required this.callType,
   });
@@ -66,13 +67,15 @@ class _OutgoingCallScreenState extends State<OutgoingCallScreen>
     if (callId.isEmpty || callId == 'pending') return;
 
     try {
-      final response = await ApiService.instance.get('/api/calls/$callId');
+      final response = await ApiService.instance.get(ApiEndpoints.callById(callId));
       if (response['success'] != true || response['call'] == null) return;
 
       final call = response['call'] as Map<String, dynamic>;
       final status = (call['status'] as String? ?? '').toLowerCase();
 
-      if (status == 'rejected' || status == 'missed' || status == 'ended') {
+        if (status == AppConstants.callStatusRejected ||
+          status == AppConstants.callStatusMissed ||
+          status == AppConstants.callStatusEnded) {
         if (!mounted) return;
         context.read<CallBloc>().add(
               EndCallRequested(
@@ -99,7 +102,9 @@ class _OutgoingCallScreenState extends State<OutgoingCallScreen>
       listener: (context, state) {
         if (state is CallConnected) {
           // Navigate to voice or video call screen
-          final route = widget.callType == 'voice' ? '/call/voice' : '/call/video';
+            final route = widget.callType == AppConstants.callTypeVoice
+              ? AppRoutes.callVoice
+              : AppRoutes.callVideo;
           context.go(route, extra: {
             'callId': state.callId,
             'otherUserName': widget.receiverName,
@@ -182,7 +187,7 @@ class _OutgoingCallScreenState extends State<OutgoingCallScreen>
                         color: Colors.white,
                       ),
                     ),
-                    if (widget.receiverRole != 'user' && widget.receiverRole.isNotEmpty) ...[
+                    if (widget.receiverRole != AppConstants.roleUser && widget.receiverRole.isNotEmpty) ...[
                       const SizedBox(height: 6),
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),

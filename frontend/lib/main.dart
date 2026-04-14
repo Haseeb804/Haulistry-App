@@ -1,8 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import 'core/theme/app_theme.dart';
 import 'core/constants/app_constants.dart';
+import 'core/services/api_service.dart';
 import 'core/services/notification_service.dart';
 import 'core/data/graphql_client.dart';
 import 'features/auth/data/repository/auth_repository_impl.dart';
@@ -86,6 +89,20 @@ void _setupNotificationHandling() {
     final type = data['type'];
     final tapped = data['tapped'] ?? false;
 
+    if (type == 'booking_accepted' ||
+      type == 'booking_status_update' ||
+      type == 'tracking') {
+      final bookingId = data['bookingId']?.toString();
+      final bookingStatus = (data['status'] ?? data['bookingStatus'] ?? '').toString().toLowerCase();
+
+      if (bookingId != null && bookingId.isNotEmpty &&
+          (type == 'booking_accepted' ||
+              bookingStatus == AppConstants.statusActive ||
+              bookingStatus == AppConstants.statusAccepted)) {
+        unawaited(_navigateToTrackingFromBooking(bookingId));
+      }
+    }
+
     if (type == NotificationService.notificationTypeCall) {
       // Handle incoming call notification
       final callId = data['callId'] as String;
@@ -96,7 +113,7 @@ void _setupNotificationHandling() {
         return;
       }
       final callerName = data['callerName'] as String;
-      final callerRole = data['callerRole'] as String? ?? 'user';
+      final callerRole = data['callerRole'] as String? ?? AppConstants.roleUser;
       final callType = data['callType'] as String;
       
       // Reconstruct agoraConfig including callType
@@ -109,7 +126,7 @@ void _setupNotificationHandling() {
       };
 
       // Navigate to incoming call screen
-      _router.push('/call/incoming', extra: {
+      _router.push(AppRoutes.callIncoming, extra: {
         'callId': callId,
         'callerId': callerId,
         'callerName': callerName,
@@ -129,6 +146,45 @@ void _setupNotificationHandling() {
       }
     }
   });
+}
+
+Future<void> _navigateToTrackingFromBooking(String bookingId) async {
+  try {
+    final response = await ApiService.instance.getBooking(bookingId);
+    if (response['success'] != true || response['booking'] == null) return;
+
+    final booking = response['booking'] as Map<String, dynamic>;
+    final providerId = (booking['providerId'] ?? booking['provider_id'])?.toString() ?? '';
+    if (providerId.isEmpty) return;
+
+    final pickupLatitude = (booking['pickupLatitude'] ?? booking['pickup_latitude'] as num?)?.toDouble();
+    final pickupLongitude = (booking['pickupLongitude'] ?? booking['pickup_longitude'] as num?)?.toDouble();
+    final dropLatitude = (booking['dropLatitude'] ?? booking['drop_latitude'] as num?)?.toDouble();
+    final dropLongitude = (booking['dropLongitude'] ?? booking['drop_longitude'] as num?)?.toDouble();
+
+    _router.go(
+      AppRoutes.seekerTracking(bookingId),
+      extra: {
+        'providerId': providerId,
+        'providerName': booking['providerName']?.toString(),
+        'pickupLocation': (pickupLatitude != null && pickupLongitude != null)
+            ? LatLng(pickupLatitude, pickupLongitude)
+            : null,
+        'dropoffLocation': (dropLatitude != null && dropLongitude != null)
+            ? LatLng(dropLatitude, dropLongitude)
+            : null,
+        'pickupAddress': booking['pickupAddress']?.toString(),
+        'dropAddress': booking['dropAddress']?.toString(),
+        'estimatedPrice': (booking['estimatedPrice'] ?? booking['estimated_price']) is num
+            ? ((booking['estimatedPrice'] ?? booking['estimated_price']) as num).toDouble()
+            : null,
+        'serviceType': booking['serviceType']?.toString(),
+        'bookingStatus': booking['status']?.toString(),
+      },
+    );
+  } catch (_) {
+    // Non-blocking fallback: if the fetch fails, the polling screens will still catch up.
+  }
 }
 
 class HaulistryApp extends StatelessWidget {
@@ -198,31 +254,31 @@ class HaulistryApp extends StatelessWidget {
 
 // Router Configuration
 final _router = GoRouter(
-  initialLocation: '/login',
+  initialLocation: AppRoutes.login,
   routes: [
     // Auth Routes
     GoRoute(
-      path: '/login',
+      path: AppRoutes.login,
       builder: (context, state) => const LoginScreen(),
     ),
     GoRoute(
-      path: '/signup',
+      path: AppRoutes.signup,
       builder: (context, state) => const SignupScreen(),
     ),
     GoRoute(
-      path: '/phone-auth',
+      path: AppRoutes.phoneAuth,
       builder: (context, state) => PhoneAuthScreen(
         extra: state.extra as Map<String, dynamic>?,
       ),
     ),
     GoRoute(
-      path: '/forgot-password',
+      path: AppRoutes.forgotPassword,
       builder: (context, state) => const ForgotPasswordScreen(),
     ),
     
     // Service Routes
     GoRoute(
-      path: '/service/:serviceType',
+      path: AppRoutes.serviceByTypePattern,
       builder: (context, state) {
         final serviceType = state.pathParameters['serviceType'] ?? '';
         return ServiceDetailScreen(serviceType: serviceType);
@@ -231,7 +287,7 @@ final _router = GoRouter(
     
     // Booking Routes
     GoRoute(
-      path: '/booking/create',
+      path: AppRoutes.bookingCreate,
       builder: (context, state) {
         final extra = state.extra;
         // Support both ServiceEntity and legacy Map<String, dynamic>
@@ -245,18 +301,18 @@ final _router = GoRouter(
       },
     ),
     GoRoute(
-      path: '/booking/confirm',
+      path: AppRoutes.bookingConfirm,
       builder: (context, state) => const BookingConfirmationScreen(),
     ),
     GoRoute(
-      path: '/booking/:id/status',
+      path: AppRoutes.bookingStatusPattern,
       builder: (context, state) {
         final bookingId = state.pathParameters['id'] ?? '';
         return RequestStatusScreen(bookingId: bookingId);
       },
     ),
     GoRoute(
-      path: '/booking/:id/tracking',
+      path: AppConstants.routeSeekerTrackingPattern,
       builder: (context, state) {
         final bookingId = state.pathParameters['id'] ?? '';
         final extra = state.extra as Map<String, dynamic>?;
@@ -298,12 +354,13 @@ final _router = GoRouter(
           dropAddress: extra?['dropAddress'] as String?,
           estimatedPrice: extra?['estimatedPrice'] as double?,
           serviceType: extra?['serviceType'] as String?,
+          bookingStatus: extra?['bookingStatus'] as String?,
           providerName: extra?['providerName'] as String?,
         );
       },
     ),
     GoRoute(
-      path: '/booking/:id/accepted',
+      path: AppConstants.routeSeekerAcceptedPattern,
       builder: (context, state) {
         final bookingId = state.pathParameters['id'] ?? '';
         final extra = state.extra as Map<String, dynamic>?;
@@ -353,58 +410,58 @@ final _router = GoRouter(
     
     // Service Seeker Routes
     GoRoute(
-      path: '/seeker/home',
+      path: AppRoutes.seekerHome,
       builder: (context, state) => const SeekerHomeScreen(),
     ),
     GoRoute(
-      path: '/seeker/history',
+      path: AppRoutes.seekerHistory,
       builder: (context, state) => const BookingHistoryScreen(),
     ),
     
     // Service Provider Routes
     GoRoute(
-      path: '/provider/documents',
+      path: AppRoutes.providerDocuments,
       builder: (context, state) {
         final signupData = state.extra as Map<String, dynamic>?;
         return ProviderDocumentsScreen(signupData: signupData);
       },
     ),
     GoRoute(
-      path: '/provider/home',
+      path: AppRoutes.providerHome,
       builder: (context, state) => const ProviderHomeScreen(),
     ),
     GoRoute(
-      path: '/provider/vehicles',
+      path: AppRoutes.providerVehicles,
       builder: (context, state) => const VehicleManagementScreen(),
     ),
     GoRoute(
-      path: '/provider/services',
+      path: AppRoutes.providerServices,
       builder: (context, state) => const ServiceManagementScreen(),
     ),
     GoRoute(
-      path: '/provider/earnings',
+      path: AppRoutes.providerEarnings,
       builder: (context, state) => const EarningsDashboardScreen(),
     ),
     GoRoute(
-      path: '/provider/history',
+      path: AppRoutes.providerHistory,
       builder: (context, state) => const BookingHistoryScreen(),
     ),
     GoRoute(
-      path: '/provider/booking/:id',
+      path: AppRoutes.providerBookingPattern,
       builder: (context, state) {
         final bookingId = state.pathParameters['id'] ?? '';
         return ProviderBookingDetailScreen(bookingId: bookingId);
       },
     ),
     GoRoute(
-      path: '/provider/request/:id',
+      path: AppRoutes.providerRequestPattern,
       builder: (context, state) {
         final bookingId = state.pathParameters['id'] ?? '';
         return ProviderRequestReviewScreen(bookingId: bookingId);
       },
     ),
     GoRoute(
-      path: '/provider/tracking/:id',
+      path: AppConstants.routeProviderTrackingPattern,
       builder: (context, state) {
         final bookingId = state.pathParameters['id'] ?? '';
         final extra = state.extra as Map<String, dynamic>?;
@@ -452,21 +509,21 @@ final _router = GoRouter(
     
     // Profile Routes
     GoRoute(
-      path: '/profile',
+      path: AppRoutes.profile,
       builder: (context, state) => const ProfileScreen(),
     ),
     GoRoute(
-      path: '/profile/edit',
+      path: AppRoutes.profileEdit,
       builder: (context, state) => const EditProfileScreen(),
     ),
     
     // Chat Routes
     GoRoute(
-      path: '/chat',
+      path: AppRoutes.chatList,
       builder: (context, state) => const ChatListScreen(),
     ),
     GoRoute(
-      path: '/chat/:conversationId',
+      path: AppRoutes.chatPattern,
       builder: (context, state) {
         final conversationId = state.pathParameters['conversationId'] ?? '';
         final extra = state.extra as Map<String, dynamic>?;
@@ -488,7 +545,7 @@ final _router = GoRouter(
     
     // Call Routes
     GoRoute(
-      path: '/call/incoming',
+      path: AppRoutes.callIncoming,
       builder: (context, state) {
         final extra = state.extra as Map<String, dynamic>;
         return BlocProvider.value(
@@ -497,7 +554,7 @@ final _router = GoRouter(
             callId: extra['callId'] as String,
             callerId: extra['callerId'] as String,
             callerName: extra['callerName'] as String,
-            callerRole: extra['callerRole'] as String? ?? 'user',
+            callerRole: extra['callerRole'] as String? ?? AppConstants.roleUser,
             callerProfileImageUrl: extra['callerProfileImageUrl'] as String?,
             callType: extra['callType'] as String,
             agoraConfig: extra['agoraConfig'] as Map<String, dynamic>,
@@ -506,7 +563,7 @@ final _router = GoRouter(
       },
     ),
     GoRoute(
-      path: '/call/outgoing',
+      path: AppRoutes.callOutgoing,
       builder: (context, state) {
         final extra = state.extra as Map<String, dynamic>;
         return BlocProvider.value(
@@ -514,7 +571,7 @@ final _router = GoRouter(
           child: OutgoingCallScreen(
             callId: extra['callId'] as String,
             receiverName: extra['receiverName'] as String,
-            receiverRole: extra['receiverRole'] as String? ?? 'user',
+            receiverRole: extra['receiverRole'] as String? ?? AppConstants.roleUser,
             receiverProfileImageUrl: extra['receiverProfileImageUrl'] as String?,
             callType: extra['callType'] as String,
           ),
@@ -522,7 +579,7 @@ final _router = GoRouter(
       },
     ),
     GoRoute(
-      path: '/call/voice',
+      path: AppRoutes.callVoice,
       builder: (context, state) {
         final extra = state.extra as Map<String, dynamic>;
         return BlocProvider.value(
@@ -530,14 +587,14 @@ final _router = GoRouter(
           child: VoiceCallScreen(
             callId: extra['callId'] as String,
             otherUserName: extra['otherUserName'] as String? ?? '',
-            otherUserRole: extra['otherUserRole'] as String? ?? 'user',
+            otherUserRole: extra['otherUserRole'] as String? ?? AppConstants.roleUser,
             otherUserProfileImageUrl: extra['otherUserProfileImageUrl'] as String?,
           ),
         );
       },
     ),
     GoRoute(
-      path: '/call/video',
+      path: AppRoutes.callVideo,
       builder: (context, state) {
         final extra = state.extra as Map<String, dynamic>;
         return BlocProvider.value(
@@ -545,7 +602,7 @@ final _router = GoRouter(
           child: VideoCallScreen(
             callId: extra['callId'] as String,
             otherUserName: extra['otherUserName'] as String? ?? '',
-            otherUserRole: extra['otherUserRole'] as String? ?? 'user',
+            otherUserRole: extra['otherUserRole'] as String? ?? AppConstants.roleUser,
             otherUserProfileImageUrl: extra['otherUserProfileImageUrl'] as String?,
           ),
         );
@@ -554,7 +611,7 @@ final _router = GoRouter(
     
     // Tracking Route
     GoRoute(
-      path: '/tracking/:bookingId',
+      path: AppConstants.routeLegacyTrackingPattern,
       builder: (context, state) {
         final bookingId = state.pathParameters['bookingId'] ?? '';
         final extra = state.extra as Map<String, dynamic>?;
@@ -581,7 +638,7 @@ final _router = GoRouter(
     
     // Feedback Routes
     GoRoute(
-      path: '/feedback/seeker',
+      path: AppRoutes.feedbackSeeker,
       builder: (context, state) {
         final extra = state.extra as Map<String, dynamic>;
         return SeekerFeedbackScreen(
@@ -592,7 +649,7 @@ final _router = GoRouter(
       },
     ),
     GoRoute(
-      path: '/feedback/provider',
+      path: AppRoutes.feedbackProvider,
       builder: (context, state) {
         final extra = state.extra as Map<String, dynamic>;
         return ProviderFeedbackScreen(

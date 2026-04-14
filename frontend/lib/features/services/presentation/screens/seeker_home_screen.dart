@@ -126,12 +126,7 @@ class _SeekerHomeScreenState extends State<SeekerHomeScreen>
       final bookings = await _bookingRepository.getBookingHistory(user.uid);
       if (!mounted || _hasAutoNavigatedToTracking) return;
 
-      final activeStatuses = {
-        'accepted',
-        'provider_arriving',
-        'provider_arrived',
-        'in_progress',
-      };
+      final activeStatuses = AppConstants.activeServiceStatuses;
 
       final activeBookings = bookings
           .where((b) => activeStatuses.contains(b.status.toLowerCase()))
@@ -144,7 +139,7 @@ class _SeekerHomeScreenState extends State<SeekerHomeScreen>
       _hasAutoNavigatedToTracking = true;
 
       context.push(
-        '/booking/${booking.id}/tracking',
+        AppConstants.seekerTrackingPath(booking.id),
         extra: {
           'providerId': booking.providerId ?? '',
           'pickupLocation': {
@@ -177,7 +172,7 @@ class _SeekerHomeScreenState extends State<SeekerHomeScreen>
 
       final completedBookings = await _bookingRepository.getBookingHistory(
         user.uid,
-        status: 'completed',
+        status: AppConstants.statusCompleted,
       );
 
       completedBookings.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
@@ -186,11 +181,11 @@ class _SeekerHomeScreenState extends State<SeekerHomeScreen>
         final providerId = booking.providerId;
         if (providerId == null || providerId.isEmpty) continue;
 
-        final exists = await _feedbackRepository.checkFeedbackExists(booking.id, 'seeker');
+        final exists = await _feedbackRepository.checkFeedbackExists(booking.id, AppConstants.roleSeeker);
         if (!mounted) return;
 
         if (!exists) {
-          context.go('/feedback/seeker', extra: {
+          context.go(AppRoutes.feedbackSeeker, extra: {
             'bookingId': booking.id,
             'providerId': providerId,
             'providerName': booking.providerName ?? 'Provider',
@@ -302,7 +297,7 @@ class _SeekerHomeScreenState extends State<SeekerHomeScreen>
                           const SizedBox(width: 12),
                           _buildAppBarIcon(
                             icon: Icons.person_rounded,
-                            onTap: () => context.push('/profile'),
+                            onTap: () => context.push(AppRoutes.profile),
                           ),
                         ],
                       ),
@@ -963,7 +958,7 @@ class _SeekerHomeScreenState extends State<SeekerHomeScreen>
 
   void _navigateToBooking(ServiceEntity service) {
     // Navigate to booking screen with service data
-    context.push('/booking/create', extra: service);
+    context.push(AppRoutes.bookingCreate, extra: service);
   }
 
   Widget _buildFAB() {
@@ -980,7 +975,7 @@ class _SeekerHomeScreenState extends State<SeekerHomeScreen>
         ],
       ),
       child: FloatingActionButton.extended(
-        onPressed: () => context.push('/seeker/history'),
+        onPressed: () => context.push(AppRoutes.seekerHistory),
         backgroundColor: Colors.transparent,
         elevation: 0,
         icon: const Icon(Icons.history_rounded, color: Colors.white),

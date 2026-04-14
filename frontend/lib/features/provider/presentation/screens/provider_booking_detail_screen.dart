@@ -5,6 +5,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
 import 'dart:async';
 import '../../../../core/theme/app_theme.dart';
+import '../../../../core/constants/app_constants.dart';
 import '../../../../core/domain/entities/booking_entity.dart';
 import '../bloc/provider_bloc.dart';
 import '../bloc/provider_event.dart';
@@ -73,7 +74,7 @@ class _ProviderBookingDetailScreenState extends State<ProviderBookingDetailScree
     final wasNear = _isNearDropLocation;
     _isNearDropLocation = distanceToDropM <= _completionRadiusMeters;
 
-    if (_isNearDropLocation && !wasNear && _booking!.status == 'in_progress') {
+    if (_isNearDropLocation && !wasNear && _booking!.status == AppConstants.statusInProgress) {
       // Provider has reached drop location - show auto-complete dialog
       _showAutoCompleteDialog();
     }
@@ -216,10 +217,7 @@ class _ProviderBookingDetailScreenState extends State<ProviderBookingDetailScree
                       const SizedBox(height: 24),
 
                       // Track Button
-                      if (_booking!.status == 'in_progress' ||
-                          _booking!.status == 'provider_arrived' ||
-                          _booking!.status == 'accepted' ||
-                          _booking!.status == 'provider_arriving')
+                        if (AppConstants.trackingStatuses.contains(_booking!.status))
                         Padding(
                           padding: const EdgeInsets.only(bottom: 16),
                           child: SizedBox(
@@ -247,14 +245,15 @@ class _ProviderBookingDetailScreenState extends State<ProviderBookingDetailScree
                         ),
 
                       // Location Proximity Indicator
-                      if (_booking!.status == 'in_progress') ...[
+                      if (_booking!.status == AppConstants.statusInProgress) ...[
                         _buildProximityIndicator(),
                         const SizedBox(height: 16),
                       ],
 
                       // Complete Button
-                      if (_booking!.status == 'in_progress' ||
-                          _booking!.status == 'provider_arrived')
+                          if (_booking!.status == AppConstants.statusInProgress ||
+                            _booking!.status == AppConstants.statusProviderArrived ||
+                            _booking!.status == AppConstants.statusActive)
                         SizedBox(
                           width: double.infinity,
                           height: 56,

@@ -20,6 +20,7 @@ from ..schemas.booking_schema import BookingCreate, BookingUpdate, BookingRespon
 from ..models.booking import Booking
 from ..models.location import LocationUpdate
 from ..services.fcm_service import fcm_service
+from ..constants import BookingStatus, UserRole
 
 router = APIRouter()
 
@@ -123,7 +124,7 @@ async def get_seeker_bookings(
 async def get_seeker_active_booking(seeker_id: str):
     """SEEKER: Get current active booking (if any)"""
     try:
-        booking = Booking.get_active_booking(seeker_id, "seeker")
+        booking = Booking.get_active_booking(seeker_id, UserRole.SEEKER)
         
         return BookingResponse(
             success=True,
@@ -169,7 +170,7 @@ async def get_provider_bookings(
 async def get_provider_active_booking(provider_id: str):
     """PROVIDER: Get current active booking (if any)"""
     try:
-        booking = Booking.get_active_booking(provider_id, "provider")
+        booking = Booking.get_active_booking(provider_id, UserRole.PROVIDER)
         
         return BookingResponse(
             success=True,
@@ -277,7 +278,7 @@ async def update_booking(booking_id: str, booking_update: BookingUpdate):
 async def provider_arriving(booking_id: str, payload: Optional[ProviderArrivingRequest] = None):
     """PROVIDER: Mark that provider is on the way to pickup"""
     try:
-        booking_data = Booking.update_status(booking_id, "provider_arriving")
+        booking_data = Booking.update_status(booking_id, BookingStatus.PROVIDER_ARRIVING)
         
         if not booking_data:
             raise HTTPException(
@@ -289,7 +290,7 @@ async def provider_arriving(booking_id: str, payload: Optional[ProviderArrivingR
         await fcm_service.notify_booking_status(
             target_user_id=booking_data['seekerId'],
             booking_id=booking_id,
-            status="provider_arriving",
+            status=BookingStatus.PROVIDER_ARRIVING,
             message="Your provider is on the way!"
         )
         
@@ -316,7 +317,7 @@ async def provider_arriving(booking_id: str, payload: Optional[ProviderArrivingR
 async def provider_arrived(booking_id: str):
     """PROVIDER: Mark that provider has arrived at pickup location"""
     try:
-        booking_data = Booking.update_status(booking_id, "provider_arrived")
+        booking_data = Booking.update_status(booking_id, BookingStatus.PROVIDER_ARRIVED)
         
         if not booking_data:
             raise HTTPException(
@@ -328,7 +329,7 @@ async def provider_arrived(booking_id: str):
         await fcm_service.notify_booking_status(
             target_user_id=booking_data['seekerId'],
             booking_id=booking_id,
-            status="provider_arrived",
+            status=BookingStatus.PROVIDER_ARRIVED,
             message="Your provider has arrived at the pickup location!"
         )
         
@@ -363,7 +364,7 @@ async def start_booking(booking_id: str):
         await fcm_service.notify_booking_status(
             target_user_id=booking_data['seekerId'],
             booking_id=booking_id,
-            status="in_progress",
+            status=BookingStatus.IN_PROGRESS,
             message="Service has started!"
         )
         
@@ -408,7 +409,7 @@ async def complete_booking(
         await fcm_service.notify_booking_status(
             target_user_id=booking_data['seekerId'],
             booking_id=booking_id,
-            status="completed",
+            status=BookingStatus.COMPLETED,
             message="Service completed! Please rate your experience."
         )
         
@@ -545,11 +546,11 @@ async def accept_booking(
             )
         
         # Notify seeker via FCM
-        await fcm_service.notify_booking_accepted(
-            seeker_id=booking_data['seekerId'],
+        await fcm_service.notify_booking_status(
+            target_user_id=booking_data['seekerId'],
             booking_id=booking_id,
-            provider_name=booking_data.get('providerName', 'Provider'),
-            service_type=booking_data.get('serviceType', 'service')
+            status=BookingStatus.ACTIVE,
+            message='Your provider has accepted the booking. Live tracking is now available.'
         )
         
         return BookingResponse(
@@ -585,7 +586,7 @@ async def reject_booking(booking_id: str, provider_id: str, reason: Optional[str
             await fcm_service.notify_booking_status(
                 target_user_id=seeker_id,
                 booking_id=booking_id,
-                status="rejected",
+                status=BookingStatus.REJECTED,
                 message="Your service request was rejected by the provider."
             )
         

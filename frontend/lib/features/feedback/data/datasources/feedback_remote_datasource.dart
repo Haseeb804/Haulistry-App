@@ -1,5 +1,6 @@
 import 'package:http/http.dart' as http;
 import 'dart:convert';
+import '../../../../core/constants/app_constants.dart';
 import '../../../../core/domain/entities/feedback_entity.dart';
 
 class FeedbackRemoteDataSource {
@@ -19,7 +20,7 @@ class FeedbackRemoteDataSource {
     String? comment,
   }) async {
     final response = await client.post(
-      Uri.parse('$baseUrl/api/feedback/provider'),
+      Uri.parse('$baseUrl${ApiEndpoints.feedbackProvider}'),
       headers: {'Content-Type': 'application/json'},
       body: jsonEncode({
         'bookingId': bookingId,
@@ -47,7 +48,7 @@ class FeedbackRemoteDataSource {
     String? comment,
   }) async {
     final response = await client.post(
-      Uri.parse('$baseUrl/api/feedback/seeker'),
+      Uri.parse('$baseUrl${ApiEndpoints.feedbackSeeker}'),
       headers: {'Content-Type': 'application/json'},
       body: jsonEncode({
         'bookingId': bookingId,
@@ -69,7 +70,7 @@ class FeedbackRemoteDataSource {
 
   Future<List<FeedbackEntity>> getProviderFeedbacks(String providerId) async {
     final response = await client.get(
-      Uri.parse('$baseUrl/api/feedback/provider/$providerId'),
+      Uri.parse('$baseUrl${ApiEndpoints.providerFeedbacks(providerId)}'),
     );
 
     if (response.statusCode == 200) {
@@ -83,7 +84,7 @@ class FeedbackRemoteDataSource {
 
   Future<List<FeedbackEntity>> getSeekerFeedbacks(String seekerId) async {
     final response = await client.get(
-      Uri.parse('$baseUrl/api/feedback/seeker/$seekerId'),
+      Uri.parse('$baseUrl${ApiEndpoints.seekerFeedbacks(seekerId)}'),
     );
 
     if (response.statusCode == 200) {
@@ -97,7 +98,7 @@ class FeedbackRemoteDataSource {
 
   Future<bool> checkFeedbackExists(String bookingId, String reviewerType) async {
     final response = await client.get(
-      Uri.parse('$baseUrl/api/feedback/check/$bookingId/$reviewerType'),
+      Uri.parse('$baseUrl${ApiEndpoints.feedbackExists(bookingId, reviewerType)}'),
     );
 
     if (response.statusCode == 200) {

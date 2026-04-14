@@ -9,11 +9,9 @@ import 'package:go_router/go_router.dart';
 import 'package:http/http.dart' as http;
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
+import '../../../../core/constants/app_constants.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/domain/entities/booking_entity.dart';
-import '../../../chat/presentation/bloc/chat_bloc.dart';
-import '../../../chat/presentation/bloc/chat_event.dart';
-import '../../../chat/presentation/bloc/chat_state.dart';
 import '../../../call/presentation/bloc/call_bloc.dart';
 import '../../../call/presentation/bloc/call_event.dart';
 import '../../../tracking/presentation/bloc/location_tracking_bloc.dart';
@@ -60,7 +58,6 @@ class _ProviderTrackingScreenState extends State<ProviderTrackingScreen> {
   bool _isNearDropLocation = false;
   bool _autoFollowSeeker = false;
   bool _hasAutoCompletionTriggered = false;
-  String? _pendingChatUserId;
   Timer? _seekerAnimationTimer;
   Timer? _clockTimer;
   DateTime _now = DateTime.now();
@@ -68,10 +65,7 @@ class _ProviderTrackingScreenState extends State<ProviderTrackingScreen> {
 
   bool get _isActiveServiceStatus {
     final status = (widget.bookingStatus ?? '').toLowerCase();
-    return status == 'accepted' ||
-        status == 'provider_arriving' ||
-        status == 'provider_arrived' ||
-        status == 'in_progress';
+    return AppConstants.trackingStatuses.contains(status);
   }
 
   @override
@@ -170,7 +164,7 @@ class _ProviderTrackingScreenState extends State<ProviderTrackingScreen> {
       if (_isNearDropLocation &&
           !wasNear &&
           !_hasAutoCompletionTriggered &&
-          _booking?.status == 'in_progress') {
+          _booking?.status == AppConstants.statusInProgress) {
         _hasAutoCompletionTriggered = true;
         _completeBooking(autoTriggered: true);
       }
@@ -214,13 +208,22 @@ class _ProviderTrackingScreenState extends State<ProviderTrackingScreen> {
       return;
     }
 
-    _pendingChatUserId = seekerId;
-    context.read<ChatBloc>().add(
-          ChatStartConversation(
-            otherUserId: seekerId,
-            otherUserName: seekerName ?? 'Seeker',
-          ),
-        );
+    if (!_isActiveServiceStatus) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Communication is available only during active service.'),
+          backgroundColor: AppTheme.errorColor,
+        ),
+      );
+      return;
+    }
+
+    context.push(AppRoutes.chat(widget.bookingId), extra: {
+      'otherUserId': seekerId,
+      'otherUserName': seekerName ?? 'Seeker',
+      'otherUserRole': AppConstants.roleSeeker,
+      'bookingId': widget.bookingId,
+    });
   }
 
   void _updateMarkers() {
@@ -354,7 +357,7 @@ class _ProviderTrackingScreenState extends State<ProviderTrackingScreen> {
     if (widget.pickupLocation == null || widget.dropoffLocation == null) return;
 
     try {
-      final url = 'https://router.project-osrm.org/route/v1/driving/'
+        final url = '${MapEndpoints.osrmRouteBase}/'
           '${widget.pickupLocation!.longitude},${widget.pickupLocation!.latitude};'
           '${widget.dropoffLocation!.longitude},${widget.dropoffLocation!.latitude}'
           '?overview=full&geometries=geojson';
@@ -471,7 +474,7 @@ class _ProviderTrackingScreenState extends State<ProviderTrackingScreen> {
                   SizedBox(
                     width: double.infinity,
                     child: ElevatedButton.icon(
-                      onPressed: () => context.go('/provider/history'),
+                      onPressed: () => context.go(AppRoutes.providerHistory),
                       icon: const Icon(Icons.history_rounded),
                       label: const Text('Back to History'),
                       style: ElevatedButton.styleFrom(
@@ -542,9 +545,9 @@ class _ProviderTrackingScreenState extends State<ProviderTrackingScreen> {
               );
 
               final didComplete = state.action == 'complete' ||
-                  (state.updatedBooking?.status.toLowerCase() == 'completed');
+                  (state.updatedBooking?.status.toLowerCase() == AppConstants.statusCompleted);
               if (didComplete && _booking != null) {
-                context.go('/feedback/provider', extra: {
+                context.go(AppRoutes.feedbackProvider, extra: {
                   'bookingId': widget.bookingId,
                   'seekerId': _booking!.seekerId,
                   'seekerName': _booking!.seekerName ?? 'Customer',
@@ -560,28 +563,6 @@ class _ProviderTrackingScreenState extends State<ProviderTrackingScreen> {
         }
       },
         ), // End of second BlocListener
-        BlocListener<ChatBloc, ChatState>(
-          listener: (context, state) {
-            if (state is ConversationStarted) {
-              if (_pendingChatUserId != null && state.conversation.otherUserId == _pendingChatUserId) {
-                final conversation = state.conversation;
-                _pendingChatUserId = null;
-                context.push('/chat/${conversation.id}', extra: {
-                  'otherUserId': conversation.otherUserId,
-                  'otherUserName': conversation.otherUserName,
-                  'otherUserImage': conversation.otherUserImage,
-                  'otherUserRole': 'seeker',
-                  'bookingId': widget.bookingId,
-                });
-              }
-            } else if (state is ChatError && _pendingChatUserId != null) {
-              _pendingChatUserId = null;
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text(state.message), backgroundColor: AppTheme.errorColor),
-              );
-            }
-          },
-        ),
       ], // End of listeners list
       child: BlocBuilder<ProviderBloc, ProviderState>(
         builder: (context, state) {
@@ -610,7 +591,7 @@ class _ProviderTrackingScreenState extends State<ProviderTrackingScreen> {
                 ),
                 children: [
                   TileLayer(
-                    urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                    urlTemplate: MapEndpoints.osmTileTemplate,
                     userAgentPackageName: 'com.haulistry.app',
                   ),
                   PolylineLayer(polylines: _polylines),
@@ -779,16 +760,16 @@ class _ProviderTrackingScreenState extends State<ProviderTrackingScreen> {
                               InitiateCallRequested(
                                 receiverId: seekerId,
                                 receiverName: seekerName ?? 'Seeker',
-                                receiverRole: 'seeker',
+                                receiverRole: AppConstants.roleSeeker,
                                 bookingId: widget.bookingId,
-                                callType: 'voice',
+                                callType: AppConstants.callTypeVoice,
                               ),
                             );
-                            context.push('/call/outgoing', extra: {
+                            context.push(AppRoutes.callOutgoing, extra: {
                               'callId': 'pending',
                               'receiverName': seekerName ?? 'Seeker',
-                              'receiverRole': 'seeker',
-                              'callType': 'voice',
+                              'receiverRole': AppConstants.roleSeeker,
+                              'callType': AppConstants.callTypeVoice,
                             });
                           }
                         },
@@ -858,7 +839,7 @@ class _ProviderTrackingScreenState extends State<ProviderTrackingScreen> {
                       const SizedBox(height: 20),
 
                       // Proximity indicator
-                      if (currentStatus == 'in_progress')
+                      if (currentStatus == AppConstants.statusInProgress)
                         Container(
                           padding: const EdgeInsets.all(12),
                           margin: const EdgeInsets.only(bottom: 16),
@@ -930,16 +911,16 @@ class _ProviderTrackingScreenState extends State<ProviderTrackingScreen> {
                                           InitiateCallRequested(
                                             receiverId: seekerId,
                                             receiverName: seekerName ?? 'Seeker',
-                                            receiverRole: 'seeker',
+                                            receiverRole: AppConstants.roleSeeker,
                                             bookingId: widget.bookingId,
-                                            callType: 'voice',
+                                            callType: AppConstants.callTypeVoice,
                                           ),
                                         );
-                                        context.push('/call/outgoing', extra: {
+                                        context.push(AppRoutes.callOutgoing, extra: {
                                           'callId': 'pending',
                                           'receiverName': seekerName ?? 'Seeker',
-                                          'receiverRole': 'seeker',
-                                          'callType': 'voice',
+                                          'receiverRole': AppConstants.roleSeeker,
+                                          'callType': AppConstants.callTypeVoice,
                                         });
                                       } else {
                                         ScaffoldMessenger.of(context).showSnackBar(
@@ -995,16 +976,16 @@ class _ProviderTrackingScreenState extends State<ProviderTrackingScreen> {
                                         InitiateCallRequested(
                                           receiverId: seekerId,
                                           receiverName: seekerName ?? 'Seeker',
-                                          receiverRole: 'seeker',
+                                          receiverRole: AppConstants.roleSeeker,
                                           bookingId: widget.bookingId,
-                                          callType: 'video',
+                                          callType: AppConstants.callTypeVideo,
                                         ),
                                       );
-                                      context.push('/call/outgoing', extra: {
+                                      context.push(AppRoutes.callOutgoing, extra: {
                                         'callId': 'pending',
                                         'receiverName': seekerName ?? 'Seeker',
-                                        'receiverRole': 'seeker',
-                                        'callType': 'video',
+                                        'receiverRole': AppConstants.roleSeeker,
+                                        'callType': AppConstants.callTypeVideo,
                                       });
                                     } else {
                                       ScaffoldMessenger.of(context).showSnackBar(
@@ -1063,19 +1044,17 @@ class _ProviderTrackingScreenState extends State<ProviderTrackingScreen> {
                       ],
 
                       // Action button - start or complete based on current status
-                      if (currentStatus == 'in_progress' ||
-                          currentStatus == 'provider_arrived' ||
-                          currentStatus == 'accepted' ||
-                          currentStatus == 'provider_arriving')
+                          if (AppConstants.trackingStatuses.contains(currentStatus))
                         SizedBox(
                           width: double.infinity,
                           height: 56,
                           child: ElevatedButton.icon(
                             onPressed: isLoading
                                 ? null
-                                : ((currentStatus == 'accepted' ||
-                                        currentStatus == 'provider_arriving' ||
-                                        currentStatus == 'provider_arrived')
+                                : ((currentStatus == AppConstants.statusAccepted ||
+                                  currentStatus == AppConstants.statusActive ||
+                                        currentStatus == AppConstants.statusProviderArriving ||
+                                        currentStatus == AppConstants.statusProviderArrived)
                                     ? _startBooking
                                     : _completeBooking),
                             icon: isLoading
@@ -1090,10 +1069,11 @@ class _ProviderTrackingScreenState extends State<ProviderTrackingScreen> {
                                 : const Icon(Icons.check_circle_rounded),
                             label: Text(
                               isLoading
-                                  ? (currentStatus == 'in_progress' ? 'Completing...' : 'Starting...')
-                                  : ((currentStatus == 'accepted' ||
-                                          currentStatus == 'provider_arriving' ||
-                                          currentStatus == 'provider_arrived')
+                                  ? (currentStatus == AppConstants.statusInProgress ? 'Completing...' : 'Starting...')
+                                      : ((currentStatus == AppConstants.statusAccepted ||
+                                        currentStatus == AppConstants.statusActive ||
+                                          currentStatus == AppConstants.statusProviderArriving ||
+                                          currentStatus == AppConstants.statusProviderArrived)
                                       ? 'Start Service'
                                       : 'Complete Booking'),
                               style: const TextStyle(

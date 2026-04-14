@@ -57,7 +57,7 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen> {
 
       final bookings = await _bookingRepository.getBookingHistory(
         user.uid,
-        status: 'completed',
+        status: AppConstants.statusCompleted,
       );
 
       bookings.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
@@ -65,11 +65,11 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen> {
       for (final booking in bookings) {
         if (booking.seekerId.isEmpty) continue;
 
-        final exists = await _feedbackRepository.checkFeedbackExists(booking.id, 'provider');
+        final exists = await _feedbackRepository.checkFeedbackExists(booking.id, AppConstants.roleProvider);
         if (!mounted) return;
 
         if (!exists) {
-          context.go('/feedback/provider', extra: {
+          context.go(AppRoutes.feedbackProvider, extra: {
             'bookingId': booking.id,
             'seekerId': booking.seekerId,
             'seekerName': booking.seekerName ?? 'Customer',
@@ -108,7 +108,7 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen> {
             final acceptedBooking = state.acceptedBooking;
             if (acceptedBooking != null) {
               context.push(
-                '/provider/tracking/${acceptedBooking.id}',
+                AppRoutes.providerTracking(acceptedBooking.id),
                 extra: {
                   'pickupLocation': {
                     'latitude': acceptedBooking.pickupLatitude,
@@ -334,7 +334,7 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen> {
         const SizedBox(width: 8),
         _buildAppBarAction(
           icon: Icons.person_rounded,
-          onTap: () => context.push('/profile'),
+          onTap: () => context.push(AppRoutes.profile),
         ),
         const SizedBox(width: 12),
       ],
@@ -550,7 +550,7 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen> {
               icon: Icons.home_repair_service_rounded,
               label: 'Services',
               color: AppTheme.accentColor,
-              onTap: () => context.push('/provider/services'),
+              onTap: () => context.push(AppRoutes.providerServices),
             ),
           ),
           const SizedBox(width: 12),
@@ -559,7 +559,7 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen> {
               icon: Icons.local_shipping_rounded,
               label: 'Vehicles',
               color: AppTheme.primaryColor,
-              onTap: () => context.push('/provider/vehicles'),
+              onTap: () => context.push(AppRoutes.providerVehicles),
             ),
           ),
           const SizedBox(width: 12),
@@ -568,7 +568,7 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen> {
               icon: Icons.bar_chart_rounded,
               label: 'Earnings',
               color: AppTheme.secondaryColor,
-              onTap: () => context.push('/provider/earnings'),
+              onTap: () => context.push(AppRoutes.providerEarnings),
             ),
           ),
           const SizedBox(width: 12),
@@ -577,7 +577,7 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen> {
               icon: Icons.history_rounded,
               label: 'History',
               color: AppTheme.infoColor,
-              onTap: () => context.push('/provider/history'),
+              onTap: () => context.push(AppRoutes.providerHistory),
             ),
           ),
         ],
@@ -802,7 +802,7 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen> {
                   text: 'Review Request',
                   icon: Icons.visibility_rounded,
                   height: 48,
-                  onPressed: () => context.push('/provider/request/${booking.id}'),
+                  onPressed: () => context.push(AppRoutes.providerRequest(booking.id)),
                 ),
               ],
             ),
@@ -878,7 +878,7 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen> {
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          onTap: () => context.push('/provider/booking/${booking.id}'),
+          onTap: () => context.push(AppRoutes.providerBooking(booking.id)),
           mouseCursor: SystemMouseCursors.click,
           borderRadius: BorderRadius.circular(20),
           child: Padding(
@@ -1082,19 +1082,19 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen> {
                 icon: Icons.local_shipping_rounded,
                 label: 'Vehicles',
                 isSelected: false,
-                onTap: () => context.push('/provider/vehicles'),
+                onTap: () => context.push(AppRoutes.providerVehicles),
               ),
               _buildNavItem(
                 icon: Icons.account_balance_wallet_rounded,
                 label: 'Earnings',
                 isSelected: false,
-                onTap: () => context.push('/provider/earnings'),
+                onTap: () => context.push(AppRoutes.providerEarnings),
               ),
               _buildNavItem(
                 icon: Icons.history_rounded,
                 label: 'History',
                 isSelected: false,
-                onTap: () => context.push('/provider/history'),
+                onTap: () => context.push(AppRoutes.providerHistory),
               ),
             ],
           ),

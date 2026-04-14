@@ -2,6 +2,7 @@ from typing import Optional, Dict, Any, List
 from datetime import datetime
 import uuid
 from ..database import neo4j_driver
+from ..constants import BookingStatus, ACTIVE_BOOKING_STATUSES
 
 
 class Booking:
@@ -91,7 +92,7 @@ class Booking:
             provider_id=get_value('providerId', 'provider_id'),
             vehicle_id=get_value('vehicleId', 'vehicle_id'),
             service_type=get_value('serviceType', 'service_type'),
-            status=data.get('status', 'pending'),
+            status=data.get('status', BookingStatus.PENDING),
             pickup_latitude=float(get_value('pickupLatitude', 'pickup_latitude')),
             pickup_longitude=float(get_value('pickupLongitude', 'pickup_longitude')),
             pickup_address=get_value('pickupAddress', 'pickup_address'),
@@ -189,7 +190,7 @@ class Booking:
             vehicleId: $vehicleId,
             serviceType: $serviceType,
             serviceId: $serviceId,
-            status: 'pending',
+            status: BookingStatus.PENDING,
             pickupLatitude: $pickupLatitude,
             pickupLongitude: $pickupLongitude,
             pickupAddress: $pickupAddress,
@@ -256,7 +257,7 @@ class Booking:
         query = """
         MATCH (b:Booking {id: $bookingId})
         MATCH (provider) WHERE provider.id = $providerId
-        SET b.status = 'accepted',
+        SET b.status = $activeStatus,
             b.providerId = $providerId,
             b.vehicleId = $vehicleId,
             b.updatedAt = datetime()
@@ -274,7 +275,8 @@ class Booking:
         params = {
             "bookingId": booking_id,
             "providerId": provider_id,
-            "vehicleId": vehicle_id
+            "vehicleId": vehicle_id,
+            "activeStatus": BookingStatus.ACTIVE,
         }
         
         result = neo4j_driver.execute_write(query, params)
@@ -292,7 +294,7 @@ class Booking:
         MATCH (b:Booking {id: $bookingId})
         OPTIONAL MATCH (provider) WHERE provider.id = b.providerId
         OPTIONAL MATCH (seeker) WHERE seeker.id = b.seekerId
-        SET b.status = 'completed',
+        SET b.status = $completedStatus,
             b.finalPrice = COALESCE($finalPrice, b.estimatedPrice),
             b.completedAt = datetime(),
             b.updatedAt = datetime()
@@ -304,7 +306,8 @@ class Booking:
         
         params = {
             "bookingId": booking_id,
-            "finalPrice": final_price
+            "finalPrice": final_price,
+            "completedStatus": BookingStatus.COMPLETED,
         }
         
         result = neo4j_driver.execute_write(query, params)
@@ -322,7 +325,7 @@ class Booking:
         MATCH (b:Booking {id: $bookingId})
         MATCH (provider)
         WHERE (provider:Provider OR provider:User OR provider:Seeker) AND provider.id = $providerId
-        SET b.status = 'rejected',
+        SET b.status = $rejectedStatus,
             b.rejectedBy = $providerId,
             b.rejectionReason = $reason,
             b.rejectedAt = datetime(),
@@ -334,7 +337,8 @@ class Booking:
         params = {
             "bookingId": booking_id,
             "providerId": provider_id,
-            "reason": reason
+            "reason": reason,
+            "rejectedStatus": BookingStatus.REJECTED,
         }
         
         result = neo4j_driver.execute_write(query, params)
@@ -442,7 +446,7 @@ class Booking:
         field = 'seekerId' if role == 'seeker' else 'providerId'
         query = f"""
         MATCH (b:Booking {{{field}: $userId}})
-        WHERE b.status IN ['pending', 'accepted', 'provider_arriving', 'provider_arrived', 'in_progress']
+        WHERE b.status IN $activeStatuses
         OPTIONAL MATCH (seeker:User {{id: b.seekerId}})
         OPTIONAL MATCH (provider:User {{id: b.providerId}})
         RETURN b, seeker.name as seekerName, seeker.phone as seekerPhone,
@@ -450,7 +454,10 @@ class Booking:
         ORDER BY b.createdAt DESC
         LIMIT 1
         """
-        result = neo4j_driver.execute_read(query, {'userId': user_id})
+        result = neo4j_driver.execute_read(query, {
+            'userId': user_id,
+            'activeStatuses': list(ACTIVE_BOOKING_STATUSES),
+        })
         if result and result[0]['b']:
             booking = Booking._serialize_neo4j_data(result[0]['b'])
             booking['seekerName'] = result[0]['seekerName']
@@ -470,7 +477,7 @@ class Booking:
         """Get available bookings for providers to bid on"""
         query = """
         MATCH (b:Booking)
-        WHERE b.status = 'pending' AND b.providerId IS NULL
+        WHERE b.status = $pendingStatus AND b.providerId IS NULL
         """
         params = {}
         
@@ -484,6 +491,7 @@ class Booking:
         ORDER BY b.createdAt DESC
         """
         
+        params['pendingStatus'] = BookingStatus.PENDING
         result = neo4j_driver.execute_read(query, params)
         bookings = []
         if result:
@@ -519,7 +527,7 @@ class Booking:
         """Start the booking service"""
         query = """
         MATCH (b:Booking {id: $bookingId})
-        SET b.status = 'in_progress',
+        SET b.status = $inProgressStatus,
             b.startedAt = datetime(),
             b.updatedAt = datetime()
         WITH b
@@ -527,7 +535,10 @@ class Booking:
         OPTIONAL MATCH (provider:User {id: b.providerId})
         RETURN b, seeker.name as seekerName, provider.name as providerName
         """
-        result = neo4j_driver.execute_write(query, {'bookingId': booking_id})
+        result = neo4j_driver.execute_write(query, {
+            'bookingId': booking_id,
+            'inProgressStatus': BookingStatus.IN_PROGRESS,
+        })
         if result and result[0]['b']:
             booking = Booking._serialize_neo4j_data(result[0]['b'])
             booking['seekerName'] = result[0].get('seekerName')
@@ -540,13 +551,17 @@ class Booking:
         """Cancel a booking"""
         query = """
         MATCH (b:Booking {id: $bookingId})
-        SET b.status = 'cancelled',
+        SET b.status = $cancelledStatus,
             b.cancellationReason = $reason,
             b.cancelledAt = datetime(),
             b.updatedAt = datetime()
         RETURN b
         """
-        result = neo4j_driver.execute_write(query, {'bookingId': booking_id, 'reason': reason})
+        result = neo4j_driver.execute_write(query, {
+            'bookingId': booking_id,
+            'reason': reason,
+            'cancelledStatus': BookingStatus.CANCELLED,
+        })
         if result and result[0]['b']:
             return Booking._serialize_neo4j_data(result[0]['b'])
         return None

@@ -5,6 +5,7 @@ Manages text messages between users using Agora RTM
 from typing import Optional, Dict, Any, List
 from datetime import datetime
 from ..database.neo4j_driver import neo4j_driver
+from ..constants import LIVE_COMMUNICATION_STATUSES
 
 
 class Message:
@@ -45,7 +46,7 @@ class Message:
         MATCH (sender) WHERE (sender:Seeker OR sender:Provider OR sender:User) AND sender.id = $senderId
         MATCH (receiver) WHERE (receiver:Seeker OR receiver:Provider OR receiver:User) AND receiver.id = $receiverId
                 MATCH (b:Booking {id: $bookingId})
-                WHERE toLower(coalesce(b.status, '')) IN ['confirmed', 'accepted', 'provider_arriving', 'provider_arrived', 'in_progress']
+                WHERE toLower(coalesce(b.status, '')) IN $activeStatuses
                     AND (
                         (b.seekerId = $senderId AND b.providerId = $receiverId)
                         OR
@@ -76,7 +77,8 @@ class Message:
             "receiverId": receiver_id,
             "bookingId": booking_id,
             "messageText": message_text,
-            "messageType": message_type
+            "messageType": message_type,
+            "activeStatuses": list(LIVE_COMMUNICATION_STATUSES),
         }
         
         result = neo4j_driver.execute_write(query, params)

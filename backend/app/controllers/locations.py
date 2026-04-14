@@ -12,15 +12,11 @@ from ..models.location import LocationUpdate
 from ..models.booking import Booking
 from ..models.user import User
 from ..services.fcm_service import fcm_service
+from ..constants import LIVE_COMMUNICATION_STATUSES
 
 router = APIRouter()
 
-ACTIVE_TRACKING_STATUSES = {
-    "accepted",
-    "provider_arriving",
-    "provider_arrived",
-    "in_progress",
-}
+ACTIVE_TRACKING_STATUSES = LIVE_COMMUNICATION_STATUSES
 
 
 @router.post("/update", response_model=LocationResponse)

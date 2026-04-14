@@ -34,11 +34,11 @@ class _BookingHistoryScreenState extends State<BookingHistoryScreen> {
 
   final List<Map<String, dynamic>> _filters = [
     {'label': 'All', 'value': 'all', 'icon': Icons.all_inclusive_rounded},
-    {'label': 'Pending', 'value': 'pending', 'icon': Icons.pending_rounded},
-    {'label': 'In Progress', 'value': 'in_progress', 'icon': Icons.sync_rounded},
-    {'label': 'Completed', 'value': 'completed', 'icon': Icons.check_circle_rounded},
-    {'label': 'Rejected', 'value': 'rejected', 'icon': Icons.block_rounded},
-    {'label': 'Cancelled', 'value': 'cancelled', 'icon': Icons.cancel_rounded},
+    {'label': 'Pending', 'value': AppConstants.statusPending, 'icon': Icons.pending_rounded},
+    {'label': 'In Progress', 'value': AppConstants.statusInProgress, 'icon': Icons.sync_rounded},
+    {'label': 'Completed', 'value': AppConstants.statusCompleted, 'icon': Icons.check_circle_rounded},
+    {'label': 'Rejected', 'value': AppConstants.statusRejected, 'icon': Icons.block_rounded},
+    {'label': 'Cancelled', 'value': AppConstants.statusCancelled, 'icon': Icons.cancel_rounded},
   ];
 
   @override
@@ -100,7 +100,7 @@ class _BookingHistoryScreenState extends State<BookingHistoryScreen> {
     if (_feedbackGateChecked || !mounted) return;
 
     final completedBookings = bookings
-        .where((b) => b.status.toLowerCase() == 'completed')
+        .where((b) => b.status.toLowerCase() == AppConstants.statusCompleted)
         .toList()
       ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
 
@@ -112,7 +112,7 @@ class _BookingHistoryScreenState extends State<BookingHistoryScreen> {
     for (final booking in completedBookings) {
       final providerId = booking.providerId;
       final seekerId = booking.seekerId;
-      final reviewerType = _isProvider ? 'provider' : 'seeker';
+      final reviewerType = _isProvider ? AppConstants.roleProvider : AppConstants.roleSeeker;
 
       if (!_isProvider && (providerId == null || providerId.isEmpty)) continue;
       if (_isProvider && seekerId.isEmpty) continue;
@@ -124,13 +124,13 @@ class _BookingHistoryScreenState extends State<BookingHistoryScreen> {
         if (!exists) {
           _feedbackGateChecked = true;
           if (_isProvider) {
-            context.go('/feedback/provider', extra: {
+            context.go(AppRoutes.feedbackProvider, extra: {
               'bookingId': booking.id,
               'seekerId': seekerId,
               'seekerName': booking.seekerName ?? 'Customer',
             });
           } else {
-            context.go('/feedback/seeker', extra: {
+            context.go(AppRoutes.feedbackSeeker, extra: {
               'bookingId': booking.id,
               'providerId': providerId,
               'providerName': booking.providerName ?? 'Provider',
@@ -148,16 +148,16 @@ class _BookingHistoryScreenState extends State<BookingHistoryScreen> {
 
   Color _getStatusColor(String status) {
     switch (status.toLowerCase()) {
-      case 'completed':
+      case AppConstants.statusCompleted:
         return AppTheme.successColor;
-      case 'in_progress':
+      case AppConstants.statusInProgress:
         return AppTheme.primaryColor;
-      case 'accepted':
+      case AppConstants.statusAccepted:
         return AppTheme.secondaryColor;
-      case 'cancelled':
-      case 'rejected':
+      case AppConstants.statusCancelled:
+      case AppConstants.statusRejected:
         return AppTheme.errorColor;
-      case 'pending':
+      case AppConstants.statusPending:
         return AppTheme.warningColor;
       default:
         return AppTheme.textSecondary;
@@ -166,16 +166,16 @@ class _BookingHistoryScreenState extends State<BookingHistoryScreen> {
 
   LinearGradient _getStatusGradient(String status) {
     switch (status.toLowerCase()) {
-      case 'completed':
+      case AppConstants.statusCompleted:
         return AppTheme.secondaryGradient;
-      case 'in_progress':
+      case AppConstants.statusInProgress:
         return AppTheme.primaryGradient;
-      case 'accepted':
+      case AppConstants.statusAccepted:
         return const LinearGradient(colors: [Color(0xFF0984e3), Color(0xFF74b9ff)]);
-      case 'cancelled':
-      case 'rejected':
+      case AppConstants.statusCancelled:
+      case AppConstants.statusRejected:
         return const LinearGradient(colors: [Color(0xFFe17055), Color(0xFFd63031)]);
-      case 'pending':
+      case AppConstants.statusPending:
         return const LinearGradient(colors: [Color(0xFFFDAA4F), Color(0xFFFFB347)]);
       default:
         return AppTheme.primaryGradient;
@@ -184,15 +184,15 @@ class _BookingHistoryScreenState extends State<BookingHistoryScreen> {
 
   IconData _getStatusIcon(String status) {
     switch (status.toLowerCase()) {
-      case 'completed':
+      case AppConstants.statusCompleted:
         return Icons.check_circle_rounded;
-      case 'in_progress':
+      case AppConstants.statusInProgress:
         return Icons.local_shipping_rounded;
-      case 'accepted':
+      case AppConstants.statusAccepted:
         return Icons.thumb_up_rounded;
-      case 'cancelled':
+      case AppConstants.statusCancelled:
         return Icons.cancel_rounded;
-      case 'rejected':
+      case AppConstants.statusRejected:
         return Icons.block_rounded;
       default:
         return Icons.pending_rounded;

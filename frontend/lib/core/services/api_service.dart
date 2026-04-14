@@ -139,12 +139,12 @@ class ApiService {
 
   /// Create a new booking request
   Future<Map<String, dynamic>> createBooking(Map<String, dynamic> bookingData) async {
-    return post('/api/bookings', bookingData);
+    return post(ApiEndpoints.bookings, bookingData);
   }
 
   /// Get booking by ID
   Future<Map<String, dynamic>> getBooking(String bookingId) async {
-    return get('/api/bookings/$bookingId');
+    return get(ApiEndpoints.bookingById(bookingId));
   }
 
   /// Get seeker's bookings
@@ -154,12 +154,12 @@ class ApiService {
   }) async {
     final params = <String, String>{};
     if (status != null) params['status'] = status;
-    return get('/api/bookings/seeker/$seekerId', queryParams: params);
+    return get(ApiEndpoints.seekerBookings(seekerId), queryParams: params);
   }
 
   /// Get seeker's active booking
   Future<Map<String, dynamic>> getSeekerActiveBooking(String seekerId) async {
-    return get('/api/bookings/seeker/$seekerId/active');
+    return get(ApiEndpoints.seekerActiveBooking(seekerId));
   }
 
   /// Get provider's bookings
@@ -169,12 +169,12 @@ class ApiService {
   }) async {
     final params = <String, String>{};
     if (status != null) params['status'] = status;
-    return get('/api/bookings/provider/$providerId', queryParams: params);
+    return get(ApiEndpoints.providerBookings(providerId), queryParams: params);
   }
 
   /// Get provider's active booking
   Future<Map<String, dynamic>> getProviderActiveBooking(String providerId) async {
-    return get('/api/bookings/provider/$providerId/active');
+    return get(ApiEndpoints.providerActiveBooking(providerId));
   }
 
   /// Get available bookings for providers
@@ -190,36 +190,36 @@ class ApiService {
     if (serviceType != null) params['service_type'] = serviceType;
     if (latitude != null) params['latitude'] = latitude.toString();
     if (longitude != null) params['longitude'] = longitude.toString();
-    return get('/api/bookings/available', queryParams: params);
+    return get(ApiEndpoints.availableBookings, queryParams: params);
   }
 
   /// Update booking status - provider arriving
   Future<Map<String, dynamic>> providerArriving(String bookingId, {int? estimatedMinutes}) async {
     final body = <String, dynamic>{};
     if (estimatedMinutes != null) body['estimatedMinutes'] = estimatedMinutes;
-    return put('/api/bookings/$bookingId/arriving', body);
+    return put(ApiEndpoints.bookingArriving(bookingId), body);
   }
 
   /// Update booking status - provider arrived
   Future<Map<String, dynamic>> providerArrived(String bookingId) async {
-    return put('/api/bookings/$bookingId/arrived', {});
+    return put(ApiEndpoints.bookingArrived(bookingId), {});
   }
 
   /// Start booking
   Future<Map<String, dynamic>> startBooking(String bookingId) async {
-    return put('/api/bookings/$bookingId/start', {});
+    return put(ApiEndpoints.bookingStart(bookingId), {});
   }
 
   /// Complete booking
   Future<Map<String, dynamic>> completeBooking(String bookingId, {double? finalPrice}) async {
     final body = <String, dynamic>{};
     if (finalPrice != null) body['finalPrice'] = finalPrice;
-    return put('/api/bookings/$bookingId/complete', body);
+    return put(ApiEndpoints.bookingComplete(bookingId), body);
   }
 
   /// Cancel booking
   Future<Map<String, dynamic>> cancelBooking(String bookingId, {required String reason, String? cancelledBy}) async {
-    return put('/api/bookings/$bookingId/cancel', {
+    return put(ApiEndpoints.bookingCancel(bookingId), {
       'reason': reason,
       if (cancelledBy != null) 'cancelledBy': cancelledBy,
     });
@@ -227,7 +227,7 @@ class ApiService {
 
   /// Rate a booking
   Future<Map<String, dynamic>> rateBooking(String bookingId, {required double rating, String? review}) async {
-    return put('/api/bookings/$bookingId/rate', {
+    return put(ApiEndpoints.bookingRate(bookingId), {
       'rating': rating,
       if (review != null) 'review': review,
     });
@@ -239,41 +239,41 @@ class ApiService {
 
   /// Create a fare offer (provider bids on booking)
   Future<Map<String, dynamic>> createFareOffer(Map<String, dynamic> offerData) async {
-    return post('/api/fare-offers', offerData);
+    return post(ApiEndpoints.fareOffers, offerData);
   }
 
   /// Get all offers for a booking (seeker views bids)
   Future<Map<String, dynamic>> getBookingOffers(String bookingId) async {
-    return get('/api/fare-offers/booking/$bookingId');
+    return get(ApiEndpoints.bookingOffers(bookingId));
   }
 
   /// Get provider's offers
   Future<Map<String, dynamic>> getProviderOffers(String providerId, {String? status}) async {
     final params = <String, String>{};
     if (status != null) params['status'] = status;
-    return get('/api/fare-offers/provider/$providerId', queryParams: params);
+    return get(ApiEndpoints.providerOffers(providerId), queryParams: params);
   }
 
   /// Accept a fare offer
   Future<Map<String, dynamic>> acceptFareOffer(String offerId) async {
-    return put('/api/fare-offers/$offerId/accept', {});
+    return put(ApiEndpoints.fareOfferAccept(offerId), {});
   }
 
   /// Reject a fare offer
   Future<Map<String, dynamic>> rejectFareOffer(String offerId) async {
-    return put('/api/fare-offers/$offerId/reject', {});
+    return put(ApiEndpoints.fareOfferReject(offerId), {});
   }
 
   /// Counter offer (seeker proposes different price)
   Future<Map<String, dynamic>> counterOffer(String offerId, double counterPrice) async {
-    return put('/api/fare-offers/$offerId/counter', {
+    return put(ApiEndpoints.fareOfferCounter(offerId), {
       'counterPrice': counterPrice,
     });
   }
 
   /// Update offer price (provider responds to counter)
   Future<Map<String, dynamic>> updateOfferPrice(String offerId, double newPrice, {String? message}) async {
-    return put('/api/fare-offers/$offerId/update-price', {
+    return put(ApiEndpoints.fareOfferUpdatePrice(offerId), {
       'newPrice': newPrice,
       'message': message,
     });
@@ -281,7 +281,7 @@ class ApiService {
 
   /// Withdraw offer
   Future<Map<String, dynamic>> withdrawOffer(String offerId) async {
-    return put('/api/fare-offers/$offerId/withdraw', {});
+    return put(ApiEndpoints.fareOfferWithdraw(offerId), {});
   }
 
   // ============================================
@@ -292,27 +292,27 @@ class ApiService {
   Future<Map<String, dynamic>> getAvailableServices({String? category}) async {
     final params = <String, String>{};
     if (category != null) params['category'] = category;
-    return get('/api/services', queryParams: params);
+    return get(ApiEndpoints.services, queryParams: params);
   }
 
   /// Get provider's services
   Future<Map<String, dynamic>> getProviderServices(String providerId) async {
-    return get('/api/services/provider/$providerId');
+    return get(ApiEndpoints.providerServices(providerId));
   }
 
   /// Create a service
   Future<Map<String, dynamic>> createService(Map<String, dynamic> serviceData) async {
-    return post('/api/services', serviceData);
+    return post(ApiEndpoints.services, serviceData);
   }
 
   /// Update a service
   Future<Map<String, dynamic>> updateService(String serviceId, Map<String, dynamic> updateData) async {
-    return put('/api/services/$serviceId', updateData);
+    return put(ApiEndpoints.serviceById(serviceId), updateData);
   }
 
   /// Delete a service
   Future<Map<String, dynamic>> deleteService(String serviceId) async {
-    return delete('/api/services/$serviceId');
+    return delete(ApiEndpoints.serviceById(serviceId));
   }
 
   // ============================================
@@ -322,22 +322,22 @@ class ApiService {
   /// Get provider's vehicles
   Future<Map<String, dynamic>> getProviderVehicles(String providerId) async {
     // This might need updating based on actual endpoint
-    return get('/api/vehicles?provider_id=$providerId');
+    return get(ApiEndpoints.vehicles, queryParams: {'provider_id': providerId});
   }
 
   /// Create a vehicle
   Future<Map<String, dynamic>> createVehicle(Map<String, dynamic> vehicleData) async {
-    return post('/api/vehicles', vehicleData);
+    return post(ApiEndpoints.vehicles, vehicleData);
   }
 
   /// Update a vehicle
   Future<Map<String, dynamic>> updateVehicle(String vehicleId, Map<String, dynamic> updateData) async {
-    return put('/api/vehicles/$vehicleId', updateData);
+    return put(ApiEndpoints.vehicleById(vehicleId), updateData);
   }
 
   /// Delete a vehicle
   Future<Map<String, dynamic>> deleteVehicle(String vehicleId) async {
-    return delete('/api/vehicles/$vehicleId');
+    return delete(ApiEndpoints.vehicleById(vehicleId));
   }
 
   // ============================================
@@ -354,7 +354,7 @@ class ApiService {
     double? speed,
     double? accuracy,
   }) async {
-    return instance.post('/api/locations/update', {
+    return instance.post(ApiEndpoints.locationUpdate, {
       'bookingId': bookingId,
       'userId': userId,
       'latitude': latitude,
@@ -367,7 +367,7 @@ class ApiService {
 
   /// Update user's general location (for providers)
   Future<Map<String, dynamic>> updateUserLocation(String userId, double latitude, double longitude) async {
-    return post('/api/locations/user', {
+    return post(ApiEndpoints.userLocationUpdate, {
       'userId': userId,
       'latitude': latitude,
       'longitude': longitude,
@@ -376,12 +376,12 @@ class ApiService {
 
   /// Get booking locations (seeker and provider)
   Future<Map<String, dynamic>> getBookingLocations(String bookingId) async {
-    return get('/api/locations/booking/$bookingId');
+    return get(ApiEndpoints.bookingLocations(bookingId));
   }
   
   /// Get user's location for a specific booking
   Future<Map<String, dynamic>> getUserBookingLocation(String userId, String bookingId) async {
-    return get('/api/locations/user/$userId/booking/$bookingId');
+    return get(ApiEndpoints.userBookingLocation(userId, bookingId));
   }
 }
 

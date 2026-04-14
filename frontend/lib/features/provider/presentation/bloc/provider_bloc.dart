@@ -10,6 +10,7 @@ import '../../../../core/domain/entities/fare_offer_entity.dart';
 import '../../../../core/domain/entities/service_entity.dart';
 import '../../../../core/services/api_service.dart';
 import '../../../../core/services/notification_service.dart';
+import '../../../../core/constants/app_constants.dart';
 
 class ProviderBloc extends Bloc<ProviderEvent, ProviderState> {
   final ProviderRepository _repository;
@@ -849,10 +850,10 @@ class ProviderBloc extends Bloc<ProviderEvent, ProviderState> {
   ) async {
     final currentState = state;
 
-    if (event.status == 'accepted') {
+    if (event.status == AppConstants.statusAccepted) {
       // Offer was accepted - resolve booking and trigger immediate navigation
       try {
-        final offerResponse = await _apiService.get('/api/fare-offers/${event.offerId}');
+        final offerResponse = await _apiService.get(ApiEndpoints.fareOfferById(event.offerId));
         if (offerResponse['success'] == true && offerResponse['offer'] != null) {
           final offer = offerResponse['offer'] as Map<String, dynamic>;
           final bookingId = offer['bookingId'] as String?;
@@ -902,7 +903,7 @@ class ProviderBloc extends Bloc<ProviderEvent, ProviderState> {
           originalPrice: offer.offeredPrice,
         ));
       }
-    } else if (event.status == 'rejected') {
+    } else if (event.status == AppConstants.statusRejected) {
       // Offer was rejected - refresh offers
       add(const ProviderLoadOffersRequested());
     }

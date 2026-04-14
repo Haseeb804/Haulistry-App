@@ -32,6 +32,7 @@ class _RequestStatusScreenState extends State<RequestStatusScreen> {
   Timer? _pollingTimer;
   BookingEntity? _booking;
   bool _routingFeedback = false;
+  bool _routingTracking = false;
 
   @override
   void initState() {
@@ -62,18 +63,19 @@ class _RequestStatusScreenState extends State<RequestStatusScreen> {
 
   bool _isAccepted(String status) {
     final s = status.toLowerCase();
-    return s == 'accepted' ||
-        s == 'provider_arriving' ||
-        s == 'provider_arrived' ||
-        s == 'in_progress';
+    return s == AppConstants.statusAccepted ||
+        s == AppConstants.statusActive ||
+        s == AppConstants.statusProviderArriving ||
+        s == AppConstants.statusProviderArrived ||
+        s == AppConstants.statusInProgress;
   }
 
   bool _isRejected(String status) {
     final s = status.toLowerCase();
-    return s == 'rejected' || s == 'cancelled';
+    return s == AppConstants.statusRejected || s == AppConstants.statusCancelled;
   }
 
-  bool _isCompleted(String status) => status.toLowerCase() == 'completed';
+  bool _isCompleted(String status) => status.toLowerCase() == AppConstants.statusCompleted;
 
   String _prettyStatus(String status) {
     return status
@@ -87,10 +89,10 @@ class _RequestStatusScreenState extends State<RequestStatusScreen> {
     _routingFeedback = true;
 
     try {
-      final exists = await _feedbackRepository.checkFeedbackExists(booking.id, 'seeker');
+      final exists = await _feedbackRepository.checkFeedbackExists(booking.id, AppConstants.roleSeeker);
       if (!mounted || exists) return;
 
-      context.go('/feedback/seeker', extra: {
+      context.go(AppRoutes.feedbackSeeker, extra: {
         'bookingId': booking.id,
         'providerId': booking.providerId ?? '',
         'providerName': booking.providerName ?? 'Provider',
@@ -100,8 +102,25 @@ class _RequestStatusScreenState extends State<RequestStatusScreen> {
     }
   }
 
+  void _routeToTracking(BookingEntity booking) {
+    if (_routingTracking || !mounted) return;
+    _routingTracking = true;
+
+    context.go(AppConstants.seekerTrackingPath(booking.id), extra: {
+      'providerId': booking.providerId ?? '',
+      'providerName': booking.providerName,
+      'pickupLocation': LatLng(booking.pickupLatitude, booking.pickupLongitude),
+      'dropoffLocation': LatLng(booking.dropLatitude, booking.dropLongitude),
+      'pickupAddress': booking.pickupAddress,
+      'dropAddress': booking.dropAddress,
+      'estimatedPrice': booking.estimatedPrice,
+      'serviceType': booking.serviceType,
+      'bookingStatus': booking.status,
+    });
+  }
+
   void _openAcceptedScreen(BookingEntity booking) {
-    context.go('/booking/${booking.id}/accepted', extra: {
+    context.go(AppConstants.seekerAcceptedPath(booking.id), extra: {
       'providerId': booking.providerId ?? '',
       'providerName': booking.providerName,
       'pickupLocation': LatLng(booking.pickupLatitude, booking.pickupLongitude),
@@ -131,6 +150,10 @@ class _RequestStatusScreenState extends State<RequestStatusScreen> {
             final booking = _extractBooking(state);
             if (booking != null) {
               setState(() => _booking = booking);
+              if (_isAccepted(booking.status)) {
+                _routeToTracking(booking);
+                return;
+              }
               if (_isCompleted(booking.status)) {
                 _routeToSeekerFeedback(booking);
               }
@@ -251,9 +274,9 @@ class _RequestStatusScreenState extends State<RequestStatusScreen> {
                     SizedBox(
                       height: 54,
                       child: ElevatedButton.icon(
-                        onPressed: () => _openAcceptedScreen(booking),
+                        onPressed: () => _routeToTracking(booking),
                         icon: const Icon(Icons.check_circle_rounded),
-                        label: const Text('View Acceptance Details'),
+                        label: const Text('Open Live Tracking'),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: AppTheme.primaryColor,
                           foregroundColor: Colors.white,
@@ -265,7 +288,7 @@ class _RequestStatusScreenState extends State<RequestStatusScreen> {
                     SizedBox(
                       height: 54,
                       child: ElevatedButton.icon(
-                        onPressed: () => context.go('/seeker/home'),
+                        onPressed: () => context.go(AppRoutes.seekerHome),
                         icon: const Icon(Icons.home_rounded),
                         label: Text(rejected ? 'Back to Dashboard' : 'Return to Dashboard'),
                         style: ElevatedButton.styleFrom(

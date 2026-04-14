@@ -7,6 +7,7 @@ import '../bloc/call_bloc.dart';
 import '../bloc/call_event.dart';
 import '../bloc/call_state.dart';
 import '../../../../core/services/agora_call_service.dart' as agora;
+import '../../../../core/constants/app_constants.dart';
 
 class VideoCallScreen extends StatefulWidget {
   final String callId;
@@ -18,7 +19,7 @@ class VideoCallScreen extends StatefulWidget {
     super.key,
     required this.callId,
     this.otherUserName = '',
-    this.otherUserRole = 'user',
+    this.otherUserRole = AppConstants.roleUser,
     this.otherUserProfileImageUrl,
   });
 
@@ -159,8 +160,8 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
                                 fontWeight: FontWeight.w600,
                               ),
                             ),
-                            if ((state.otherUserRole != 'user' && state.otherUserRole.isNotEmpty) ||
-                                (widget.otherUserRole != 'user' && widget.otherUserRole.isNotEmpty)) ...[
+                            if ((state.otherUserRole != AppConstants.roleUser && state.otherUserRole.isNotEmpty) ||
+                              (widget.otherUserRole != AppConstants.roleUser && widget.otherUserRole.isNotEmpty)) ...[
                               const SizedBox(height: 6),
                               Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
@@ -170,7 +171,7 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
                                 ),
                                 child: Text(
                                   () {
-                                    final role = state.otherUserRole != 'user' ? state.otherUserRole : widget.otherUserRole;
+                                    final role = state.otherUserRole != AppConstants.roleUser ? state.otherUserRole : widget.otherUserRole;
                                     return role[0].toUpperCase() + role.substring(1);
                                   }(),
                                   style: TextStyle(

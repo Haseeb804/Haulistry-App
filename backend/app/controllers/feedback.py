@@ -2,6 +2,7 @@ from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, Field, field_validator
 from typing import Optional
 from ..models.feedback import Feedback
+from ..constants import UserRole
 
 router = APIRouter(prefix="/feedback", tags=["Feedback"])
 
@@ -36,7 +37,7 @@ async def create_provider_feedback(request: FeedbackRequest):
     """Seeker gives feedback about provider"""
     try:
         # Check if feedback already exists for this booking
-        if Feedback.check_feedback_exists(request.booking_id, 'seeker'):
+        if Feedback.check_feedback_exists(request.booking_id, UserRole.SEEKER):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="You have already submitted a review for this service booking. Each completed booking can only be reviewed once."
@@ -76,7 +77,7 @@ async def create_seeker_feedback(request: FeedbackRequest):
     """Provider gives feedback about seeker"""
     try:
         # Check if feedback already exists for this booking
-        if Feedback.check_feedback_exists(request.booking_id, 'provider'):
+        if Feedback.check_feedback_exists(request.booking_id, UserRole.PROVIDER):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="You have already submitted a review for this service booking. Each completed booking can only be reviewed once."

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
+import '../../../../core/constants/app_constants.dart';
 import 'package:intl/intl.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/utils/image_helper.dart';
@@ -287,7 +288,7 @@ class _ConversationTile extends StatelessWidget {
         child: InkWell(
           onTap: () {
             context.push(
-              '/chat/${conversation.id}',
+              AppRoutes.chat(conversation.id),
               extra: {
                 'otherUserName': conversation.otherUserName,
                 'otherUserImage': conversation.otherUserImage,
