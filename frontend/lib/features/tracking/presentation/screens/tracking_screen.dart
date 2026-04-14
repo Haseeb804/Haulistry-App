@@ -7,11 +7,16 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:go_router/go_router.dart';
 import 'package:http/http.dart' as http;
+import 'package:intl/intl.dart';
 import 'package:latlong2/latlong.dart';
 import '../../../../core/constants/app_constants.dart';
+import '../../../../core/services/api_service.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../feedback/data/datasources/feedback_remote_datasource.dart';
 import '../../../feedback/data/repositories/feedback_repository_impl.dart';
+import '../../../chat/presentation/bloc/chat_bloc.dart';
+import '../../../chat/presentation/bloc/chat_event.dart';
+import '../../../chat/presentation/bloc/chat_state.dart';
 import '../../../call/presentation/bloc/call_bloc.dart';
 import '../../../call/presentation/bloc/call_event.dart';
 import '../bloc/location_tracking_bloc.dart';
@@ -52,6 +57,7 @@ class TrackingScreen extends StatefulWidget {
 
 class _TrackingScreenState extends State<TrackingScreen> {
   final MapController _mapController = MapController();
+  final ApiService _apiService = ApiService.instance;
   final FeedbackRepositoryImpl _feedbackRepository = FeedbackRepositoryImpl(
     remoteDataSource: FeedbackRemoteDataSource(baseUrl: AppConstants.apiUrl),
   );
@@ -60,13 +66,18 @@ class _TrackingScreenState extends State<TrackingScreen> {
   List<Polyline> _polylines = [];
   List<LatLng> _routePoints = [];
 
+  LatLng? _myDisplayLocation;
   LatLng? _providerDisplayLocation;
   double _providerSpeedKmh = 0;
   bool _autoFollowProvider = true;
   bool _isTrackingActive = false;
   bool _feedbackRedirectChecked = false;
+  String? _pendingChatUserId;
 
   Timer? _markerAnimationTimer;
+  Timer? _clockTimer;
+  Timer? _bookingStatusTimer;
+  DateTime _now = DateTime.now();
 
   bool get _isActiveServiceStatus {
     final status = (widget.bookingStatus ?? '').toLowerCase();
@@ -85,6 +96,12 @@ class _TrackingScreenState extends State<TrackingScreen> {
   @override
   void initState() {
     super.initState();
+    _clockTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!mounted) return;
+      setState(() {
+        _now = DateTime.now();
+      });
+    });
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!_isActiveServiceStatus) {
         _checkMandatorySeekerFeedback();
@@ -92,6 +109,7 @@ class _TrackingScreenState extends State<TrackingScreen> {
       }
       _setupMap();
       _startLocationTracking();
+      _startBookingStatusPolling();
     });
   }
 
@@ -118,8 +136,52 @@ class _TrackingScreenState extends State<TrackingScreen> {
   @override
   void dispose() {
     _markerAnimationTimer?.cancel();
+    _clockTimer?.cancel();
+    _bookingStatusTimer?.cancel();
     context.read<LocationTrackingBloc>().add(const StopLocationTracking());
     super.dispose();
+  }
+
+  void _startBookingStatusPolling() {
+    _bookingStatusTimer?.cancel();
+    _bookingStatusTimer = Timer.periodic(const Duration(seconds: 5), (_) {
+      _pollBookingStatus();
+    });
+    _pollBookingStatus();
+  }
+
+  Future<void> _pollBookingStatus() async {
+    if (!mounted || widget.bookingId.isEmpty || _feedbackRedirectChecked) return;
+
+    try {
+      final response = await _apiService.getBooking(widget.bookingId);
+      if (response['success'] != true || response['booking'] == null) return;
+
+      final booking = response['booking'] as Map<String, dynamic>;
+      final status = (booking['status'] as String? ?? '').toLowerCase();
+
+      if (status == 'completed') {
+        final providerId =
+            (booking['providerId'] ?? booking['provider_id'] ?? widget.providerId)?.toString() ?? '';
+        final providerName =
+            (booking['providerName'] ?? booking['provider_name'] ?? widget.providerName)?.toString() ??
+                'Provider';
+
+        if (providerId.isEmpty) return;
+
+        final exists = await _feedbackRepository.checkFeedbackExists(widget.bookingId, 'seeker');
+        if (!mounted || exists) return;
+
+        _feedbackRedirectChecked = true;
+        context.go('/feedback/seeker', extra: {
+          'bookingId': widget.bookingId,
+          'providerId': providerId,
+          'providerName': providerName,
+        });
+      }
+    } catch (_) {
+      // Non-blocking: keep map responsive on transient API failures.
+    }
   }
 
   void _startLocationTracking() {
@@ -241,6 +303,39 @@ class _TrackingScreenState extends State<TrackingScreen> {
                   ],
                 ),
                 child: const Icon(Icons.local_shipping_rounded, color: Colors.white, size: 22),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    if (_myDisplayLocation != null) {
+      markers.add(
+        Marker(
+          point: _myDisplayLocation!,
+          width: 58,
+          height: 58,
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              Container(
+                width: 52,
+                height: 52,
+                decoration: BoxDecoration(
+                  color: Colors.blue.withValues(alpha: 0.16),
+                  shape: BoxShape.circle,
+                ),
+              ),
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: Colors.blue.shade700,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: Colors.white, width: 2),
+                ),
+                child: const Icon(Icons.person_rounded, color: Colors.white, size: 18),
               ),
             ],
           ),
@@ -386,7 +481,7 @@ class _TrackingScreenState extends State<TrackingScreen> {
     return AppTheme.warningColor;
   }
 
-  void _callProvider() {
+  void _startCall(String callType) {
     if (widget.providerId.isEmpty) return;
 
     context.read<CallBloc>().add(
@@ -395,7 +490,7 @@ class _TrackingScreenState extends State<TrackingScreen> {
             receiverName: widget.providerName ?? 'Provider',
             receiverRole: 'provider',
             bookingId: widget.bookingId,
-            callType: 'voice',
+            callType: callType,
           ),
         );
 
@@ -403,16 +498,19 @@ class _TrackingScreenState extends State<TrackingScreen> {
       'callId': 'pending',
       'receiverName': widget.providerName ?? 'Provider',
       'receiverRole': 'provider',
-      'callType': 'voice',
+      'callType': callType,
     });
   }
 
   void _messageProvider() {
-    context.push('/chat', extra: {
-      'otherUserId': widget.providerId,
-      'otherUserName': widget.providerName ?? 'Provider',
-      'bookingId': widget.bookingId,
-    });
+    if (widget.providerId.isEmpty) return;
+    _pendingChatUserId = widget.providerId;
+    context.read<ChatBloc>().add(
+          ChatStartConversation(
+            otherUserId: widget.providerId,
+            otherUserName: widget.providerName ?? 'Provider',
+          ),
+        );
   }
 
   @override
@@ -488,26 +586,58 @@ class _TrackingScreenState extends State<TrackingScreen> {
     final status = _statusText(distanceKm);
     final statusColor = _statusColor(status);
 
-    return BlocListener<LocationTrackingBloc, LocationTrackingState>(
-      listener: (context, state) {
-        if (state is LocationTrackingActive) {
-          final other = state.otherUserLocation;
-          if (other != null) {
-            _onProviderLocationUpdate(other);
-          }
-        } else if (state is LocationTrackingErrorState) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(state.message), backgroundColor: AppTheme.errorColor),
-          );
-        } else if (state is LocationPermissionDenied) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Location permission is required for tracking'),
-              backgroundColor: AppTheme.errorColor,
-            ),
-          );
-        }
-      },
+    return MultiBlocListener(
+      listeners: [
+        BlocListener<LocationTrackingBloc, LocationTrackingState>(
+          listener: (context, state) {
+            if (state is LocationTrackingActive) {
+              final mine = state.myLocation;
+              if (mine != null) {
+                _myDisplayLocation = LatLng(mine.latitude, mine.longitude);
+                _updateMarkers();
+              }
+
+              final other = state.otherUserLocation;
+              if (other != null) {
+                _onProviderLocationUpdate(other);
+              }
+            } else if (state is LocationTrackingErrorState) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text(state.message), backgroundColor: AppTheme.errorColor),
+              );
+            } else if (state is LocationPermissionDenied) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Location permission is required for tracking'),
+                  backgroundColor: AppTheme.errorColor,
+                ),
+              );
+            }
+          },
+        ),
+        BlocListener<ChatBloc, ChatState>(
+          listener: (context, state) {
+            if (state is ConversationStarted) {
+              if (_pendingChatUserId != null && state.conversation.otherUserId == _pendingChatUserId) {
+                final conversation = state.conversation;
+                _pendingChatUserId = null;
+                context.push('/chat/${conversation.id}', extra: {
+                  'otherUserId': conversation.otherUserId,
+                  'otherUserName': conversation.otherUserName,
+                  'otherUserImage': conversation.otherUserImage,
+                  'otherUserRole': 'provider',
+                  'bookingId': widget.bookingId,
+                });
+              }
+            } else if (state is ChatError && _pendingChatUserId != null) {
+              _pendingChatUserId = null;
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text(state.message), backgroundColor: AppTheme.errorColor),
+              );
+            }
+          },
+        ),
+      ],
       child: Scaffold(
         body: Stack(
           children: [
@@ -597,28 +727,29 @@ class _TrackingScreenState extends State<TrackingScreen> {
               ),
             ),
 
-            if (_isActiveServiceStatus)
-              Positioned(
-                right: 16,
-                bottom: 190,
-                child: Column(
+            Positioned(
+              left: 16,
+              top: 120,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                  boxShadow: AppTheme.softShadow,
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    FloatingActionButton.small(
-                      heroTag: 'track_call_provider',
-                      onPressed: _callProvider,
-                      backgroundColor: AppTheme.secondaryColor,
-                      child: const Icon(Icons.call_rounded, color: Colors.white),
-                    ),
-                    const SizedBox(height: 10),
-                    FloatingActionButton.small(
-                      heroTag: 'track_message_provider',
-                      onPressed: _messageProvider,
-                      backgroundColor: AppTheme.accentColor,
-                      child: const Icon(Icons.chat_bubble_rounded, color: Colors.white),
+                    const Icon(Icons.schedule_rounded, size: 16, color: AppTheme.textSecondary),
+                    const SizedBox(width: 6),
+                    Text(
+                      DateFormat('EEE, MMM d • hh:mm:ss a').format(_now),
+                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
                     ),
                   ],
                 ),
               ),
+            ),
 
             Positioned(
               left: 0,
@@ -705,6 +836,39 @@ class _TrackingScreenState extends State<TrackingScreen> {
                         ),
                       ],
                     ),
+                    if (_isActiveServiceStatus) ...[
+                      const SizedBox(height: 14),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _actionButton(
+                              icon: Icons.call_rounded,
+                              label: 'Voice',
+                              gradient: AppTheme.secondaryGradient,
+                              onTap: () => _startCall('voice'),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: _actionButton(
+                              icon: Icons.videocam_rounded,
+                              label: 'Video',
+                              gradient: AppTheme.primaryGradient,
+                              onTap: () => _startCall('video'),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: _actionButton(
+                              icon: Icons.chat_bubble_rounded,
+                              label: 'Message',
+                              gradient: AppTheme.accentGradient,
+                              onTap: _messageProvider,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -753,6 +917,39 @@ class _TrackingScreenState extends State<TrackingScreen> {
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _actionButton({
+    required IconData icon,
+    required String label,
+    required LinearGradient gradient,
+    required VoidCallback onTap,
+  }) {
+    return Container(
+      height: 46,
+      decoration: BoxDecoration(
+        gradient: gradient,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(12),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon, color: Colors.white, size: 18),
+              const SizedBox(width: 6),
+              Text(
+                label,
+                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 12),
+              ),
+            ],
+          ),
         ),
       ),
     );

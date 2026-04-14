@@ -578,6 +578,16 @@ async def reject_booking(booking_id: str, provider_id: str, reason: Optional[str
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Booking not found"
             )
+
+        # Notify seeker via FCM for request-status flow
+        seeker_id = booking_data.get('seekerId')
+        if seeker_id:
+            await fcm_service.notify_booking_status(
+                target_user_id=seeker_id,
+                booking_id=booking_id,
+                status="rejected",
+                message="Your service request was rejected by the provider."
+            )
         
         return BookingResponse(
             success=True,

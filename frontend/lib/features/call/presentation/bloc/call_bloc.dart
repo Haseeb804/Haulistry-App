@@ -90,16 +90,12 @@ class CallBloc extends Bloc<CallEvent, CallState> {
         return;
       }
 
-      // Get FCM token for push notification
-      final fcmToken = await NotificationService().getToken();
-
       // Call backend to initiate call
       final response = await _apiService.post('/api/calls/initiate', {
         'callerId': user.uid,
         'receiverId': event.receiverId,
         'bookingId': event.bookingId,
         'callType': event.callType,
-        'receiverFcmToken': fcmToken,
         'callerName': user.displayName ?? 'User',
         'callerRole': event.receiverRole == 'provider' ? 'seeker' : 'provider',
       });

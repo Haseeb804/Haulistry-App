@@ -148,7 +148,24 @@ class _ProviderBookingDetailScreenState extends State<ProviderBookingDetailScree
               backgroundColor: AppTheme.successColor,
             ),
           );
-          // Navigate back after completion
+          if (state.action == 'accept' && state.acceptedBooking != null) {
+            final accepted = state.acceptedBooking!;
+            context.go(
+              '/provider/tracking/${accepted.id}',
+              extra: {
+                'pickupLocation': LatLng(accepted.pickupLatitude, accepted.pickupLongitude),
+                'dropoffLocation': LatLng(accepted.dropLatitude, accepted.dropLongitude),
+                'pickupAddress': accepted.pickupAddress,
+                'dropAddress': accepted.dropAddress,
+                'estimatedPrice': accepted.estimatedPrice,
+                'serviceType': accepted.serviceType,
+                'bookingStatus': accepted.status,
+              },
+            );
+            return;
+          }
+
+          // Navigate back after completion for non-accept actions
           context.pop();
         } else if (state is ProviderError) {
           ScaffoldMessenger.of(context).showSnackBar(

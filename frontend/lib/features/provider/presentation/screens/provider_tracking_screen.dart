@@ -8,8 +8,12 @@ import 'package:geolocator/geolocator.dart';
 import 'package:go_router/go_router.dart';
 import 'package:http/http.dart' as http;
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:intl/intl.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/domain/entities/booking_entity.dart';
+import '../../../chat/presentation/bloc/chat_bloc.dart';
+import '../../../chat/presentation/bloc/chat_event.dart';
+import '../../../chat/presentation/bloc/chat_state.dart';
 import '../../../call/presentation/bloc/call_bloc.dart';
 import '../../../call/presentation/bloc/call_event.dart';
 import '../../../tracking/presentation/bloc/location_tracking_bloc.dart';
@@ -56,7 +60,10 @@ class _ProviderTrackingScreenState extends State<ProviderTrackingScreen> {
   bool _isNearDropLocation = false;
   bool _autoFollowSeeker = false;
   bool _hasAutoCompletionTriggered = false;
+  String? _pendingChatUserId;
   Timer? _seekerAnimationTimer;
+  Timer? _clockTimer;
+  DateTime _now = DateTime.now();
   static const double _completionRadiusMeters = 100;
 
   bool get _isActiveServiceStatus {
@@ -71,6 +78,12 @@ class _ProviderTrackingScreenState extends State<ProviderTrackingScreen> {
   void initState() {
     super.initState();
     _mapController = MapController();
+    _clockTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!mounted) return;
+      setState(() {
+        _now = DateTime.now();
+      });
+    });
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!_isActiveServiceStatus) return;
       _setupMap();
@@ -82,6 +95,7 @@ class _ProviderTrackingScreenState extends State<ProviderTrackingScreen> {
   void dispose() {
     // Stop location tracking when leaving screen
     _seekerAnimationTimer?.cancel();
+    _clockTimer?.cancel();
     context.read<LocationTrackingBloc>().add(const StopLocationTracking());
     super.dispose();
   }
@@ -188,6 +202,25 @@ class _ProviderTrackingScreenState extends State<ProviderTrackingScreen> {
   void _setupMap() {
     _updateMarkers();
     _fetchRoute();
+  }
+
+  void _openSeekerChat() {
+    final seekerId = _booking?.seekerId;
+    final seekerName = _booking?.seekerName;
+    if (seekerId == null || seekerId.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Seeker information not available')),
+      );
+      return;
+    }
+
+    _pendingChatUserId = seekerId;
+    context.read<ChatBloc>().add(
+          ChatStartConversation(
+            otherUserId: seekerId,
+            otherUserName: seekerName ?? 'Seeker',
+          ),
+        );
   }
 
   void _updateMarkers() {
@@ -351,7 +384,7 @@ class _ProviderTrackingScreenState extends State<ProviderTrackingScreen> {
         }
       }
     } catch (e) {
-      debugPrint('Route fetch failed: $e');
+      // Keep using map without route polyline when routing API is unavailable.
     }
   }
 
@@ -527,6 +560,28 @@ class _ProviderTrackingScreenState extends State<ProviderTrackingScreen> {
         }
       },
         ), // End of second BlocListener
+        BlocListener<ChatBloc, ChatState>(
+          listener: (context, state) {
+            if (state is ConversationStarted) {
+              if (_pendingChatUserId != null && state.conversation.otherUserId == _pendingChatUserId) {
+                final conversation = state.conversation;
+                _pendingChatUserId = null;
+                context.push('/chat/${conversation.id}', extra: {
+                  'otherUserId': conversation.otherUserId,
+                  'otherUserName': conversation.otherUserName,
+                  'otherUserImage': conversation.otherUserImage,
+                  'otherUserRole': 'seeker',
+                  'bookingId': widget.bookingId,
+                });
+              }
+            } else if (state is ChatError && _pendingChatUserId != null) {
+              _pendingChatUserId = null;
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text(state.message), backgroundColor: AppTheme.errorColor),
+              );
+            }
+          },
+        ),
       ], // End of listeners list
       child: BlocBuilder<ProviderBloc, ProviderState>(
         builder: (context, state) {
@@ -607,6 +662,35 @@ class _ProviderTrackingScreenState extends State<ProviderTrackingScreen> {
                             ),
                           ),
                         ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
+              Positioned(
+                left: 16,
+                top: 96,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(12),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.1),
+                        blurRadius: 10,
+                      ),
+                    ],
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.schedule_rounded, size: 16, color: AppTheme.textSecondary),
+                      const SizedBox(width: 6),
+                      Text(
+                        DateFormat('EEE, MMM d • hh:mm:ss a').format(_now),
+                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
                       ),
                     ],
                   ),
@@ -714,17 +798,7 @@ class _ProviderTrackingScreenState extends State<ProviderTrackingScreen> {
                       FloatingActionButton.small(
                         heroTag: 'provider_track_message',
                         backgroundColor: AppTheme.accentColor,
-                        onPressed: () {
-                          final seekerId = _booking?.seekerId;
-                          final seekerName = _booking?.seekerName;
-                          if (seekerId != null) {
-                            context.push('/chat', extra: {
-                              'otherUserId': seekerId,
-                              'otherUserName': seekerName ?? 'Seeker',
-                              'bookingId': widget.bookingId,
-                            });
-                          }
-                        },
+                        onPressed: _openSeekerChat,
                         child: const Icon(Icons.chat_bubble_rounded, color: Colors.white),
                       ),
                     ],
@@ -962,18 +1036,7 @@ class _ProviderTrackingScreenState extends State<ProviderTrackingScreen> {
                                 child: Material(
                                   color: Colors.transparent,
                                   child: InkWell(
-                                    onTap: () {
-                                      // Navigate to chat screen
-                                      final seekerId = _booking?.seekerId;
-                                      final seekerName = _booking?.seekerName;
-                                      if (seekerId != null) {
-                                        context.push('/chat', extra: {
-                                          'otherUserId': seekerId,
-                                          'otherUserName': seekerName ?? 'Seeker',
-                                          'bookingId': widget.bookingId,
-                                        });
-                                      }
-                                    },
+                                    onTap: _openSeekerChat,
                                     borderRadius: BorderRadius.circular(16),
                                     child: Row(
                                       mainAxisAlignment: MainAxisAlignment.center,

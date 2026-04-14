@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'package:flutter/foundation.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -119,7 +118,7 @@ class NotificationService {
     try {
       await _firebaseMessaging.subscribeToTopic(topic);
     } catch (e) {
-      debugPrint('Subscribe to topic failed: $e');
+      // Keep app flow uninterrupted if topic subscription fails.
     }
   }
 
@@ -127,7 +126,7 @@ class NotificationService {
     try {
       await _firebaseMessaging.unsubscribeFromTopic(topic);
     } catch (e) {
-      debugPrint('Unsubscribe from topic failed: $e');
+      // Keep app flow uninterrupted if topic unsubscription fails.
     }
   }
 

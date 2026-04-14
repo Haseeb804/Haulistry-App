@@ -47,7 +47,13 @@ class Call:
         query = """
         MATCH (caller) WHERE (caller:Seeker OR caller:Provider OR caller:User) AND caller.id = $callerId
         MATCH (receiver) WHERE (receiver:Seeker OR receiver:Provider OR receiver:User) AND receiver.id = $receiverId
-        MATCH (b:Booking {id: $bookingId})
+                MATCH (b:Booking {id: $bookingId})
+                WHERE toLower(coalesce(b.status, '')) IN ['confirmed', 'accepted', 'provider_arriving', 'provider_arrived', 'in_progress']
+                    AND (
+                        (b.seekerId = $callerId AND b.providerId = $receiverId)
+                        OR
+                        (b.providerId = $callerId AND b.seekerId = $receiverId)
+                    )
         
         CREATE (c:Call {
             id: randomUUID(),

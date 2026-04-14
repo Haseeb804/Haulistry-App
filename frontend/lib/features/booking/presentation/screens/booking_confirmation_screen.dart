@@ -58,125 +58,15 @@ class _BookingConfirmationScreenState extends State<BookingConfirmationScreen> {
       body: BlocConsumer<BookingBloc, BookingState>(
         listener: (context, state) {
           if (state is BookingSuccess) {
-            // Show success dialog
-            showDialog(
-              context: context,
-              barrierDismissible: false,
-              builder: (context) => AlertDialog(
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(24),
-                ),
-                title: Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(
-                        gradient: AppTheme.secondaryGradient,
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: const Icon(Icons.check_rounded, color: Colors.white, size: 24),
-                    ),
-                    const SizedBox(width: 12),
-                    const Text(
-                      'Booking Confirmed!',
-                      style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-                    ),
-                  ],
-                ),
-                content: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'Booking created successfully!',
-                      style: TextStyle(fontSize: 16),
-                    ),
-                    const SizedBox(height: 16),
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        gradient: AppTheme.primaryGradient.scale(0.3),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Row(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(8),
-                            decoration: BoxDecoration(
-                              gradient: AppTheme.primaryGradient,
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            child: const Icon(
-                              Icons.receipt_long_rounded,
-                              color: Colors.white,
-                              size: 20,
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          const Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  'Status',
-                                  style: TextStyle(fontSize: 12, color: AppTheme.textSecondary),
-                                ),
-                                Text(
-                                  'Booking Created',
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    color: AppTheme.primaryColor,
-                                    fontSize: 14,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-                actions: [
-                  OutlinedButton.icon(
-                    onPressed: () {
-                      Navigator.pop(context);
-                      context.read<BookingBloc>().add(const BookingReset());
-                      context.go('/seeker/history');
-                    },
-                    icon: const Icon(Icons.history_rounded),
-                    label: const Text('View History'),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: AppTheme.primaryColor,
-                      side: const BorderSide(color: AppTheme.primaryColor, width: 2),
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    ),
-                  ),
-                  GradientButton(
-                    text: 'View Offers',
-                    icon: Icons.local_offer_rounded,
-                    gradient: AppTheme.primaryGradient,
-                    onPressed: () {
-                      Navigator.pop(context);
-                      if (state.bookingData != null) {
-                        final bookingData = state.bookingData!;
-                        // Navigate to offers screen where seeker can see provider bids
-                        context.push(
-                          '/booking/${state.bookingId}/offers',
-                          extra: {
-                            'estimatedPrice': bookingData.estimatedPrice ?? 0.0,
-                          },
-                        );
-                      }
-                      context.read<BookingBloc>().add(const BookingReset());
-                    },
-                  ),
-                ],
-                actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                actionsAlignment: MainAxisAlignment.spaceEvenly,
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Request submitted. Checking provider response...'),
+                backgroundColor: AppTheme.successColor,
               ),
             );
+
+            context.read<BookingBloc>().add(const BookingReset());
+            context.go('/booking/${state.bookingId}/status');
           } else if (state is BookingError) {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(

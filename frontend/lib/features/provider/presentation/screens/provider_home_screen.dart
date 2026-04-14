@@ -798,37 +798,11 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen> {
                   ],
                 ),
                 const SizedBox(height: 16),
-                Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: () => _showRejectDialog(context, booking.id),
-                        icon: const Icon(Icons.close_rounded, size: 18),
-                        label: const Text('Reject'),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: AppTheme.errorColor,
-                          side: BorderSide(color: AppTheme.errorColor.withOpacity(0.3)),
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: GradientButton(
-                        text: 'Accept',
-                        icon: Icons.check_rounded,
-                        height: 48,
-                        onPressed: () {
-                          context.read<ProviderBloc>().add(
-                            ProviderAcceptBookingRequested(bookingId: booking.id),
-                          );
-                        },
-                      ),
-                    ),
-                  ],
+                GradientButton(
+                  text: 'Review Request',
+                  icon: Icons.visibility_rounded,
+                  height: 48,
+                  onPressed: () => context.push('/provider/request/${booking.id}'),
                 ),
               ],
             ),

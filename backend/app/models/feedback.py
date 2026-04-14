@@ -38,7 +38,12 @@ class Feedback:
     ) -> Optional[Dict[str, Any]]:
         """Seeker gives feedback about provider after service completion"""
         query = """
-        MATCH (b:Booking {id: $bookingId})
+        MATCH (b:Booking {
+            id: $bookingId,
+            status: 'completed',
+            providerId: $providerId,
+            seekerId: $seekerId
+        })
         MATCH (provider)
         WHERE (provider:Provider OR provider:User OR provider:Seeker) AND provider.id = $providerId
         MATCH (seeker)
@@ -107,7 +112,12 @@ class Feedback:
     ) -> Optional[Dict[str, Any]]:
         """Provider gives feedback about seeker after service completion"""
         query = """
-        MATCH (b:Booking {id: $bookingId})
+        MATCH (b:Booking {
+            id: $bookingId,
+            status: 'completed',
+            providerId: $providerId,
+            seekerId: $seekerId
+        })
         MATCH (provider)
         WHERE (provider:Provider OR provider:User OR provider:Seeker) AND provider.id = $providerId
         MATCH (seeker)
@@ -206,14 +216,14 @@ class Feedback:
         """Check if feedback already exists for a booking from specific reviewer type"""
         query = """
         MATCH (f:Feedback {bookingId: $bookingId, reviewerType: $reviewerType})
-        RETURN count(f) > 0 as exists, f.rating as existingRating, f.comment as existingComment
+        RETURN count(f) as total
         """
         
         result = neo4j_driver.execute_read(query, {
             "bookingId": booking_id,
             "reviewerType": reviewer_type
         })
-        exists = result[0]['exists'] if result else False
+        exists = (result[0]['total'] > 0) if result else False
         return exists
     
     @staticmethod

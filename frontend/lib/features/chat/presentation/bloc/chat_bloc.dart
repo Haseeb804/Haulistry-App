@@ -348,7 +348,22 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
         final participants =
             List<String>.from(doc.data()['participants'] ?? []);
         if (participants.contains(event.otherUserId)) {
-          // Conversation exists, load it
+          // Conversation exists, emit immediately so caller can navigate directly
+          final otherUserDoc =
+              await _firestore.collection('users').doc(event.otherUserId).get();
+          final otherUserData = otherUserDoc.data() ?? {};
+
+          final conversation = Conversation(
+            id: doc.id,
+            otherUserId: event.otherUserId,
+            otherUserName: event.otherUserName,
+            otherUserImage: otherUserData['imageUrl'],
+            lastMessage: null,
+            unreadCount: 0,
+            updatedAt: DateTime.now(),
+          );
+
+          emit(ConversationStarted(conversation: conversation));
           add(ChatLoadMessagesRequested(conversationId: doc.id));
           return;
         }

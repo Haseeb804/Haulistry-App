@@ -128,7 +128,6 @@ class OtpService:
         self._send_attempts[normalized_phone].append(now)
 
         # Simulated OTP sending (replace with real SMS adapter later).
-        print(f"[OTP SIMULATION] phone={normalized_phone} otp={otp}")
 
         return self.OTP_EXPIRY_SECONDS, otp
 

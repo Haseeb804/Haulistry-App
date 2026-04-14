@@ -1,5 +1,5 @@
 import 'dart:typed_data';
-import 'package:flutter/foundation.dart' show kIsWeb, debugPrint;
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
@@ -43,7 +43,7 @@ class CrossPlatformImagePicker {
         );
       }
     } catch (e) {
-      debugPrint('Gallery image pick failed: $e');
+      // Return null on picker failure to preserve existing UX contract.
     }
     return null;
   }
@@ -71,7 +71,7 @@ class CrossPlatformImagePicker {
         );
       }
     } catch (e) {
-      debugPrint('Camera image pick failed: $e');
+      // Return null on picker failure to preserve existing UX contract.
     }
     return null;
   }

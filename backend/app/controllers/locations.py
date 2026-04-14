@@ -9,9 +9,18 @@ from ..schemas.location_schema import (
     LocationResponse, BookingLocationsResponse
 )
 from ..models.location import LocationUpdate
+from ..models.booking import Booking
+from ..models.user import User
 from ..services.fcm_service import fcm_service
 
 router = APIRouter()
+
+ACTIVE_TRACKING_STATUSES = {
+    "accepted",
+    "provider_arriving",
+    "provider_arrived",
+    "in_progress",
+}
 
 
 @router.post("/update", response_model=LocationResponse)
@@ -21,6 +30,28 @@ async def update_booking_location(location: LocationUpdateRequest):
     This enables real-time tracking between seeker and provider
     """
     try:
+        booking = Booking.get_by_id(location.bookingId)
+        if not booking:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Booking not found"
+            )
+
+        seeker_id = booking.get('seekerId')
+        provider_id = booking.get('providerId')
+        if location.userId not in {seeker_id, provider_id}:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="User is not a participant in this booking"
+            )
+
+        booking_status = str(booking.get('status') or '').lower()
+        if booking_status not in ACTIVE_TRACKING_STATUSES:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Location updates are only allowed during active service"
+            )
+
         location_data = LocationUpdate.update_location(
             user_id=location.userId,
             booking_id=location.bookingId,
@@ -37,33 +68,27 @@ async def update_booking_location(location: LocationUpdateRequest):
                 detail="Failed to update location"
             )
         
-        # Send location update to other user in the booking via FCM
-        from ..models.booking import Booking
-        from ..models.user import User
-        
-        booking = Booking.get_by_id(location.bookingId)
-        if booking:
-            # Determine who to notify (the other party)
-            target_user_id = None
-            sender_name = "User"
-            
-            if location.userId == booking.get('seekerId'):
-                target_user_id = booking.get('providerId')
-                user_data = User.get_by_id(location.userId)
-                sender_name = user_data.get('name', 'Customer') if user_data else 'Customer'
-            else:
-                target_user_id = booking.get('seekerId')
-                user_data = User.get_by_id(location.userId)
-                sender_name = user_data.get('name', 'Provider') if user_data else 'Provider'
-            
-            if target_user_id:
-                await fcm_service.notify_location_update(
-                    target_user_id=target_user_id,
-                    booking_id=location.bookingId,
-                    latitude=location.latitude,
-                    longitude=location.longitude,
-                    sender_name=sender_name
-                )
+        # Send location update to the other user in the booking via FCM
+        target_user_id = None
+        sender_name = "User"
+
+        if location.userId == seeker_id:
+            target_user_id = provider_id
+            user_data = User.get_by_id(location.userId)
+            sender_name = user_data.get('name', 'Customer') if user_data else 'Customer'
+        else:
+            target_user_id = seeker_id
+            user_data = User.get_by_id(location.userId)
+            sender_name = user_data.get('name', 'Provider') if user_data else 'Provider'
+
+        if target_user_id:
+            await fcm_service.notify_location_update(
+                target_user_id=target_user_id,
+                booking_id=location.bookingId,
+                latitude=location.latitude,
+                longitude=location.longitude,
+                sender_name=sender_name
+            )
         
         return LocationResponse(
             success=True,
@@ -71,6 +96,8 @@ async def update_booking_location(location: LocationUpdateRequest):
             location=location_data
         )
         
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

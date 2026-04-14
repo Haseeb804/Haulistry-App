@@ -14,23 +14,22 @@ from .controllers.otp import router as otp_router
 
 # Configure logging with cleaner format
 logging.basicConfig(
-    level=logging.INFO,
-    format='%(levelname)s:     %(message)s' if not settings.DEBUG else '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    level=logging.ERROR,
+    format='%(levelname)s: %(message)s'
 )
 
 # Suppress verbose third-party library logs
-logging.getLogger('neo4j').setLevel(logging.WARNING)
-logging.getLogger('neo4j.pool').setLevel(logging.WARNING)
-logging.getLogger('neo4j.io').setLevel(logging.WARNING)
+logging.getLogger('neo4j').setLevel(logging.ERROR)
+logging.getLogger('neo4j.pool').setLevel(logging.ERROR)
+logging.getLogger('neo4j.io').setLevel(logging.ERROR)
 logging.getLogger('neo4j.notifications').setLevel(logging.ERROR)  # Only show errors for notifications
-logging.getLogger('urllib3').setLevel(logging.WARNING)
-logging.getLogger('cachecontrol').setLevel(logging.WARNING)
-logging.getLogger('graphql').setLevel(logging.WARNING)
+logging.getLogger('urllib3').setLevel(logging.ERROR)
+logging.getLogger('cachecontrol').setLevel(logging.ERROR)
+logging.getLogger('graphql').setLevel(logging.ERROR)
 
 # Application logger
 logger = logging.getLogger(__name__)
-if settings.DEBUG:
-    logger.setLevel(logging.DEBUG)
+logger.setLevel(logging.ERROR)
 
 
 # Initialize FastAPI app
@@ -110,10 +109,7 @@ app.add_route("/graphql/", graphql_app)  # Also handle trailing slash
 async def startup_event():
     """Initialize connections on startup"""
     # Verify Neo4j connection
-    if neo4j_driver.verify_connectivity():
-        logger.info("Neo4j connection successful")
-    else:
-        logger.warning("Neo4j connection failed")
+    neo4j_driver.verify_connectivity()
 
 # Shutdown event
 @app.on_event("shutdown")
@@ -127,7 +123,7 @@ def main():
         host=settings.HOST,
         port=settings.PORT,
         reload=settings.DEBUG,
-        log_level="info" if not settings.DEBUG else "debug",
+        log_level="error",
     )
 
 

@@ -44,7 +44,13 @@ class Message:
         query = """
         MATCH (sender) WHERE (sender:Seeker OR sender:Provider OR sender:User) AND sender.id = $senderId
         MATCH (receiver) WHERE (receiver:Seeker OR receiver:Provider OR receiver:User) AND receiver.id = $receiverId
-        MATCH (b:Booking {id: $bookingId})
+                MATCH (b:Booking {id: $bookingId})
+                WHERE toLower(coalesce(b.status, '')) IN ['confirmed', 'accepted', 'provider_arriving', 'provider_arrived', 'in_progress']
+                    AND (
+                        (b.seekerId = $senderId AND b.providerId = $receiverId)
+                        OR
+                        (b.providerId = $senderId AND b.seekerId = $receiverId)
+                    )
         
         CREATE (m:Message {
             id: randomUUID(),

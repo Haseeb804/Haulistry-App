@@ -62,7 +62,7 @@ class _FareOffersScreenState extends State<FareOffersScreen> {
               ),
             );
             context.go(
-              '/booking/${widget.bookingId}/tracking',
+              '/booking/${widget.bookingId}/status',
               extra: {
                 'providerId': state.acceptedOffer.providerId,
                 'providerName': state.acceptedOffer.providerName,

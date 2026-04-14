@@ -34,11 +34,12 @@ import 'features/booking/presentation/bloc/negotiation_bloc.dart';
 import 'features/booking/presentation/screens/create_booking_screen.dart';
 import 'features/booking/presentation/screens/booking_confirmation_screen.dart';
 import 'features/booking/presentation/screens/booking_history_screen.dart';
+import 'features/booking/presentation/screens/request_status_screen.dart';
 import 'features/booking/data/datasources/booking_remote_datasource.dart';
 import 'features/booking/data/repositories/booking_repository_impl.dart';
-import 'features/booking/presentation/screens/fare_offers_screen.dart';
-import 'features/provider/presentation/screens/available_bookings_screen.dart';
+import 'features/booking/presentation/screens/request_accepted_screen.dart';
 import 'features/provider/presentation/screens/provider_booking_detail_screen.dart';
+import 'features/provider/presentation/screens/provider_request_review_screen.dart';
 import 'features/provider/presentation/screens/provider_tracking_screen.dart';
 import 'features/chat/presentation/bloc/chat_bloc.dart';
 import 'features/chat/presentation/screens/chat_list_screen.dart';
@@ -56,6 +57,7 @@ import 'features/call/presentation/screens/outgoing_call_screen.dart';
 import 'features/call/presentation/screens/voice_call_screen.dart';
 import 'features/call/presentation/screens/video_call_screen.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'firebase_options.dart';
 import 'package:latlong2/latlong.dart';
 
@@ -88,6 +90,11 @@ void _setupNotificationHandling() {
       // Handle incoming call notification
       final callId = data['callId'] as String;
       final callerId = data['callerId'] as String;
+      final currentUserId = FirebaseAuth.instance.currentUser?.uid;
+      if (currentUserId != null && callerId == currentUserId) {
+        // Defensive guard: ignore call notifications that loop back to sender.
+        return;
+      }
       final callerName = data['callerName'] as String;
       final callerRole = data['callerRole'] as String? ?? 'user';
       final callType = data['callType'] as String;
@@ -242,6 +249,13 @@ final _router = GoRouter(
       builder: (context, state) => const BookingConfirmationScreen(),
     ),
     GoRoute(
+      path: '/booking/:id/status',
+      builder: (context, state) {
+        final bookingId = state.pathParameters['id'] ?? '';
+        return RequestStatusScreen(bookingId: bookingId);
+      },
+    ),
+    GoRoute(
       path: '/booking/:id/tracking',
       builder: (context, state) {
         final bookingId = state.pathParameters['id'] ?? '';
@@ -288,6 +302,54 @@ final _router = GoRouter(
         );
       },
     ),
+    GoRoute(
+      path: '/booking/:id/accepted',
+      builder: (context, state) {
+        final bookingId = state.pathParameters['id'] ?? '';
+        final extra = state.extra as Map<String, dynamic>?;
+
+        // Convert pickup location from map to LatLng
+        LatLng? pickupLocation;
+        if (extra?['pickupLocation'] != null) {
+          final pickup = extra!['pickupLocation'];
+          if (pickup is LatLng) {
+            pickupLocation = pickup;
+          } else if (pickup is Map) {
+            pickupLocation = LatLng(
+              (pickup['latitude'] as num).toDouble(),
+              (pickup['longitude'] as num).toDouble(),
+            );
+          }
+        }
+
+        // Convert dropoff location from map to LatLng
+        LatLng? dropoffLocation;
+        if (extra?['dropoffLocation'] != null) {
+          final dropoff = extra!['dropoffLocation'];
+          if (dropoff is LatLng) {
+            dropoffLocation = dropoff;
+          } else if (dropoff is Map) {
+            dropoffLocation = LatLng(
+              (dropoff['latitude'] as num).toDouble(),
+              (dropoff['longitude'] as num).toDouble(),
+            );
+          }
+        }
+
+        return RequestAcceptedScreen(
+          bookingId: bookingId,
+          providerId: extra?['providerId'] as String? ?? '',
+          providerName: extra?['providerName'] as String?,
+          serviceType: extra?['serviceType'] as String?,
+          bookingStatus: extra?['bookingStatus'] as String?,
+          pickupAddress: extra?['pickupAddress'] as String?,
+          dropAddress: extra?['dropAddress'] as String?,
+          estimatedPrice: extra?['estimatedPrice'] as double?,
+          pickupLocation: pickupLocation,
+          dropoffLocation: dropoffLocation,
+        );
+      },
+    ),
     
     // Service Seeker Routes
     GoRoute(
@@ -297,18 +359,6 @@ final _router = GoRouter(
     GoRoute(
       path: '/seeker/history',
       builder: (context, state) => const BookingHistoryScreen(),
-    ),
-    GoRoute(
-      path: '/booking/:id/offers',
-      builder: (context, state) {
-        final bookingId = state.pathParameters['id'] ?? '';
-        final extra = state.extra as Map<String, dynamic>?;
-        final estimatedPrice = extra?['estimatedPrice'] as double? ?? 0.0;
-        return FareOffersScreen(
-          bookingId: bookingId,
-          estimatedPrice: estimatedPrice,
-        );
-      },
     ),
     
     // Service Provider Routes
@@ -336,10 +386,6 @@ final _router = GoRouter(
       builder: (context, state) => const EarningsDashboardScreen(),
     ),
     GoRoute(
-      path: '/provider/available-bookings',
-      builder: (context, state) => const AvailableBookingsScreen(),
-    ),
-    GoRoute(
       path: '/provider/history',
       builder: (context, state) => const BookingHistoryScreen(),
     ),
@@ -348,6 +394,13 @@ final _router = GoRouter(
       builder: (context, state) {
         final bookingId = state.pathParameters['id'] ?? '';
         return ProviderBookingDetailScreen(bookingId: bookingId);
+      },
+    ),
+    GoRoute(
+      path: '/provider/request/:id',
+      builder: (context, state) {
+        final bookingId = state.pathParameters['id'] ?? '';
+        return ProviderRequestReviewScreen(bookingId: bookingId);
       },
     ),
     GoRoute(

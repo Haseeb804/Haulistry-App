@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
+import 'dart:async';
 import '../bloc/call_bloc.dart';
 import '../bloc/call_event.dart';
 import '../bloc/call_state.dart';
+import '../../../../core/services/api_service.dart';
 
 class OutgoingCallScreen extends StatefulWidget {
   final String callId;
@@ -28,6 +30,7 @@ class OutgoingCallScreen extends StatefulWidget {
 class _OutgoingCallScreenState extends State<OutgoingCallScreen>
     with SingleTickerProviderStateMixin {
   late AnimationController _animationController;
+  Timer? _statusPollingTimer;
 
   @override
   void initState() {
@@ -36,10 +39,56 @@ class _OutgoingCallScreenState extends State<OutgoingCallScreen>
       vsync: this,
       duration: const Duration(seconds: 2),
     )..repeat();
+
+    _statusPollingTimer = Timer.periodic(const Duration(seconds: 2), (_) {
+      _pollCallStatus();
+    });
+  }
+
+  String _resolveActiveCallId(CallState state) {
+    return switch (state) {
+      CallInitiated s => s.callId,
+      CallConnecting s => s.callId,
+      CallConnected s => s.callId,
+      _ => widget.callId,
+    };
+  }
+
+  Future<void> _pollCallStatus() async {
+    if (!mounted) return;
+
+    final state = context.read<CallBloc>().state;
+    if (state is CallConnected || state is CallEnded || state is CallError) {
+      return;
+    }
+
+    final callId = _resolveActiveCallId(state);
+    if (callId.isEmpty || callId == 'pending') return;
+
+    try {
+      final response = await ApiService.instance.get('/api/calls/$callId');
+      if (response['success'] != true || response['call'] == null) return;
+
+      final call = response['call'] as Map<String, dynamic>;
+      final status = (call['status'] as String? ?? '').toLowerCase();
+
+      if (status == 'rejected' || status == 'missed' || status == 'ended') {
+        if (!mounted) return;
+        context.read<CallBloc>().add(
+              EndCallRequested(
+                callId: callId,
+                duration: 0,
+              ),
+            );
+      }
+    } catch (_) {
+      // Keep outgoing screen alive during transient network failures.
+    }
   }
 
   @override
   void dispose() {
+    _statusPollingTimer?.cancel();
     _animationController.dispose();
     super.dispose();
   }
@@ -52,7 +101,7 @@ class _OutgoingCallScreenState extends State<OutgoingCallScreen>
           // Navigate to voice or video call screen
           final route = widget.callType == 'voice' ? '/call/voice' : '/call/video';
           context.go(route, extra: {
-            'callId': widget.callId,
+            'callId': state.callId,
             'otherUserName': widget.receiverName,
             'otherUserRole': widget.receiverRole,
             'otherUserProfileImageUrl': widget.receiverProfileImageUrl,
@@ -174,9 +223,10 @@ class _OutgoingCallScreenState extends State<OutgoingCallScreen>
                   padding: const EdgeInsets.all(48.0),
                   child: FloatingActionButton(
                     onPressed: () {
+                      final activeCallId = _resolveActiveCallId(context.read<CallBloc>().state);
                       context.read<CallBloc>().add(
                             EndCallRequested(
-                              callId: widget.callId,
+                              callId: activeCallId,
                               duration: 0,
                             ),
                           );

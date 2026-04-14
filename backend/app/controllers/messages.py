@@ -62,6 +62,18 @@ async def get_agora_config():
 async def send_message(request: SendMessageRequest):
     """Send a message"""
     try:
+        if request.senderId == request.receiverId:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Sender and receiver must be different users"
+            )
+
+        if not request.messageText.strip() and request.messageType == 'text':
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Message text cannot be empty"
+            )
+
         message_data = Message.create_message(
             sender_id=request.senderId,
             receiver_id=request.receiverId,

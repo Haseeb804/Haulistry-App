@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'dart:typed_data';
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:firebase_storage/firebase_storage.dart';
@@ -42,7 +43,18 @@ class ChatScreen extends StatefulWidget {
 class _ChatScreenState extends State<ChatScreen> {
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
+  Timer? _communicationStatusTimer;
   bool _isSending = false;
+  bool _isCommunicationAllowed = false;
+  bool _isCheckingCommunication = true;
+
+  static const Set<String> _activeStatuses = {
+    'confirmed',
+    'accepted',
+    'provider_arriving',
+    'provider_arrived',
+    'in_progress',
+  };
 
   @override
   void initState() {
@@ -58,10 +70,57 @@ class _ChatScreenState extends State<ChatScreen> {
     _messageController.addListener(() {
       setState(() {});
     });
+
+    _checkCommunicationPermission();
+    if (widget.bookingId != null && widget.bookingId!.isNotEmpty) {
+      _communicationStatusTimer = Timer.periodic(
+        const Duration(seconds: 5),
+        (_) => _checkCommunicationPermission(),
+      );
+    }
+  }
+
+  Future<void> _checkCommunicationPermission() async {
+    if (widget.bookingId == null || widget.bookingId!.isEmpty) {
+      if (!mounted) return;
+      setState(() {
+        _isCommunicationAllowed = false;
+        _isCheckingCommunication = false;
+      });
+      return;
+    }
+
+    try {
+      final response = await ApiService.instance.getBooking(widget.bookingId!);
+      final booking = response['booking'] as Map<String, dynamic>?;
+      final status = (booking?['status'] as String? ?? '').toLowerCase();
+
+      if (!mounted) return;
+      setState(() {
+        _isCommunicationAllowed = _activeStatuses.contains(status);
+        _isCheckingCommunication = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _isCommunicationAllowed = false;
+        _isCheckingCommunication = false;
+      });
+    }
+  }
+
+  void _showCommunicationBlockedMessage() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Communication is only available while service is active.'),
+        backgroundColor: AppTheme.errorColor,
+      ),
+    );
   }
 
   @override
   void dispose() {
+    _communicationStatusTimer?.cancel();
     _messageController.dispose();
     _scrollController.dispose();
     super.dispose();
@@ -69,6 +128,11 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Future<void> _uploadAndSendVoiceMessage(File audioFile, int duration) async {
     try {
+      if (!_isCommunicationAllowed) {
+        _showCommunicationBlockedMessage();
+        return;
+      }
+
       setState(() => _isSending = true);
 
       // Upload audio to Firebase Storage
@@ -129,8 +193,12 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   void _initiateCall(String callType) {
-    // Use booking ID if available, otherwise use a placeholder
-    final bookingId = widget.bookingId ?? 'chat_call_${DateTime.now().millisecondsSinceEpoch}';
+    if (!_isCommunicationAllowed || widget.bookingId == null || widget.bookingId!.isEmpty) {
+      _showCommunicationBlockedMessage();
+      return;
+    }
+
+    final bookingId = widget.bookingId!;
 
     // Determine the receiver's role for display
     final receiverRole = widget.otherUserRole ?? 'user';
@@ -190,6 +258,11 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<void> _pickAndSendImage() async {
+    if (!_isCommunicationAllowed) {
+      _showCommunicationBlockedMessage();
+      return;
+    }
+
     final image = await CrossPlatformImagePicker.pickFromGallery();
 
     if (image != null) {
@@ -203,6 +276,11 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   void _sendMessage() {
+    if (!_isCommunicationAllowed) {
+      _showCommunicationBlockedMessage();
+      return;
+    }
+
     final message = _messageController.text.trim();
     if (message.isEmpty) return;
 
@@ -314,7 +392,7 @@ class _ChatScreenState extends State<ChatScreen> {
             ),
             child: IconButton(
               icon: const Icon(Icons.phone_rounded, color: Colors.white, size: 22),
-              onPressed: () => _initiateCall('voice'),
+              onPressed: _isCheckingCommunication ? null : () => _initiateCall('voice'),
             ),
           ),
           Container(
@@ -325,7 +403,7 @@ class _ChatScreenState extends State<ChatScreen> {
             ),
             child: IconButton(
               icon: const Icon(Icons.videocam_rounded, color: Colors.white, size: 22),
-              onPressed: () => _initiateCall('video'),
+              onPressed: _isCheckingCommunication ? null : () => _initiateCall('video'),
             ),
           ),
           Container(
@@ -345,6 +423,22 @@ class _ChatScreenState extends State<ChatScreen> {
       ),
       body: Column(
         children: [
+          if (_isCheckingCommunication)
+            const LinearProgressIndicator(minHeight: 2)
+          else if (!_isCommunicationAllowed)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              color: AppTheme.errorColor.withOpacity(0.1),
+              child: const Text(
+                'Service is not active. Messaging and calling are disabled.',
+                style: TextStyle(
+                  color: AppTheme.errorColor,
+                  fontWeight: FontWeight.w600,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ),
           Expanded(
             child: BlocConsumer<ChatBloc, ChatState>(
               listener: (context, state) {
@@ -528,7 +622,9 @@ class _ChatScreenState extends State<ChatScreen> {
               ),
               child: IconButton(
                 icon: const Icon(Icons.image_rounded, color: Colors.white, size: 22),
-                onPressed: _isSending ? null : _pickAndSendImage,
+                onPressed: _isSending || _isCheckingCommunication || !_isCommunicationAllowed
+                    ? null
+                    : _pickAndSendImage,
               ),
             ),
             const SizedBox(width: 10),
@@ -540,6 +636,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 ),
                 child: TextField(
                   controller: _messageController,
+                  enabled: !_isCheckingCommunication && _isCommunicationAllowed,
                   decoration: const InputDecoration(
                     hintText: 'Type a message...',
                     hintStyle: TextStyle(color: AppTheme.textSecondary),
@@ -557,8 +654,14 @@ class _ChatScreenState extends State<ChatScreen> {
             ),
             const SizedBox(width: 10),
             isEmpty
-                ? VoiceMessageRecorder(
-                    onRecordingComplete: _uploadAndSendVoiceMessage,
+                ? IgnorePointer(
+                    ignoring: _isCheckingCommunication || !_isCommunicationAllowed,
+                    child: Opacity(
+                      opacity: _isCheckingCommunication || !_isCommunicationAllowed ? 0.5 : 1,
+                      child: VoiceMessageRecorder(
+                        onRecordingComplete: _uploadAndSendVoiceMessage,
+                      ),
+                    ),
                   )
                 : Container(
                     decoration: BoxDecoration(
@@ -574,7 +677,9 @@ class _ChatScreenState extends State<ChatScreen> {
                     ),
                     child: IconButton(
                       icon: const Icon(Icons.send_rounded, color: Colors.white, size: 22),
-                      onPressed: _isSending ? null : _sendMessage,
+                      onPressed: _isSending || _isCheckingCommunication || !_isCommunicationAllowed
+                          ? null
+                          : _sendMessage,
                     ),
                   ),
           ],

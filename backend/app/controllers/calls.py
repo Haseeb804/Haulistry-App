@@ -25,9 +25,15 @@ class InitiateCallRequest(BaseModel):
     receiverId: str
     bookingId: str
     callType: str  # 'voice' or 'video'
-    receiverFcmToken: Optional[str] = None  # FCM token for push notification
     callerName: Optional[str] = None  # Caller's display name
     callerRole: Optional[str] = None  # Caller's role ('seeker' or 'provider')
+ACTIVE_COMMUNICATION_STATUSES = {
+    'confirmed',
+    'accepted',
+    'provider_arriving',
+    'provider_arrived',
+    'in_progress',
+}
 
 
 class UpdateCallStatusRequest(BaseModel):
@@ -161,6 +167,12 @@ async def initiate_call(request: InitiateCallRequest):
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Caller or receiver not found"
             )
+
+        if request.callerId == request.receiverId:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Caller and receiver must be different users"
+            )
         
         # Create call record
         call_data = Call.create_call(
@@ -174,8 +186,8 @@ async def initiate_call(request: InitiateCallRequest):
         
         if not call_data:
             raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Failed to create call"
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Call not allowed. Communication requires an active service between booking participants."
             )
         
         # Add phone numbers and roles to call data
@@ -193,10 +205,12 @@ async def initiate_call(request: InitiateCallRequest):
         }
         
         # Send FCM notification to receiver if token provided
-        if request.receiverFcmToken:
+        # Send FCM notification to the intended receiver using server-side token lookup
+        receiver_fcm_token = receiver_data.get('fcmToken')
+        if receiver_fcm_token:
             caller_role = request.callerRole or caller_data.get('role', 'user')
             await send_call_notification(
-                fcm_token=request.receiverFcmToken,
+                fcm_token=receiver_fcm_token,
                 call_id=call_data['id'],
                 caller_id=request.callerId,
                 caller_name=request.callerName or caller_data.get('name', 'User'),
@@ -307,6 +321,40 @@ async def upload_voice_message(
 ):
     """Upload a voice message"""
     try:
+        from ..models.booking import Booking
+
+        if senderId == receiverId:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Sender and receiver must be different users"
+            )
+
+        booking = Booking.get_by_id(bookingId)
+        if not booking:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Booking not found"
+            )
+
+        status_value = str(booking.get('status') or '').lower()
+        if status_value not in ACTIVE_COMMUNICATION_STATUSES:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Voice messaging is only available during active service"
+            )
+
+        seeker_id = booking.get('seekerId')
+        provider_id = booking.get('providerId')
+        participants_match = (
+            (senderId == seeker_id and receiverId == provider_id) or
+            (senderId == provider_id and receiverId == seeker_id)
+        )
+        if not participants_match:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Users are not valid participants for this booking"
+            )
+
         # Generate unique filename
         timestamp = int(time.time())
         filename = f"voice_messages/{bookingId}/{senderId}_{timestamp}.m4a"

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:go_router/go_router.dart';
+import '../../../../core/theme/app_theme.dart';
 import '../bloc/feedback_bloc.dart';
 import '../bloc/feedback_event.dart';
 import '../bloc/feedback_state.dart';
@@ -41,10 +42,15 @@ class _ProviderFeedbackScreenState extends State<ProviderFeedbackScreen> {
     }
 
     final comment = _commentController.text.trim();
-    
-    
+    if (comment.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please write your review before submitting')),
+      );
+      return;
+    }
+
     // Validate minimum content length for meaningful reviews
-    if (comment.isNotEmpty && comment.length < 10) {
+    if (comment.length < 10) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Please provide more detailed feedback (at least 10 characters)'),
@@ -73,10 +79,13 @@ class _ProviderFeedbackScreenState extends State<ProviderFeedbackScreen> {
     return PopScope(
       canPop: false,
       child: Scaffold(
+        backgroundColor: AppTheme.backgroundColor,
         appBar: AppBar(
           automaticallyImplyLeading: false,
           title: Text('Rate ${widget.seekerName}'),
           centerTitle: true,
+          backgroundColor: AppTheme.primaryColor,
+          foregroundColor: Colors.white,
         ),
         body: BlocConsumer<FeedbackBloc, FeedbackState>(
         listener: (context, state) {
@@ -104,9 +113,9 @@ class _ProviderFeedbackScreenState extends State<ProviderFeedbackScreen> {
                     width: double.infinity,
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: Colors.amber.shade50,
+                      color: AppTheme.primaryColor.withValues(alpha: 0.08),
                       borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: Colors.amber.shade300),
+                      border: Border.all(color: AppTheme.primaryColor.withValues(alpha: 0.35)),
                     ),
                     child: const Text(
                       'Feedback is required to continue.',
@@ -119,14 +128,15 @@ class _ProviderFeedbackScreenState extends State<ProviderFeedbackScreen> {
                 Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
-                    color: Colors.grey[100],
+                    color: Colors.white,
                     borderRadius: BorderRadius.circular(12),
+                    boxShadow: AppTheme.softShadow,
                   ),
                   child: Row(
                     children: [
                       CircleAvatar(
                         radius: 30,
-                        backgroundColor: Colors.green[700],
+                        backgroundColor: AppTheme.primaryColor,
                         child: Text(
                           widget.seekerName[0].toUpperCase(),
                           style: const TextStyle(
@@ -153,7 +163,7 @@ class _ProviderFeedbackScreenState extends State<ProviderFeedbackScreen> {
                               widget.seekerName,
                               style: TextStyle(
                                 fontSize: 14,
-                                color: Colors.grey[600],
+                                color: AppTheme.textSecondary,
                               ),
                             ),
                           ],
@@ -186,7 +196,7 @@ class _ProviderFeedbackScreenState extends State<ProviderFeedbackScreen> {
                         icon: Icon(
                           starValue <= _rating ? Icons.star : Icons.star_border,
                           color: starValue <= _rating
-                              ? Colors.amber
+                              ? AppTheme.primaryColor
                               : Colors.grey[400],
                         ),
                       );
@@ -200,7 +210,7 @@ class _ProviderFeedbackScreenState extends State<ProviderFeedbackScreen> {
                       style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w500,
-                        color: Colors.green[700],
+                        color: AppTheme.primaryColor,
                       ),
                     ),
                   ),
@@ -208,7 +218,7 @@ class _ProviderFeedbackScreenState extends State<ProviderFeedbackScreen> {
 
                 // Comment section
                 const Text(
-                  'Share your experience (Optional)',
+                  'Share your experience (Required)',
                   style: TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.bold,
@@ -216,10 +226,10 @@ class _ProviderFeedbackScreenState extends State<ProviderFeedbackScreen> {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'Share your thoughts about the customer',
+                  'Write a short review about the seeker',
                   style: TextStyle(
                     fontSize: 13,
-                    color: Colors.grey[600],
+                    color: AppTheme.textSecondary,
                     fontStyle: FontStyle.italic,
                   ),
                 ),
@@ -235,7 +245,7 @@ class _ProviderFeedbackScreenState extends State<ProviderFeedbackScreen> {
                       borderRadius: BorderRadius.circular(12),
                     ),
                     filled: true,
-                    fillColor: Colors.grey[50],
+                    fillColor: Colors.white,
                   ),
                 ),
                 const SizedBox(height: 32),
@@ -247,7 +257,7 @@ class _ProviderFeedbackScreenState extends State<ProviderFeedbackScreen> {
                   child: ElevatedButton(
                     onPressed: isLoading ? null : _submitFeedback,
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.green[700],
+                      backgroundColor: AppTheme.primaryColor,
                       foregroundColor: Colors.white,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12),

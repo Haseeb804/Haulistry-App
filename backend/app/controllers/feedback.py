@@ -11,22 +11,18 @@ class FeedbackRequest(BaseModel):
     provider_id: str = Field(..., alias="providerId")
     seeker_id: str = Field(..., alias="seekerId")
     rating: float = Field(..., ge=1, le=5)
-    comment: Optional[str] = None
+    comment: str = Field(..., min_length=10)
 
     class Config:
         populate_by_name = True
 
     @field_validator('comment')
     @classmethod
-    def validate_comment(cls, v: Optional[str]) -> Optional[str]:
-        if v is None or v.strip() == '':
-            return v
-        
-        # Ensure minimum meaningful content
-        if len(v.strip()) < 10:
+    def validate_comment(cls, v: str) -> str:
+        value = v.strip()
+        if len(value) < 10:
             raise ValueError('Comment must be at least 10 characters long for meaningful feedback')
-        
-        return v.strip()
+        return value
 
 
 class FeedbackResponse(BaseModel):
@@ -56,8 +52,8 @@ async def create_provider_feedback(request: FeedbackRequest):
         
         if not feedback_data:
             raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Booking not found or feedback creation failed"
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Feedback can only be submitted once the booking is completed by the assigned seeker/provider pair"
             )
         
         return FeedbackResponse(
@@ -96,8 +92,8 @@ async def create_seeker_feedback(request: FeedbackRequest):
         
         if not feedback_data:
             raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Booking not found or feedback creation failed"
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Feedback can only be submitted once the booking is completed by the assigned seeker/provider pair"
             )
         
         return FeedbackResponse(

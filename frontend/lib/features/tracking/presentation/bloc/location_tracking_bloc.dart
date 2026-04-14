@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'package:flutter/foundation.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:geolocator/geolocator.dart';
 import '../../../../core/services/location_tracking_service.dart';
@@ -194,7 +193,7 @@ class LocationTrackingBloc extends Bloc<LocationTrackingEvent, LocationTrackingS
         }
       }
     } catch (e) {
-      debugPrint('Request other user location failed: $e');
+      // Non-blocking fallback: keep tracking active on transient fetch errors.
     }
   }
 
