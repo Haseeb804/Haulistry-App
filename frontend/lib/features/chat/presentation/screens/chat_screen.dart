@@ -230,18 +230,6 @@ class _ChatScreenState extends State<ChatScreen> {
 
       final audioBytes = await audioFile.readAsBytes();
       final fileName = audioFile.path.split(RegExp(r'[\\/]')).last;
-      
-      // Determine audio MIME type based on filename
-      String audioMimeType = 'audio/m4a'; // Default
-      if (fileName.toLowerCase().endsWith('.mp3')) {
-        audioMimeType = 'audio/mpeg';
-      } else if (fileName.toLowerCase().endsWith('.wav')) {
-        audioMimeType = 'audio/wav';
-      } else if (fileName.toLowerCase().endsWith('.ogg')) {
-        audioMimeType = 'audio/ogg';
-      } else if (fileName.toLowerCase().endsWith('.m4a')) {
-        audioMimeType = 'audio/aac';
-      }
 
       final response = await ApiService.instance.postMultipart(
         ApiEndpoints.messageUploadVoice,
@@ -256,7 +244,6 @@ class _ChatScreenState extends State<ChatScreen> {
         fileName: fileName.isNotEmpty
             ? fileName
             : '${DateTime.now().millisecondsSinceEpoch}.m4a',
-        contentType: audioMimeType,
       );
 
       if (response['success'] != true) {
