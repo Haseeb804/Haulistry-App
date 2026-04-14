@@ -80,7 +80,8 @@ class _TrackingScreenState extends State<TrackingScreen> {
 
   bool get _isActiveServiceStatus {
     final status = (_currentBookingStatus ?? widget.bookingStatus ?? '').toLowerCase();
-    return AppConstants.activeServiceStatuses.contains(status);
+    // Use trackingStatuses which aligns with backend LIVE_COMMUNICATION_STATUSES
+    return AppConstants.trackingStatuses.contains(status);
   }
 
   bool get _isCompletedServiceStatus {
@@ -99,7 +100,19 @@ class _TrackingScreenState extends State<TrackingScreen> {
         _now = DateTime.now();
       });
     });
+    // Load booking status immediately to avoid false "unavailable" state
+    _loadInitialBookingStatus();
+  }
+  
+  Future<void> _loadInitialBookingStatus() async {
+    // Load booking status before showing any UI
+    if (!_isBookingStatusLoaded && widget.bookingId.isNotEmpty) {
+      await _pollBookingStatus();
+    }
+    // Then start periodic polling
+    if (!mounted) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
       _startBookingStatusPolling();
       _ensureTrackingStarted();
       if (!_isActiveServiceStatus) {

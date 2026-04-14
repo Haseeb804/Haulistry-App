@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:typed_data';
 import 'package:http/http.dart' as http;
+import 'package:media_type/media_type.dart' as media_type;
 import 'package:firebase_auth/firebase_auth.dart';
 import '../constants/app_constants.dart';
 import '../data/api_exceptions.dart';
@@ -88,6 +89,7 @@ class ApiService {
     required String fileField,
     required Uint8List fileBytes,
     required String fileName,
+    String? contentType,
   }) async {
     try {
       final uri = Uri.parse('$baseUrl$endpoint');
@@ -102,11 +104,16 @@ class ApiService {
       }
 
       request.fields.addAll(fields);
+      
+      // Detect content type from filename if not explicitly provided
+      String mimeType = contentType ?? _detectMimeType(fileName);
+      
       request.files.add(
         http.MultipartFile.fromBytes(
           fileField,
           fileBytes,
           filename: fileName,
+          contentType: media_type.MediaType.parse(mimeType),
         ),
       );
 
@@ -120,6 +127,33 @@ class ApiService {
     } catch (e) {
       if (e is ApiException) rethrow;
       throw NetworkException(message: ErrorMessages.getFriendlyMessage(e));
+    }
+  }
+  
+  /// Detect MIME type from file extension
+  String _detectMimeType(String fileName) {
+    final ext = fileName.toLowerCase().split('.').last;
+    switch (ext) {
+      case 'jpg':
+      case 'jpeg':
+        return 'image/jpeg';
+      case 'png':
+        return 'image/png';
+      case 'gif':
+        return 'image/gif';
+      case 'webp':
+        return 'image/webp';
+      case 'm4a':
+      case 'aac':
+        return 'audio/aac';
+      case 'mp3':
+        return 'audio/mpeg';
+      case 'wav':
+        return 'audio/wav';
+      case 'ogg':
+        return 'audio/ogg';
+      default:
+        return 'application/octet-stream';
     }
   }
 

@@ -56,6 +56,19 @@ def _safe_filename(name: Optional[str], fallback: str) -> str:
     return cleaned or fallback
 
 
+def _detect_image_type(content: bytes) -> str:
+    """Detect image type from file bytes (magic numbers)"""
+    if content.startswith(b'\x89PNG'):
+        return 'image/png'
+    elif content.startswith(b'\xff\xd8\xff'):
+        return 'image/jpeg'
+    elif content.startswith(b'RIFF') and content[8:12] == b'WEBP':
+        return 'image/webp'
+    elif content.startswith(b'GIF8'):
+        return 'image/gif'
+    return 'image/jpeg'  # Default to JPEG
+
+
 async def _upload_to_storage(
     file: UploadFile,
     folder: str,
@@ -67,7 +80,18 @@ async def _upload_to_storage(
 
     content = await file.read()
     blob = bucket.blob(filename)
-    blob.upload_from_string(content, content_type=file.content_type or default_content_type)
+    
+    # Detect actual content type from file content if not provided
+    content_type = file.content_type or default_content_type
+    if default_content_type.startswith('image/') and not file.content_type:
+        # For images, try to detect actual format from bytes
+        content_type = _detect_image_type(content)
+    elif default_content_type.startswith('audio/'):
+        # For audio, be flexible with content type
+        if not file.content_type or 'audio' not in file.content_type:
+            content_type = default_content_type
+    
+    blob.upload_from_string(content, content_type=content_type)
     blob.make_public()
     return blob.public_url
 
@@ -143,7 +167,26 @@ async def upload_image_message(
                 detail="Sender and receiver must be different users"
             )
 
-        if not (image.content_type or '').startswith('image/'):
+        # Read file content for validation
+        content = await image.read()
+        
+        # Validate it looks like an image (check magic numbers)
+        is_valid_image = (
+            content.startswith(b'\x89PNG') or  # PNG
+            content.startswith(b'\xff\xd8\xff') or  # JPEG
+            content.startswith(b'RIFF') and len(content) > 8 and content[8:12] == b'WEBP' or  # WebP
+            content.startswith(b'GIF8') or  # GIF
+            content.startswith(b'BM')  # BMP
+        )
+        
+        # Also check MIME type if provided
+        mime_type = (image.content_type or '').lower()
+        is_valid_mime = (
+            mime_type.startswith('image/') or
+            mime_type == 'application/octet-stream'  # Browser often sends this for unknown types
+        )
+        
+        if not is_valid_image and not is_valid_mime:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Invalid image file"
@@ -205,8 +248,42 @@ async def upload_voice_message(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Voice duration must be greater than zero"
             )
+        
+        if duration > 600:  # Max 10 minutes
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Voice message too long (max 10 minutes)"
+            )
 
-        if not (audio.content_type or '').startswith('audio/'):
+        # Read file content for validation
+        content = await audio.read()
+        
+        # Validate file size (max 10MB for voice)
+        if len(content) > 10 * 1024 * 1024:
+            raise HTTPException(
+                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                detail="Voice file too large (max 10MB)"
+            )
+        
+        # Check MIME type or file content
+        mime_type = (audio.content_type or '').lower()
+        
+        # More flexible audio validation - check for common audio formats
+        is_valid_audio = (
+            mime_type.startswith('audio/') or  # Any audio MIME type
+            mime_type == 'application/octet-stream' or  # Browser fallback
+            # Check magic bytes for common audio formats
+            content.startswith(b'ID3') or  # MP3
+            content.startswith(b'\xff\xfb') or  # MP3 without ID3
+            content.startswith(b'\xff\xfa') or  # MP3
+            content.startswith(b'\xff\xf3') or  # MP3
+            content.startswith(b'\x23\x21\x41\x75') or  # Ogg Vorbis
+            content.startswith(b'RIFF') and len(content) > 8 and content[8:12] == b'WAVE' or  # WAV
+            content.startswith(b'ftyp') or  # M4A/AAC
+            content.startswith(b'\x00\x00\x00\x20\x66\x74\x79\x70')  # M4A/AAC
+        )
+        
+        if not is_valid_audio:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Invalid audio file"

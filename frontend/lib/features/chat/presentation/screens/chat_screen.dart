@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'dart:async';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:firebase_storage/firebase_storage.dart';
@@ -229,6 +230,18 @@ class _ChatScreenState extends State<ChatScreen> {
 
       final audioBytes = await audioFile.readAsBytes();
       final fileName = audioFile.path.split(RegExp(r'[\\/]')).last;
+      
+      // Determine audio MIME type based on filename
+      String audioMimeType = 'audio/m4a'; // Default
+      if (fileName.toLowerCase().endsWith('.mp3')) {
+        audioMimeType = 'audio/mpeg';
+      } else if (fileName.toLowerCase().endsWith('.wav')) {
+        audioMimeType = 'audio/wav';
+      } else if (fileName.toLowerCase().endsWith('.ogg')) {
+        audioMimeType = 'audio/ogg';
+      } else if (fileName.toLowerCase().endsWith('.m4a')) {
+        audioMimeType = 'audio/aac';
+      }
 
       final response = await ApiService.instance.postMultipart(
         ApiEndpoints.messageUploadVoice,
@@ -243,6 +256,7 @@ class _ChatScreenState extends State<ChatScreen> {
         fileName: fileName.isNotEmpty
             ? fileName
             : '${DateTime.now().millisecondsSinceEpoch}.m4a',
+        contentType: audioMimeType,
       );
 
       if (response['success'] != true) {
@@ -310,6 +324,43 @@ class _ChatScreenState extends State<ChatScreen> {
     });
   }
 
+  /// Detect image format from file bytes (magic numbers)
+  String _detectImageFormat(Uint8List bytes) {
+    if (bytes.length < 4) return '.jpg'; // Default if too small
+    
+    // Check PNG signature
+    if (bytes[0] == 0x89 && bytes[1] == 0x50 && bytes[2] == 0x4E && bytes[3] == 0x47) {
+      return '.png';
+    }
+    // Check JPEG signature
+    if (bytes[0] == 0xFF && bytes[1] == 0xD8 && bytes[2] == 0xFF) {
+      return '.jpg';
+    }
+    // Check GIF signature
+    if (bytes[0] == 0x47 && bytes[1] == 0x49 && bytes[2] == 0x46) {
+      return '.gif';
+    }
+    // Check WebP signature (RIFF....WEBP)
+    if (bytes.length >= 12 && bytes[0] == 0x52 && bytes[1] == 0x49 && bytes[2] == 0x46 && bytes[3] == 0x46 &&
+        bytes[8] == 0x57 && bytes[9] == 0x45 && bytes[10] == 0x42 && bytes[11] == 0x50) {
+      return '.webp';
+    }
+    // Check BMP signature
+    if (bytes[0] == 0x42 && bytes[1] == 0x4D) {
+      return '.bmp';
+    }
+    return '.jpg'; // Default fallback
+  }
+
+  String _generateImageFilename(CrossPlatformImage image) {
+    if (image.name.isNotEmpty) {
+      return image.name;
+    }
+    // Generate filename with detected format instead of always .jpg
+    final format = _detectImageFormat(image.bytes);
+    return '${DateTime.now().millisecondsSinceEpoch}$format';
+  }
+
   Future<void> _uploadAndSendImage(CrossPlatformImage image) async {
     try {
       final user = FirebaseAuth.instance.currentUser;
@@ -318,7 +369,7 @@ class _ChatScreenState extends State<ChatScreen> {
       }
 
       if (_useBackendMessaging) {
-        final fallbackName = '${DateTime.now().millisecondsSinceEpoch}.jpg';
+        final filename = _generateImageFilename(image);
         final response = await ApiService.instance.postMultipart(
           ApiEndpoints.messageUploadImage,
           fields: {
@@ -328,7 +379,7 @@ class _ChatScreenState extends State<ChatScreen> {
           },
           fileField: 'image',
           fileBytes: image.bytes,
-          fileName: image.name.isNotEmpty ? image.name : fallbackName,
+          fileName: filename,
         );
 
         if (response['success'] != true) {
@@ -337,11 +388,11 @@ class _ChatScreenState extends State<ChatScreen> {
         await _loadBackendMessages();
         _scrollToBottom();
       } else {
-        final fallbackName = '${DateTime.now().millisecondsSinceEpoch}.jpg';
+        final filename = _generateImageFilename(image);
         final ref = FirebaseStorage.instance
             .ref()
             .child('chat_images')
-            .child(image.name.isNotEmpty ? image.name : fallbackName);
+            .child(filename);
 
         await ref.putData(image.bytes);
         final imageUrl = await ref.getDownloadURL();

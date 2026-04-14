@@ -7,6 +7,8 @@ from pydantic import BaseModel
 from typing import Optional, List
 import os
 import time
+import uuid
+import hashlib
 from ..models.call import Call
 from ..models.voice_message import VoiceMessage
 from firebase_admin import storage, messaging
@@ -147,11 +149,21 @@ async def initiate_call(request: InitiateCallRequest):
     try:
         from ..models.user import User
         
-        # Generate unique channel name
-        channel_name = f"call_{request.bookingId}_{int(time.time())}"
+        # Generate unique channel name using UUID (much better than timestamp-based)
+        # Format: call_booking_uuid
+        channel_name = f"call_{request.bookingId}_{uuid.uuid4().hex[:8]}"
+        
+        # Generate UIDs from hashing user IDs instead of timestamp
+        # This ensures consistent UIDs for same users
+        caller_uid = int(hashlib.md5(request.callerId.encode()).hexdigest()[:8], 16) % 100000
+        receiver_uid = int(hashlib.md5(request.receiverId.encode()).hexdigest()[:8], 16) % 100000
+        
+        # Ensure UIDs are different to avoid collisions
+        while receiver_uid == caller_uid:
+            receiver_uid = (receiver_uid + 1) % 100000
         
         # Generate Agora token (optional for testing)
-        agora_token = generate_agora_token(channel_name, int(time.time()) % 100000)
+        agora_token = generate_agora_token(channel_name, caller_uid)
         
         # Fetch caller and receiver details including phone numbers
         caller_data = User.get_by_id(request.callerId)
@@ -191,12 +203,12 @@ async def initiate_call(request: InitiateCallRequest):
         call_data['callerRole'] = call_data.get('callerRole') or caller_data.get('role', 'user')
         call_data['receiverRole'] = call_data.get('receiverRole') or receiver_data.get('role', 'user')
         
-        # Prepare Agora config
+        # Prepare Agora config with caller UID
         agora_config = {
             "appId": AGORA_APP_ID,
             "channel": channel_name,
             "token": agora_token,
-            "uid": int(time.time()) % 100000  # Simple UID generation
+            "uid": caller_uid  # Use caller UID from hash
         }
         
         # Send FCM notification to receiver if token provided

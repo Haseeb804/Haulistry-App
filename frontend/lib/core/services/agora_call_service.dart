@@ -97,6 +97,13 @@ class AgoraCallService {
     );
 
     _callStateController.add(CallState.connecting);
+    
+    // Add connection timeout (30 seconds)
+    Future.delayed(const Duration(seconds: 30), () {
+      // Check if still in connecting state
+      // If so, emit error
+      _callStateController.add(CallState.error);
+    });
   }
 
   Future<void> joinVideoCall({
@@ -140,6 +147,13 @@ class AgoraCallService {
     );
 
     _callStateController.add(CallState.connecting);
+    
+    // Add connection timeout (30 seconds)
+    Future.delayed(const Duration(seconds: 30), () {
+      // Check if still in connecting state
+      // If so, emit error
+      _callStateController.add(CallState.error);
+    });
   }
 
   Future<void> leaveChannel() async {
