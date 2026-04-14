@@ -3,8 +3,9 @@ Auth REST API Controller
 Handles Firebase authentication and Neo4j user data sync
 """
 
-from fastapi import APIRouter, HTTPException, status, Header
+from fastapi import APIRouter, HTTPException, status, Header, Body
 from typing import Optional
+from pydantic import BaseModel
 import firebase_admin
 from firebase_admin import credentials, auth
 from ..schemas.user_schema import (
@@ -22,6 +23,11 @@ import logging
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+
+class FcmTokenUpdateRequest(BaseModel):
+    fcm_token: Optional[str] = None
+    fcmToken: Optional[str] = None
 
 
 def _init_firebase() -> firebase_admin.App:
@@ -610,7 +616,8 @@ async def get_user_by_id(user_id: str):
 @router.post("/fcm-token")
 async def update_fcm_token(
     authorization: Optional[str] = Header(None),
-    fcm_token: str = None
+    payload: Optional[FcmTokenUpdateRequest] = Body(None),
+    fcm_token: Optional[str] = None,
 ):
     """
     Update user's FCM token for push notifications
@@ -622,7 +629,14 @@ async def update_fcm_token(
             detail="Missing or invalid authorization header"
         )
     
-    if not fcm_token:
+    resolved_fcm_token = (
+        fcm_token
+        or (payload.fcm_token if payload else None)
+        or (payload.fcmToken if payload else None)
+        or ""
+    ).strip()
+
+    if not resolved_fcm_token:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="FCM token is required"
@@ -634,7 +648,7 @@ async def update_fcm_token(
         firebase_uid = decoded_token['uid']
         
         # Update FCM token in Neo4j
-        user_data = User.update(firebase_uid, {'fcmToken': fcm_token})
+        user_data = User.update(firebase_uid, {'fcmToken': resolved_fcm_token})
         
         if not user_data:
             raise HTTPException(

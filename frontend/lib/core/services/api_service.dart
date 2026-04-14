@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:typed_data';
 import 'package:http/http.dart' as http;
 import 'package:firebase_auth/firebase_auth.dart';
 import '../constants/app_constants.dart';
@@ -73,6 +74,48 @@ class ApiService {
         onTimeout: () => throw NetworkException(message: ErrorMessages.connectionTimeout),
       );
 
+      return _handleResponse(response);
+    } catch (e) {
+      if (e is ApiException) rethrow;
+      throw NetworkException(message: ErrorMessages.getFriendlyMessage(e));
+    }
+  }
+
+  /// Multipart POST request (e.g., image/audio uploads)
+  Future<Map<String, dynamic>> postMultipart(
+    String endpoint, {
+    required Map<String, String> fields,
+    required String fileField,
+    required Uint8List fileBytes,
+    required String fileName,
+  }) async {
+    try {
+      final uri = Uri.parse('$baseUrl$endpoint');
+      final request = http.MultipartRequest('POST', uri);
+
+      final user = _auth.currentUser;
+      if (user != null) {
+        final token = await user.getIdToken();
+        if (token != null) {
+          request.headers['Authorization'] = 'Bearer $token';
+        }
+      }
+
+      request.fields.addAll(fields);
+      request.files.add(
+        http.MultipartFile.fromBytes(
+          fileField,
+          fileBytes,
+          filename: fileName,
+        ),
+      );
+
+      final streamedResponse = await request.send().timeout(
+        const Duration(seconds: 60),
+        onTimeout: () => throw NetworkException(message: ErrorMessages.connectionTimeout),
+      );
+
+      final response = await http.Response.fromStream(streamedResponse);
       return _handleResponse(response);
     } catch (e) {
       if (e is ApiException) rethrow;

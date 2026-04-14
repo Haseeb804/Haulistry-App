@@ -68,12 +68,18 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
               if (data['lastMessage'] != null) {
                 final msgData = data['lastMessage'] as Map<String, dynamic>;
                 final msgTimestamp = msgData['timestamp'];
+                final msgImageUrl = msgData['imageUrl'] as String?;
+                final msgType = (msgData['messageType'] as String?) ??
+                    ((msgImageUrl != null && msgImageUrl.isNotEmpty) ? 'image' : 'text');
                 lastMessage = ChatMessage(
                   id: msgData['id'] ?? '',
                   senderId: msgData['senderId'] ?? '',
                   senderName: msgData['senderName'] ?? '',
                   message: msgData['message'] ?? '',
-                  imageUrl: msgData['imageUrl'],
+                  messageType: msgType,
+                  imageUrl: msgImageUrl,
+                  voiceUrl: msgData['voiceUrl'] as String?,
+                  voiceDuration: msgData['voiceDuration'] as int?,
                   timestamp: msgTimestamp is Timestamp
                       ? msgTimestamp.toDate()
                       : DateTime.now(),
@@ -159,12 +165,18 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
           final messages = snapshot.docs.map((doc) {
             final data = doc.data();
             final ts = data['timestamp'];
+            final imageUrl = data['imageUrl'] as String?;
+            final messageType = (data['messageType'] as String?) ??
+                ((imageUrl != null && imageUrl.isNotEmpty) ? 'image' : 'text');
             return ChatMessage(
               id: doc.id,
               senderId: data['senderId'] ?? '',
               senderName: data['senderName'] ?? '',
               message: data['message'] ?? '',
-              imageUrl: data['imageUrl'],
+              messageType: messageType,
+              imageUrl: imageUrl,
+              voiceUrl: data['voiceUrl'] as String?,
+              voiceDuration: data['voiceDuration'] as int?,
               timestamp: ts is Timestamp ? ts.toDate() : DateTime.now(),
               isRead: data['isRead'] ?? false,
             );
@@ -230,6 +242,7 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
         'senderId': currentUser.uid,
         'senderName': userName,
         'message': event.message,
+        'messageType': event.imageUrl != null ? 'image' : 'text',
         'imageUrl': event.imageUrl,
         'timestamp': FieldValue.serverTimestamp(),
         'isRead': false,
@@ -252,6 +265,7 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
           'senderId': currentUser.uid,
           'senderName': userName,
           'message': event.message,
+          'messageType': event.imageUrl != null ? 'image' : 'text',
           'imageUrl': event.imageUrl,
           'timestamp': FieldValue.serverTimestamp(),
           'isRead': false,

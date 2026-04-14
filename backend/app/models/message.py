@@ -19,6 +19,7 @@ class Message:
         booking_id: str,
         message_text: str,
         message_type: str = 'text',  # 'text', 'image', 'location'
+        media_duration: Optional[int] = None,
         is_read: bool = False,
         created_at: Optional[datetime] = None,
         read_at: Optional[datetime] = None
@@ -29,6 +30,7 @@ class Message:
         self.booking_id = booking_id
         self.message_text = message_text
         self.message_type = message_type
+        self.media_duration = media_duration
         self.is_read = is_read
         self.created_at = created_at or datetime.now()
         self.read_at = read_at
@@ -39,7 +41,8 @@ class Message:
         receiver_id: str,
         booking_id: str,
         message_text: str,
-        message_type: str = 'text'
+        message_type: str = 'text',
+        media_duration: Optional[int] = None,
     ) -> Optional[Dict[str, Any]]:
         """Create a new message"""
         query = """
@@ -60,6 +63,7 @@ class Message:
             bookingId: $bookingId,
             messageText: $messageText,
             messageType: $messageType,
+            mediaDuration: $mediaDuration,
             isRead: false,
             createdAt: datetime()
         })
@@ -78,6 +82,7 @@ class Message:
             "bookingId": booking_id,
             "messageText": message_text,
             "messageType": message_type,
+            "mediaDuration": media_duration,
             "activeStatuses": list(LIVE_COMMUNICATION_STATUSES),
         }
         

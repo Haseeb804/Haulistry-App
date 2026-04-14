@@ -228,6 +228,8 @@ class ApiEndpoints {
   static String callById(String callId) => '/api/calls/$callId';
 
   static const String messageSend = '/api/messages/send';
+  static const String messageUploadImage = '/api/messages/upload-image';
+  static const String messageUploadVoice = '/api/messages/upload-voice';
   static String conversationMessages(String user1Id, String user2Id, String bookingId) =>
       '/api/messages/conversation/$user1Id/$user2Id/$bookingId';
 

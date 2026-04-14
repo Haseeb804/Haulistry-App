@@ -2,10 +2,12 @@
 Messages Controller
 Handles text messaging endpoints with Agora RTM integration
 """
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, status, UploadFile, File, Form
 from pydantic import BaseModel
 from typing import Optional, List
 import os
+import time
+from firebase_admin import storage
 from ..models.message import Message
 
 router = APIRouter(prefix="/messages", tags=["messages"])
@@ -45,6 +47,29 @@ class MessagesListResponse(BaseModel):
 class AgoraConfigResponse(BaseModel):
     success: bool
     agoraConfig: dict
+
+
+def _safe_filename(name: Optional[str], fallback: str) -> str:
+    if not name:
+        return fallback
+    cleaned = os.path.basename(name).replace(' ', '_')
+    return cleaned or fallback
+
+
+async def _upload_to_storage(
+    file: UploadFile,
+    folder: str,
+    default_content_type: str,
+) -> str:
+    bucket = storage.bucket()
+    safe_name = _safe_filename(file.filename, f"{folder}_file")
+    filename = f"{folder}/{int(time.time() * 1000)}_{safe_name}"
+
+    content = await file.read()
+    blob = bucket.blob(filename)
+    blob.upload_from_string(content, content_type=file.content_type or default_content_type)
+    blob.make_public()
+    return blob.public_url
 
 
 @router.get("/agora-config")
@@ -100,6 +125,126 @@ async def send_message(request: SendMessageRequest):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to send message: {str(e)}"
+        )
+
+
+@router.post("/upload-image", response_model=MessageResponse)
+async def upload_image_message(
+    image: UploadFile = File(...),
+    senderId: str = Form(...),
+    receiverId: str = Form(...),
+    bookingId: str = Form(...),
+):
+    """Upload chat image to Firebase Storage and save as messageType=image."""
+    try:
+        if senderId == receiverId:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Sender and receiver must be different users"
+            )
+
+        if not (image.content_type or '').startswith('image/'):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid image file"
+            )
+
+        image_url = await _upload_to_storage(
+            file=image,
+            folder=f"chat_images/{bookingId}",
+            default_content_type='image/jpeg',
+        )
+
+        message_data = Message.create_message(
+            sender_id=senderId,
+            receiver_id=receiverId,
+            booking_id=bookingId,
+            message_text=image_url,
+            message_type='image',
+        )
+
+        if not message_data:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Failed to create image message"
+            )
+
+        return MessageResponse(
+            success=True,
+            message="Image uploaded and sent successfully",
+            data=message_data,
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to upload image message: {str(e)}"
+        )
+
+
+@router.post("/upload-voice", response_model=MessageResponse)
+async def upload_voice_message(
+    audio: UploadFile = File(...),
+    senderId: str = Form(...),
+    receiverId: str = Form(...),
+    bookingId: str = Form(...),
+    duration: int = Form(...),
+):
+    """Upload chat voice note and save as messageType=voice."""
+    try:
+        if senderId == receiverId:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Sender and receiver must be different users"
+            )
+
+        if duration <= 0:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Voice duration must be greater than zero"
+            )
+
+        if not (audio.content_type or '').startswith('audio/'):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid audio file"
+            )
+
+        audio_url = await _upload_to_storage(
+            file=audio,
+            folder=f"voice_messages/{bookingId}",
+            default_content_type='audio/m4a',
+        )
+
+        message_data = Message.create_message(
+            sender_id=senderId,
+            receiver_id=receiverId,
+            booking_id=bookingId,
+            message_text=audio_url,
+            message_type='voice',
+            media_duration=duration,
+        )
+
+        if not message_data:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Failed to create voice message"
+            )
+
+        return MessageResponse(
+            success=True,
+            message="Voice message uploaded and sent successfully",
+            data=message_data,
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to upload voice message: {str(e)}"
         )
 
 

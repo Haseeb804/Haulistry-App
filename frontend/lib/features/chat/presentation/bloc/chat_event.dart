@@ -76,7 +76,10 @@ class ChatMessage extends Equatable {
   final String senderId;
   final String senderName;
   final String message;
+  final String messageType;
   final String? imageUrl;
+  final String? voiceUrl;
+  final int? voiceDuration;
   final DateTime timestamp;
   final bool isRead;
 
@@ -85,7 +88,10 @@ class ChatMessage extends Equatable {
     required this.senderId,
     required this.senderName,
     required this.message,
+    this.messageType = 'text',
     this.imageUrl,
+    this.voiceUrl,
+    this.voiceDuration,
     required this.timestamp,
     required this.isRead,
   });
@@ -96,7 +102,10 @@ class ChatMessage extends Equatable {
         senderId,
         senderName,
         message,
+        messageType,
         imageUrl,
+        voiceUrl,
+        voiceDuration,
         timestamp,
         isRead,
       ];

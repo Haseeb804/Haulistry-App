@@ -1,5 +1,4 @@
 import 'dart:io';
-import 'dart:typed_data';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -18,6 +17,7 @@ import '../bloc/chat_state.dart';
 import '../../../call/presentation/bloc/call_bloc.dart';
 import '../../../call/presentation/bloc/call_event.dart';
 import '../../../call/presentation/widgets/voice_message_recorder.dart';
+import '../../../call/presentation/widgets/voice_message_player.dart';
 
 class ChatScreen extends StatefulWidget {
   final String conversationId;
@@ -142,6 +142,13 @@ class _ChatScreenState extends State<ChatScreen> {
     return DateTime.now();
   }
 
+  int? _tryParseInt(dynamic value) {
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    if (value is String) return int.tryParse(value);
+    return null;
+  }
+
   Future<void> _loadBackendMessages() async {
     if (!_useBackendMessaging || !mounted) return;
 
@@ -164,13 +171,17 @@ class _ChatScreenState extends State<ChatScreen> {
           final messageType = (row['messageType'] as String? ?? 'text').toLowerCase();
           final messageText = (row['messageText'] as String? ?? '').trim();
           final isImage = messageType == 'image' && messageText.startsWith('http');
+          final isVoice = messageType == 'voice' && messageText.startsWith('http');
 
           return ChatMessage(
             id: row['id']?.toString() ?? '',
             senderId: row['senderId']?.toString() ?? '',
             senderName: row['senderName']?.toString() ?? 'User',
-            message: isImage ? '' : messageText,
+            message: (isImage || isVoice) ? '' : messageText,
+            messageType: messageType,
             imageUrl: isImage ? messageText : null,
+            voiceUrl: isVoice ? messageText : null,
+            voiceDuration: _tryParseInt(row['mediaDuration']) ?? _tryParseInt(row['duration']),
             timestamp: _parseBackendTimestamp(row),
             isRead: row['isRead'] == true,
           );
@@ -210,36 +221,36 @@ class _ChatScreenState extends State<ChatScreen> {
 
       setState(() => _isSending = true);
 
-      // Upload audio to Firebase Storage
-      final fileName = '${DateTime.now().millisecondsSinceEpoch}.mp4';
-      final ref = FirebaseStorage.instance
-          .ref()
-          .child('voice_messages')
-          .child(fileName);
-
-      await ref.putFile(audioFile);
-      final audioUrl = await ref.getDownloadURL();
-
       // Send to backend
       final user = FirebaseAuth.instance.currentUser;
       if (user == null || widget.bookingId == null) {
         throw Exception('User not authenticated or booking ID missing');
       }
 
-      final response = await ApiService.instance.post(
-        '/calls/voice-message/upload',
-        {
+      final audioBytes = await audioFile.readAsBytes();
+      final fileName = audioFile.path.split(RegExp(r'[\\/]')).last;
+
+      final response = await ApiService.instance.postMultipart(
+        ApiEndpoints.messageUploadVoice,
+        fields: {
           'senderId': user.uid,
           'receiverId': widget.otherUserId,
-          'bookingId': widget.bookingId,
-          'audioUrl': audioUrl,
-          'duration': duration,
+          'bookingId': widget.bookingId!,
+          'duration': duration.toString(),
         },
+        fileField: 'audio',
+        fileBytes: audioBytes,
+        fileName: fileName.isNotEmpty
+            ? fileName
+            : '${DateTime.now().millisecondsSinceEpoch}.m4a',
       );
 
       if (response['success'] != true) {
         throw Exception(response['message'] ?? 'Failed to send voice message');
       }
+
+      await _loadBackendMessages();
+      _scrollToBottom();
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -299,34 +310,44 @@ class _ChatScreenState extends State<ChatScreen> {
     });
   }
 
-  Future<void> _uploadImageBytes(Uint8List imageBytes, String fileName) async {
+  Future<void> _uploadAndSendImage(CrossPlatformImage image) async {
     try {
-      final ref = FirebaseStorage.instance
-          .ref()
-          .child('chat_images')
-          .child('$fileName.jpg');
-
-      await ref.putData(imageBytes);
-      final imageUrl = await ref.getDownloadURL();
-
       final user = FirebaseAuth.instance.currentUser;
       if (user == null) {
         throw Exception('User not authenticated');
       }
 
       if (_useBackendMessaging) {
-        final response = await ApiService.instance.post(ApiEndpoints.messageSend, {
-          'senderId': user.uid,
-          'receiverId': widget.otherUserId,
-          'bookingId': widget.bookingId,
-          'messageText': imageUrl,
-          'messageType': 'image',
-        });
+        final fallbackName = '${DateTime.now().millisecondsSinceEpoch}.jpg';
+        final response = await ApiService.instance.postMultipart(
+          ApiEndpoints.messageUploadImage,
+          fields: {
+            'senderId': user.uid,
+            'receiverId': widget.otherUserId,
+            'bookingId': widget.bookingId!,
+          },
+          fileField: 'image',
+          fileBytes: image.bytes,
+          fileName: image.name.isNotEmpty ? image.name : fallbackName,
+        );
+
         if (response['success'] != true) {
           throw Exception(response['message'] ?? 'Failed to send image');
         }
         await _loadBackendMessages();
-      } else if (mounted) {
+        _scrollToBottom();
+      } else {
+        final fallbackName = '${DateTime.now().millisecondsSinceEpoch}.jpg';
+        final ref = FirebaseStorage.instance
+            .ref()
+            .child('chat_images')
+            .child(image.name.isNotEmpty ? image.name : fallbackName);
+
+        await ref.putData(image.bytes);
+        final imageUrl = await ref.getDownloadURL();
+
+        if (!mounted) return;
+
         context.read<ChatBloc>().add(
               ChatSendMessageRequested(
                 conversationId: widget.conversationId,
@@ -360,8 +381,7 @@ class _ChatScreenState extends State<ChatScreen> {
     if (image != null) {
       setState(() => _isSending = true);
 
-      final fileName = DateTime.now().millisecondsSinceEpoch.toString();
-      await _uploadImageBytes(image.bytes, fileName);
+      await _uploadAndSendImage(image);
 
       setState(() => _isSending = false);
     }
@@ -1023,7 +1043,17 @@ class _MessageBubble extends StatelessWidget {
                         },
                       ),
                     ),
-                  if (message.imageUrl != null && message.message.isNotEmpty)
+                  if (message.voiceUrl != null) ...[
+                    SizedBox(
+                      width: 220,
+                      child: VoiceMessagePlayer(
+                        audioUrl: message.voiceUrl!,
+                        duration: message.voiceDuration ?? 0,
+                        isSentByMe: isCurrentUser,
+                      ),
+                    ),
+                  ],
+                  if ((message.imageUrl != null || message.voiceUrl != null) && message.message.isNotEmpty)
                     const SizedBox(height: 8),
                   if (message.message.isNotEmpty)
                     Text(
