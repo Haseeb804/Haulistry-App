@@ -116,12 +116,16 @@ void _setupNotificationHandling() {
       final callerRole = data['callerRole'] as String? ?? AppConstants.roleUser;
       final callType = data['callType'] as String;
       
-      // Reconstruct agoraConfig including callType
-      final agoraConfig = data['agoraConfig'] as Map<String, dynamic>? ?? {
-        'appId': data['agoraAppId'] ?? '',
-        'channel': data['agoraChannel'] ?? '',
-        'token': data['agoraToken'] ?? '',
+      // Reconstruct agoraConfig from notification data with ALL required fields for proper joining
+      final agoraConfig = {
+        'appId': data['agoraAppId']?.toString() ?? '',
+        'channel': data['agoraChannel']?.toString() ?? '',
+        'token': data['agoraToken']?.toString() ?? '',
         'uid': int.tryParse(data['agoraUid']?.toString() ?? '0') ?? 0,
+        'callerUid': int.tryParse(data['agoraCallerUid']?.toString() ?? '0') ?? 0,
+        'receiverUid': int.tryParse(data['agoraReceiverUid']?.toString() ?? '0') ?? 0,
+        'tokenExpiresAt': int.tryParse(data['agoraTokenExpiresAt']?.toString() ?? '0') ?? 0,
+        'tokenExpiresIn': int.tryParse(data['agoraTokenExpiresIn']?.toString() ?? '0'),
         'callType': callType,
       };
 

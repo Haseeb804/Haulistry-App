@@ -136,16 +136,7 @@ class CallBloc extends Bloc<CallEvent, CallState> {
         final call = response['call'];
         final agoraConfig = response['agoraConfig'] as Map<String, dynamic>;
         
-        // Extract and log debug info from backend
-        if (agoraConfig.containsKey('_debug')) {
-          final debug = agoraConfig['_debug'] as Map<String, dynamic>?;
-          if (debug != null) {
-            print('[CallBloc] BACKEND_DEBUG: token_required=${debug['token_required']}, '
-                'token_builder_available=${debug['token_builder_available']}, '
-                'token_generated=${debug['token_generated']}, '
-                'app_id_set=${debug['app_id_set']}, app_id_length=${debug['app_id_length']}');
-          }
-        }
+
 
         _currentCallId = call['id'];
         _currentCallType = event.callType;
@@ -189,16 +180,7 @@ class CallBloc extends Bloc<CallEvent, CallState> {
       _currentCallId = event.callId;
       _currentCallType = event.agoraConfig['callType'] ?? AppConstants.callTypeVoice;
 
-      // Extract and log debug info from event
-      if (event.agoraConfig.containsKey('_debug')) {
-        final debug = event.agoraConfig['_debug'] as Map<String, dynamic>?;
-        if (debug != null) {
-          print('[CallBloc] BACKEND_DEBUG (answer): token_required=${debug['token_required']}, '
-              'token_builder_available=${debug['token_builder_available']}, '
-              'token_generated=${debug['token_generated']}, '
-              'app_id_set=${debug['app_id_set']}, app_id_length=${debug['app_id_length']}');
-        }
-      }
+
 
       final user = _auth.currentUser;
       if (user == null) {
@@ -243,10 +225,6 @@ class CallBloc extends Bloc<CallEvent, CallState> {
       final resolvedAppId = _resolveAgoraAppId(event.agoraConfig['appId']);
       final token = event.agoraConfig['token'];
       
-      print('[CallBloc] DIAGNOSE_JOIN_ANSWER: '
-          'channel=$channel, uid=$uid, appId=$resolvedAppId, '
-          'token_length=${token?.toString().length ?? 0}, token_null=${token == null}');
-
       // Join Agora channel
       if (callType == 'voice') {
         await _agoraService.joinVoiceCall(

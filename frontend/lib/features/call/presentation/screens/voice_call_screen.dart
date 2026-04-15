@@ -93,12 +93,13 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> {
   }
 
   String _resolveActiveCallId(CallState state) {
-    return switch (state) {
+    final resolvedId = switch (state) {
       CallConnecting s => s.callId,
       CallConnected s => s.callId,
       CallEnded s => s.callId,
       _ => widget.callId,
     };
+    return resolvedId;
   }
 
   @override
@@ -209,13 +210,28 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> {
                         padding: const EdgeInsets.all(48.0),
                         child: FloatingActionButton.extended(
                           onPressed: () {
-                            final activeCallId = _resolveActiveCallId(context.read<CallBloc>().state);
-                            context.read<CallBloc>().add(
-                                  EndCallRequested(
-                                    callId: activeCallId,
-                                    duration: _callDuration.inSeconds,
-                                  ),
-                                );
+                            final state = context.read<CallBloc>().state;
+                            final activeCallId = _resolveActiveCallId(state);
+                            
+                            // Defensive: always try to end call even if callId seems empty
+                            if (activeCallId.isNotEmpty) {
+                              context.read<CallBloc>().add(
+                                    EndCallRequested(
+                                      callId: activeCallId,
+                                      duration: _callDuration.inSeconds,
+                                    ),
+                                  );
+                            } else {
+                              // Fallback: use widget callId
+                              context.read<CallBloc>().add(
+                                    EndCallRequested(
+                                      callId: widget.callId,
+                                      duration: _callDuration.inSeconds,
+                                    ),
+                                  );
+                              // Immediately pop since we might not get a clean state transition
+                              if (mounted) context.pop();
+                            }
                           },
                           backgroundColor: Colors.red,
                           icon: const Icon(Icons.call_end),
