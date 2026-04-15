@@ -74,6 +74,7 @@ class _TrackingScreenState extends State<TrackingScreen> {
   String? _currentBookingStatus;
   String? _cachedProviderName; // Cache provider name to use throughout the session
   String? _cachedProviderId; // Cache provider ID
+  String? _cachedProviderProfileImageUrl;
 
   Timer? _markerAnimationTimer;
   Timer? _clockTimer;
@@ -93,12 +94,56 @@ class _TrackingScreenState extends State<TrackingScreen> {
 
   /// Get provider name, using cached value or falling back to widget parameter
   String _getProviderName() {
-    return _cachedProviderName ?? widget.providerName ?? 'Provider';
+    final name = _cachedProviderName ?? widget.providerName;
+    if (name != null && name.trim().isNotEmpty && name != 'Provider') {
+      return name;
+    }
+
+    final currentUserName = FirebaseAuth.instance.currentUser?.displayName?.trim();
+    if (currentUserName != null && currentUserName.isNotEmpty) {
+      return currentUserName;
+    }
+
+    return _cachedProviderId ?? widget.providerId;
   }
 
   /// Get provider ID, using cached value or falling back to widget parameter
   String _getProviderId() {
     return _cachedProviderId ?? widget.providerId;
+  }
+
+  String? _getProviderProfileImageUrl() {
+    return _cachedProviderProfileImageUrl;
+  }
+
+  Future<void> _resolveProviderIdentity() async {
+    final providerId = _getProviderId();
+    if (providerId.isEmpty) return;
+
+    final cachedName = (_cachedProviderName ?? widget.providerName ?? '').trim();
+    final needsName = cachedName.isEmpty || cachedName == 'Provider';
+    final needsImage = (_cachedProviderProfileImageUrl ?? '').trim().isEmpty;
+    if (!needsName && !needsImage) return;
+
+    try {
+      final response = await _apiService.get('/auth/user/$providerId');
+      if (response['success'] == true && response['user'] is Map<String, dynamic>) {
+        final user = response['user'] as Map<String, dynamic>;
+        final fetchedName = (user['name'] ?? user['fullName'] ?? user['displayName'])?.toString().trim();
+        final fetchedImage = (user['profileImageUrl'] ?? user['profile_image_url'])?.toString().trim();
+
+        if (needsName && fetchedName != null && fetchedName.isNotEmpty) {
+          _cachedProviderName = fetchedName;
+        }
+        if (needsImage && fetchedImage != null && fetchedImage.isNotEmpty) {
+          _cachedProviderProfileImageUrl = fetchedImage;
+        }
+
+        if (mounted) setState(() {});
+      }
+    } catch (_) {
+      // Keep using fallback values when profile lookup fails.
+    }
   }
 
   @override
@@ -192,6 +237,10 @@ class _TrackingScreenState extends State<TrackingScreen> {
           (booking['providerName'] ?? booking['provider_name'])?.toString() ?? widget.providerName ?? 'Provider';
       _cachedProviderId = 
           (booking['providerId'] ?? booking['provider_id'])?.toString() ?? widget.providerId;
+          _cachedProviderProfileImageUrl =
+            (booking['providerProfileImageUrl'] ?? booking['provider_profile_image_url'])?.toString();
+
+        await _resolveProviderIdentity();
 
       _currentBookingStatus = status;
       _isBookingStatusLoaded = true;
@@ -833,11 +882,16 @@ class _TrackingScreenState extends State<TrackingScreen> {
                     const SizedBox(height: 14),
                     Row(
                       children: [
-                        CircleAvatar(
-                          radius: 20,
-                          backgroundColor: AppTheme.primaryColor.withValues(alpha: 0.12),
-                          child: const Icon(Icons.person_rounded, color: AppTheme.primaryColor),
-                        ),
+                            CircleAvatar(
+                              radius: 20,
+                              backgroundColor: AppTheme.primaryColor.withValues(alpha: 0.12),
+                                backgroundImage: _getProviderProfileImageUrl() != null
+                                  ? NetworkImage(_getProviderProfileImageUrl()!)
+                                  : null,
+                              child: _getProviderProfileImageUrl() == null
+                                  ? const Icon(Icons.person_rounded, color: AppTheme.primaryColor)
+                                  : null,
+                            ),
                         const SizedBox(width: 12),
                         Expanded(
                           child: Column(

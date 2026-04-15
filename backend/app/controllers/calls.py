@@ -375,7 +375,10 @@ async def initiate_call(request: InitiateCallRequest):
         
         # Send FCM notification to receiver if token provided
         # Send FCM notification to the intended receiver using server-side token lookup
-        receiver_fcm_token = receiver_data.get('fcmToken')
+        receiver_fcm_token = (
+            receiver_data.get('fcmToken')
+            or receiver_data.get('fcm_token')
+        )
         if receiver_fcm_token:
             # Always use database name as source of truth; frontend name might be 'User' fallback
             caller_name_actual = caller_data.get('name') or request.callerName or 'User'
@@ -442,7 +445,10 @@ async def update_call_status(request: UpdateCallStatusRequest):
 
             for target_user_id in participant_ids:
                 target_user = User.get_by_id(target_user_id)
-                target_token = (target_user or {}).get('fcmToken') if target_user else None
+                target_token = (
+                    (target_user or {}).get('fcmToken')
+                    or (target_user or {}).get('fcm_token')
+                ) if target_user else None
                 if not target_token:
                     continue
 
