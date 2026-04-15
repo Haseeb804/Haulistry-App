@@ -148,6 +148,21 @@ class LoadCallHistoryRequested extends CallEvent {
   List<Object?> get props => [userId];
 }
 
+class CallAnswerAcceptedByReceiver extends CallEvent {
+  final String callId;
+  final String callType;
+  final Map<String, dynamic> agoraConfig;
+
+  const CallAnswerAcceptedByReceiver({
+    required this.callId,
+    required this.callType,
+    required this.agoraConfig,
+  });
+
+  @override
+  List<Object?> get props => [callId, callType, agoraConfig];
+}
+
 enum CallConnectionState {
   idle,
   connecting,

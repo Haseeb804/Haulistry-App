@@ -25,6 +25,7 @@ class CallBloc extends Bloc<CallEvent, CallState> {
   String? _otherUserProfileImageUrl;
   String _currentCallType = AppConstants.callTypeVoice;
   int? _pendingRemoteUid; // Stores remote uid if they join before CallConnected
+  Map<String, dynamic>? _currentAgoraConfig; // Store current call's Agora config
 
   CallBloc({
     agora.AgoraCallService? agoraService,
@@ -36,6 +37,7 @@ class CallBloc extends Bloc<CallEvent, CallState> {
         super(const CallInitial()) {
     on<InitiateCallRequested>(_onInitiateCallRequested);
     on<AnswerCallRequested>(_onAnswerCallRequested);
+    on<CallAnswerAcceptedByReceiver>(_onCallAnswerAcceptedByReceiver);
     on<EndCallRequested>(_onEndCallRequested);
     on<RejectCallRequested>(_onRejectCallRequested);
     on<MissedCallReported>(_onMissedCallReported);
@@ -150,6 +152,7 @@ class CallBloc extends Bloc<CallEvent, CallState> {
         _otherUserName = event.receiverName;
         _otherUserRole = event.receiverRole;
         _otherUserProfileImageUrl = event.receiverProfileImageUrl;
+        _currentAgoraConfig = agoraConfig; // Store for later use when receiver accepts
 
         emit(CallInitiated(
           callId: call['id'],
@@ -161,47 +164,15 @@ class CallBloc extends Bloc<CallEvent, CallState> {
           agoraConfig: agoraConfig,
         ));
 
-        emit(CallConnecting(
-          callId: call['id'],
-          callType: event.callType,
-          isCaller: true,
-          otherUserName: _otherUserName,
-          otherUserRole: _otherUserRole,
-          otherUserProfileImageUrl: _otherUserProfileImageUrl,
-        ));
+        // IMPORTANT: Do NOT emit CallConnecting or join Agora yet.
+        // The caller will join ONLY after the receiver accepts.
+        // The outgoing_call_screen will show ringing UI and poll backend status.
+        // When status='answered', it will emit CallAnswerAcceptedByReceiver event.
 
-        final channel = agoraConfig['channel']?.toString() ?? '';
-        if (channel.isEmpty) {
-          emit(const CallError(message: 'Missing call channel configuration'));
-          return;
-        }
-
-        final uid = _parseAgoraUid(agoraConfig['uid'], user.uid);
+        // Pre-initialize Agora engine (but don't join yet)
         final resolvedAppId = _resolveAgoraAppId(agoraConfig['appId']);
-        final token = agoraConfig['token'];
-        
-        print('[CallBloc] DIAGNOSE_JOIN_INITIATE: '
-            'channel=$channel, uid=$uid, appId=$resolvedAppId, '
-            'token_length=${token?.toString().length ?? 0}, token_null=${token == null}');
-
-        // Initialize Agora engine with app ID
         await _agoraService.initialize(resolvedAppId);
-
-        // Join Agora channel
-        if (event.callType == 'voice') {
-          await _agoraService.joinVoiceCall(
-            channel: channel,
-            uid: uid,
-            token: token,
-          );
-        } else {
-          await _agoraService.joinVideoCall(
-            channel: channel,
-            uid: uid,
-            token: token,
-          );
-        }
-
+        
       } else {
         emit(CallError(message: response['message'] ?? 'Failed to initiate call'));
       }
@@ -292,6 +263,52 @@ class CallBloc extends Bloc<CallEvent, CallState> {
       }
     } catch (e) {
       emit(CallError(message: 'Failed to answer call: $e'));
+    }
+  }
+
+  Future<void> _onCallAnswerAcceptedByReceiver(
+    CallAnswerAcceptedByReceiver event,
+    Emitter<CallState> emit,
+  ) async {
+    try {
+      // The receiver has accepted the call, now the caller joins
+      emit(CallConnecting(
+        callId: event.callId,
+        callType: event.callType,
+        isCaller: true,
+        otherUserName: _otherUserName,
+        otherUserRole: _otherUserRole,
+        otherUserProfileImageUrl: _otherUserProfileImageUrl,
+      ));
+
+      // Use stored config if event config is empty
+      final config = event.agoraConfig.isNotEmpty ? event.agoraConfig : (_currentAgoraConfig ?? {});
+      
+      final channel = config['channel']?.toString() ?? '';
+      if (channel.isEmpty) {
+        emit(const CallError(message: 'Missing call channel configuration'));
+        return;
+      }
+
+      final uid = _parseAgoraUid(config['uid'], 'caller_uid');
+      final token = config['token'];
+
+      // Join Agora channel now that receiver accepted
+      if (event.callType == 'voice') {
+        await _agoraService.joinVoiceCall(
+          channel: channel,
+          uid: uid,
+          token: token,
+        );
+      } else {
+        await _agoraService.joinVideoCall(
+          channel: channel,
+          uid: uid,
+          token: token,
+        );
+      }
+    } catch (e) {
+      emit(CallError(message: 'Failed to join accepted call: $e'));
     }
   }
 

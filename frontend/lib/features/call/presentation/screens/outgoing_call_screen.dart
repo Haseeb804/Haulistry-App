@@ -76,6 +76,16 @@ class _OutgoingCallScreenState extends State<OutgoingCallScreen>
 
       if (status == 'answered' && !_navigatedToLiveSession) {
         _navigatedToLiveSession = true;
+        
+        // Emit event to trigger caller join for the BLoC
+        // BLoC will use stored agoraConfig if not provided here
+        if (!mounted) return;
+        context.read<CallBloc>().add(CallAnswerAcceptedByReceiver(
+          callId: callId,
+          callType: widget.callType,
+          agoraConfig: {}, // Empty; BLoC will use stored config
+        ));
+        
         final route = widget.callType == AppConstants.callTypeVoice
             ? AppRoutes.callVoice
             : AppRoutes.callVideo;
