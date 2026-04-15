@@ -86,7 +86,7 @@ class CallBloc extends Bloc<CallEvent, CallState> {
 
   int _deriveFallbackUid(String userId) {
     final hash = userId.hashCode & 0x7fffffff;
-    return hash % 100000;
+    return (hash % 99999) + 1;
   }
 
   int _parseAgoraUid(dynamic rawUid, String fallbackUserId) {

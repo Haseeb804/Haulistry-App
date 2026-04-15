@@ -82,6 +82,12 @@ class CallHistoryResponse(BaseModel):
     calls: List[dict]
 
 
+def _stable_agora_uid(user_id: str) -> int:
+    """Generate stable, non-zero Agora UID for a user id."""
+    # Keep deterministic mapping while guaranteeing uid > 0.
+    return (int(hashlib.md5(user_id.encode()).hexdigest()[:8], 16) % 99999) + 1
+
+
 def _to_data_url(content_type: str, content: bytes) -> str:
     encoded = base64.b64encode(content).decode("ascii")
     return f"data:{content_type};base64,{encoded}"
@@ -243,12 +249,12 @@ async def initiate_call(request: InitiateCallRequest):
         
         # Generate UIDs from hashing user IDs instead of timestamp
         # This ensures consistent UIDs for same users
-        caller_uid = int(hashlib.md5(request.callerId.encode()).hexdigest()[:8], 16) % 100000
-        receiver_uid = int(hashlib.md5(request.receiverId.encode()).hexdigest()[:8], 16) % 100000
+        caller_uid = _stable_agora_uid(request.callerId)
+        receiver_uid = _stable_agora_uid(request.receiverId)
         
         # Ensure UIDs are different to avoid collisions
         while receiver_uid == caller_uid:
-            receiver_uid = (receiver_uid + 1) % 100000
+            receiver_uid = (receiver_uid % 99999) + 1
         
         # Generate Agora tokens (per-user token is required when certificate is enabled)
         caller_token, caller_token_expires_at = generate_agora_token(channel_name, caller_uid)
@@ -489,7 +495,7 @@ async def refresh_call_token(request: RefreshCallTokenRequest):
                 detail="Call channel not found"
             )
 
-        uid = int(hashlib.md5(request.userId.encode()).hexdigest()[:8], 16) % 100000
+        uid = _stable_agora_uid(request.userId)
         token, token_expires_at = generate_agora_token(channel_name, uid)
 
         agora_config = {
@@ -497,8 +503,8 @@ async def refresh_call_token(request: RefreshCallTokenRequest):
             "channel": channel_name,
             "uid": uid,
             "token": token,
-            "callerUid": int(hashlib.md5(str(caller_id).encode()).hexdigest()[:8], 16) % 100000 if caller_id else None,
-            "receiverUid": int(hashlib.md5(str(receiver_id).encode()).hexdigest()[:8], 16) % 100000 if receiver_id else None,
+            "callerUid": _stable_agora_uid(str(caller_id)) if caller_id else None,
+            "receiverUid": _stable_agora_uid(str(receiver_id)) if receiver_id else None,
             "tokenExpiresAt": token_expires_at,
             "tokenExpiresIn": AGORA_TOKEN_TTL_SECONDS if token_expires_at else None,
         }

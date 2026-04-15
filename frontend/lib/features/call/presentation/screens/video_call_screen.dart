@@ -135,8 +135,112 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
           child: BlocBuilder<CallBloc, CallState>(
             builder: (context, state) {
               if (state is! CallConnected) {
-                return const Center(
-                  child: CircularProgressIndicator(),
+                final displayName = widget.otherUserName.isNotEmpty
+                    ? widget.otherUserName
+                    : 'Video Call';
+                final displayRole = widget.otherUserRole != AppConstants.roleUser
+                    ? widget.otherUserRole
+                    : '';
+
+                return Container(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        Theme.of(context).colorScheme.primary,
+                        Theme.of(context).colorScheme.secondary,
+                      ],
+                    ),
+                  ),
+                  child: SafeArea(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const SizedBox(height: 60),
+                        Column(
+                          children: [
+                            CircleAvatar(
+                              radius: 60,
+                              backgroundColor: Colors.white.withOpacity(0.3),
+                              backgroundImage: widget.otherUserProfileImageUrl != null
+                                  ? NetworkImage(widget.otherUserProfileImageUrl!)
+                                  : null,
+                              child: widget.otherUserProfileImageUrl == null
+                                  ? Text(
+                                      displayName.isNotEmpty ? displayName[0].toUpperCase() : '?',
+                                      style: const TextStyle(
+                                        fontSize: 48,
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.white,
+                                      ),
+                                    )
+                                  : null,
+                            ),
+                            const SizedBox(height: 24),
+                            Text(
+                              displayName,
+                              style: const TextStyle(
+                                fontSize: 28,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                              ),
+                            ),
+                            if (displayRole.isNotEmpty) ...[
+                              const SizedBox(height: 6),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: Colors.white.withOpacity(0.2),
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: Text(
+                                  displayRole[0].toUpperCase() + displayRole.substring(1),
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    color: Colors.white.withOpacity(0.9),
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ),
+                            ],
+                            const SizedBox(height: 10),
+                            const Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                SizedBox(
+                                  width: 18,
+                                  height: 18,
+                                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                                ),
+                                SizedBox(width: 10),
+                                Text(
+                                  'Connecting video call...',
+                                  style: TextStyle(color: Colors.white, fontSize: 16),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                        Padding(
+                          padding: const EdgeInsets.all(48.0),
+                          child: FloatingActionButton.extended(
+                            onPressed: () {
+                              context.read<CallBloc>().add(
+                                    EndCallRequested(
+                                      callId: widget.callId,
+                                      duration: _callDuration.inSeconds,
+                                    ),
+                                  );
+                            },
+                            backgroundColor: Colors.red,
+                            icon: const Icon(Icons.call_end),
+                            label: const Text('End Call'),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 );
               }
 
