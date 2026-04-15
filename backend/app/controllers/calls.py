@@ -341,6 +341,13 @@ async def initiate_call(request: InitiateCallRequest):
             "receiverUid": receiver_uid,
             "tokenExpiresAt": caller_token_expires_at,
             "tokenExpiresIn": AGORA_TOKEN_TTL_SECONDS if caller_token_expires_at else None,
+            "_debug": {
+                "token_required": _token_required(),
+                "token_builder_available": _get_rtc_token_builder() is not None,
+                "token_generated": caller_token is not None,
+                "app_id_set": not _is_placeholder_app_id(AGORA_APP_ID),
+                "app_id_length": len(AGORA_APP_ID),
+            },
         }
 
         receiver_agora_config = {
@@ -352,6 +359,13 @@ async def initiate_call(request: InitiateCallRequest):
             "receiverUid": receiver_uid,
             "tokenExpiresAt": receiver_token_expires_at,
             "tokenExpiresIn": AGORA_TOKEN_TTL_SECONDS if receiver_token_expires_at else None,
+            "_debug": {
+                "token_required": _token_required(),
+                "token_builder_available": _get_rtc_token_builder() is not None,
+                "token_generated": receiver_token is not None,
+                "app_id_set": not _is_placeholder_app_id(AGORA_APP_ID),
+                "app_id_length": len(AGORA_APP_ID),
+            },
         }
         
         # Send FCM notification to receiver if token provided
@@ -553,6 +567,13 @@ async def refresh_call_token(request: RefreshCallTokenRequest):
             "receiverUid": _stable_agora_uid(str(receiver_id)) if receiver_id else None,
             "tokenExpiresAt": token_expires_at,
             "tokenExpiresIn": AGORA_TOKEN_TTL_SECONDS if token_expires_at else None,
+            "_debug": {
+                "token_required": _token_required(),
+                "token_builder_available": _get_rtc_token_builder() is not None,
+                "token_generated": token is not None,
+                "app_id_set": not _is_placeholder_app_id(AGORA_APP_ID),
+                "app_id_length": len(AGORA_APP_ID),
+            },
         }
 
         return CallResponse(

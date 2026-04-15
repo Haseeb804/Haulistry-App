@@ -132,7 +132,18 @@ class CallBloc extends Bloc<CallEvent, CallState> {
 
       if (response['success'] == true) {
         final call = response['call'];
-        final agoraConfig = response['agoraConfig'];
+        final agoraConfig = response['agoraConfig'] as Map<String, dynamic>?;
+        
+        // Extract and log debug info from backend
+        if (agoraConfig != null && agoraConfig.containsKey('_debug')) {
+          final debug = agoraConfig['_debug'] as Map<String, dynamic>?;
+          if (debug != null) {
+            print('[CallBloc] BACKEND_DEBUG: token_required=${debug['token_required']}, '
+                'token_builder_available=${debug['token_builder_available']}, '
+                'token_generated=${debug['token_generated']}, '
+                'app_id_set=${debug['app_id_set']}, app_id_length=${debug['app_id_length']}');
+          }
+        }
 
         _currentCallId = call['id'];
         _currentCallType = event.callType;
@@ -206,6 +217,17 @@ class CallBloc extends Bloc<CallEvent, CallState> {
     try {
       _currentCallId = event.callId;
       _currentCallType = event.agoraConfig['callType'] ?? AppConstants.callTypeVoice;
+
+      // Extract and log debug info from event
+      if (event.agoraConfig.containsKey('_debug')) {
+        final debug = event.agoraConfig['_debug'] as Map<String, dynamic>?;
+        if (debug != null) {
+          print('[CallBloc] BACKEND_DEBUG (answer): token_required=${debug['token_required']}, '
+              'token_builder_available=${debug['token_builder_available']}, '
+              'token_generated=${debug['token_generated']}, '
+              'app_id_set=${debug['app_id_set']}, app_id_length=${debug['app_id_length']}');
+        }
+      }
 
       final user = _auth.currentUser;
       if (user == null) {
