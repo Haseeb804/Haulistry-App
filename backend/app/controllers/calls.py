@@ -64,6 +64,7 @@ class InitiateCallRequest(BaseModel):
     callType: str  # 'voice' or 'video'
     callerName: Optional[str] = None  # Caller's display name
     callerRole: Optional[str] = None  # Caller's role ('seeker' or 'provider')
+    callerProfileImageUrl: Optional[str] = None  # Caller's profile image
 ACTIVE_COMMUNICATION_STATUSES = LIVE_COMMUNICATION_STATUSES
 
 
