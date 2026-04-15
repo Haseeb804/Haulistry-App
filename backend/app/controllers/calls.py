@@ -372,12 +372,14 @@ async def initiate_call(request: InitiateCallRequest):
         # Send FCM notification to the intended receiver using server-side token lookup
         receiver_fcm_token = receiver_data.get('fcmToken')
         if receiver_fcm_token:
+            # Always use database name as source of truth; frontend name might be 'User' fallback
+            caller_name_actual = caller_data.get('name') or request.callerName or 'User'
             caller_role = request.callerRole or caller_data.get('role', 'user')
             await send_call_notification(
                 fcm_token=receiver_fcm_token,
                 call_id=call_data['id'],
                 caller_id=request.callerId,
-                caller_name=request.callerName or caller_data.get('name', 'User'),
+                caller_name=caller_name_actual,
                 caller_role=caller_role,
                 call_type=request.callType,
                 agora_config=receiver_agora_config

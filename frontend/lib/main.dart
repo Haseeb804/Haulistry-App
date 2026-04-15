@@ -139,18 +139,15 @@ void _setupNotificationHandling() {
       final status = data['status']?.toString().toLowerCase() ?? '';
       if (callId.isEmpty) return;
 
+      // Only auto-route on call_status for CALLER when receiver accepts
+      // Receiver should NOT auto-route because they just accepted and are navigating
+      // This prevents double-navigation and auto-accept behavior
+      // Note: The BLoC listener in call screens will handle the actual state transitions
       if (status == 'answered') {
-        final callType = data['callType']?.toString().toLowerCase() ?? AppConstants.callTypeVoice;
-        final route = callType == AppConstants.callTypeVideo
-            ? AppRoutes.callVideo
-            : AppRoutes.callVoice;
-
-        _router.go(route, extra: {
-          'callId': callId,
-          'otherUserName': data['otherUserName']?.toString() ?? 'User',
-          'otherUserRole': data['otherUserRole']?.toString() ?? AppConstants.roleUser,
-          'otherUserProfileImageUrl': data['otherUserProfileImageUrl']?.toString(),
-        });
+        // Don't auto-route here; let the app handle it normally
+        // The incoming call screen's BlocListener will take care of navigation
+        // when the BLoC reaches CallConnecting state
+        return;
       }
     } else if (tapped) {
       // Handle notification tap navigation for other types

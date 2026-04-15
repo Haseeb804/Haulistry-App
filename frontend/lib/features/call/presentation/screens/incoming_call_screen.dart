@@ -158,20 +158,13 @@ class IncomingCallScreen extends StatelessWidget {
                         label: 'Accept',
                         backgroundColor: Colors.green,
                         onPressed: () {
+                          // Only emit the event; let BlocListener handle navigation
                           context.read<CallBloc>().add(
                                 AnswerCallRequested(
                                   callId: callId,
                                   agoraConfig: agoraConfig,
                                 ),
                               );
-
-                          // Immediately leave incoming UI and open live call session.
-                          context.go(route, extra: {
-                            'callId': callId,
-                            'otherUserName': callerName,
-                            'otherUserRole': callerRole,
-                            'otherUserProfileImageUrl': callerProfileImageUrl,
-                          });
                         },
                       ),
                     ],
