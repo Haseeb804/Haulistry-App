@@ -1,12 +1,15 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
-import 'dart:async';
+
+import '../../../../core/constants/app_constants.dart';
+import '../../../../core/services/api_service.dart';
+import '../../../../core/utils/call_identity_resolver.dart';
 import '../bloc/call_bloc.dart';
 import '../bloc/call_event.dart';
 import '../bloc/call_state.dart';
-import '../../../../core/constants/app_constants.dart';
-import '../../../../core/services/api_service.dart';
 
 class OutgoingCallScreen extends StatefulWidget {
   final String callId;
@@ -32,9 +35,10 @@ class OutgoingCallScreen extends StatefulWidget {
 
 class _OutgoingCallScreenState extends State<OutgoingCallScreen>
     with SingleTickerProviderStateMixin {
-  late AnimationController _animationController;
+  late final AnimationController _animationController;
   Timer? _statusPollingTimer;
   bool _navigatedToLiveSession = false;
+  CallParticipantIdentity? _resolvedReceiver;
 
   @override
   void initState() {
@@ -47,42 +51,95 @@ class _OutgoingCallScreenState extends State<OutgoingCallScreen>
     _statusPollingTimer = Timer.periodic(const Duration(seconds: 2), (_) {
       _pollCallStatus();
     });
+
+    _resolveReceiverIdentity();
+  }
+
+  Future<void> _resolveReceiverIdentity() async {
+    final resolved = await CallIdentityResolver.resolveParticipant(
+      userId: widget.receiverId,
+      fallbackName: widget.receiverName,
+      fallbackRole: widget.receiverRole,
+      fallbackProfileImageUrl: widget.receiverProfileImageUrl,
+      defaultLabel: widget.receiverName.isNotEmpty ? widget.receiverName : 'User',
+    );
+
+    if (!mounted) return;
+    setState(() {
+      _resolvedReceiver = resolved;
+    });
   }
 
   String _resolveActiveCallId(CallState state) {
     return switch (state) {
-      CallInitiated s => s.callId,
-      CallConnecting s => s.callId,
-      CallConnected s => s.callId,
+      CallInitiated(:final callId) => callId,
+      CallConnecting(:final callId) => callId,
+      CallConnected(:final callId) => callId,
       _ => widget.callId,
     };
   }
 
-  String _resolveDisplayName(CallState state) {
+  String _otherUserName(CallState state) {
     return switch (state) {
-      CallInitiated s => s.receiverName,
-      CallConnecting s => s.otherUserName,
-      CallConnected s => s.otherUserName,
+      CallInitiated(:final receiverName) => receiverName,
+      CallConnecting(:final otherUserName) => otherUserName,
+      CallConnected(:final otherUserName) => otherUserName,
       _ => widget.receiverName,
     };
   }
 
-  String _resolveDisplayRole(CallState state) {
+  String _otherUserRole(CallState state) {
     return switch (state) {
-      CallInitiated s => s.receiverRole,
-      CallConnecting s => s.otherUserRole,
-      CallConnected s => s.otherUserRole,
+      CallInitiated(:final receiverRole) => receiverRole,
+      CallConnecting(:final otherUserRole) => otherUserRole,
+      CallConnected(:final otherUserRole) => otherUserRole,
       _ => widget.receiverRole,
     };
   }
 
-  String? _resolveDisplayImage(CallState state) {
+  String? _otherUserImage(CallState state) {
     return switch (state) {
-      CallInitiated s => s.receiverProfileImageUrl,
-      CallConnecting s => s.otherUserProfileImageUrl,
-      CallConnected s => s.otherUserProfileImageUrl,
+      CallInitiated(:final receiverProfileImageUrl) => receiverProfileImageUrl,
+      CallConnecting(:final otherUserProfileImageUrl) => otherUserProfileImageUrl,
+      CallConnected(:final otherUserProfileImageUrl) => otherUserProfileImageUrl,
       _ => widget.receiverProfileImageUrl,
     };
+  }
+
+  String _resolveDisplayName(CallState state) {
+    return CallIdentityResolver.resolveDisplayName(
+      preferredName: _otherUserName(state),
+      fallbackName: _resolvedReceiver?.displayName ?? widget.receiverName,
+      defaultLabel: widget.receiverName.isNotEmpty ? widget.receiverName : 'User',
+    );
+  }
+
+  String _resolveDisplayRole(CallState state) {
+    return CallIdentityResolver.resolveRole(
+      preferredRole: _otherUserRole(state),
+      fallbackRole: _resolvedReceiver?.role ?? widget.receiverRole,
+    );
+  }
+
+  String? _resolveDisplayImage(CallState state) {
+    return CallIdentityResolver.resolveProfileImageUrl(
+      preferredImageUrl: _otherUserImage(state),
+      fallbackImageUrl: _resolvedReceiver?.profileImageUrl ?? widget.receiverProfileImageUrl,
+    );
+  }
+
+  void _navigateToLiveCall(BuildContext context, String callId, CallState state) {
+    final route = widget.callType == AppConstants.callTypeVoice
+        ? AppRoutes.callVoice
+        : AppRoutes.callVideo;
+
+    context.go(route, extra: {
+      'callId': callId,
+      'otherUserId': widget.receiverId,
+      'otherUserName': _resolveDisplayName(state),
+      'otherUserRole': _resolveDisplayRole(state),
+      'otherUserProfileImageUrl': _resolveDisplayImage(state),
+    });
   }
 
   Future<void> _pollCallStatus() async {
@@ -105,36 +162,22 @@ class _OutgoingCallScreenState extends State<OutgoingCallScreen>
 
       if (status == 'answered' && !_navigatedToLiveSession) {
         _navigatedToLiveSession = true;
-        
-        // Emit event to trigger caller join for the BLoC
-        // BLoC will use stored agoraConfig if not provided here
-        if (!mounted) return;
-        context.read<CallBloc>().add(CallAnswerAcceptedByReceiver(
-          callId: callId,
-          callType: widget.callType,
-          agoraConfig: {}, // Empty; BLoC will use stored config
-        ));
 
-        final latestState = context.read<CallBloc>().state;
-        final displayName = _resolveDisplayName(latestState);
-        final displayRole = _resolveDisplayRole(latestState);
-        final displayImage = _resolveDisplayImage(latestState);
-        
-        final route = widget.callType == AppConstants.callTypeVoice
-            ? AppRoutes.callVoice
-            : AppRoutes.callVideo;
         if (!mounted) return;
-        context.go(route, extra: {
-          'callId': callId,
-          'otherUserId': widget.receiverId,
-          'otherUserName': displayName,
-          'otherUserRole': displayRole,
-          'otherUserProfileImageUrl': displayImage,
-        });
+        context.read<CallBloc>().add(
+              CallAnswerAcceptedByReceiver(
+                callId: callId,
+                callType: widget.callType,
+                agoraConfig: const {},
+              ),
+            );
+
+        if (!mounted) return;
+        _navigateToLiveCall(context, callId, context.read<CallBloc>().state);
         return;
       }
 
-        if (status == AppConstants.callStatusRejected ||
+      if (status == AppConstants.callStatusRejected ||
           status == AppConstants.callStatusMissed ||
           status == AppConstants.callStatusEnded) {
         if (!mounted) return;
@@ -167,17 +210,7 @@ class _OutgoingCallScreenState extends State<OutgoingCallScreen>
     return BlocListener<CallBloc, CallState>(
       listener: (context, state) {
         if (state is CallConnected) {
-          // Navigate to voice or video call screen
-            final route = widget.callType == AppConstants.callTypeVoice
-              ? AppRoutes.callVoice
-              : AppRoutes.callVideo;
-          context.go(route, extra: {
-            'callId': state.callId,
-            'otherUserId': widget.receiverId,
-            'otherUserName': state.otherUserName,
-            'otherUserRole': state.otherUserRole,
-            'otherUserProfileImageUrl': state.otherUserProfileImageUrl,
-          });
+          _navigateToLiveCall(context, state.callId, state);
         } else if (state is CallEnded) {
           context.pop();
         } else if (state is CallError) {
@@ -204,13 +237,11 @@ class _OutgoingCallScreenState extends State<OutgoingCallScreen>
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 const SizedBox(height: 60),
-                // Receiver Info with Animated Rings
                 Column(
                   children: [
                     Stack(
                       alignment: Alignment.center,
                       children: [
-                        // Animated Rings
                         AnimatedBuilder(
                           animation: _animationController,
                           builder: (context, child) {
@@ -223,17 +254,15 @@ class _OutgoingCallScreenState extends State<OutgoingCallScreen>
                             );
                           },
                         ),
-                        // Avatar
                         CircleAvatar(
                           radius: 60,
                           backgroundColor: Colors.white.withOpacity(0.3),
-                          backgroundImage: displayImage != null
-                            ? NetworkImage(displayImage)
-                              : null,
+                          backgroundImage:
+                              displayImage != null ? NetworkImage(displayImage) : null,
                           child: displayImage == null
                               ? Text(
-                              displayName.isNotEmpty
-                                ? displayName[0].toUpperCase()
+                                  displayName.isNotEmpty
+                                      ? displayName[0].toUpperCase()
                                       : '?',
                                   style: const TextStyle(
                                     fontSize: 48,
@@ -254,7 +283,7 @@ class _OutgoingCallScreenState extends State<OutgoingCallScreen>
                         color: Colors.white,
                       ),
                     ),
-                    if (displayRole != AppConstants.roleUser && displayRole.isNotEmpty) ...[
+                    if (displayRole.isNotEmpty && displayRole != AppConstants.roleUser) ...[
                       const SizedBox(height: 6),
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
@@ -275,7 +304,7 @@ class _OutgoingCallScreenState extends State<OutgoingCallScreen>
                     const SizedBox(height: 8),
                     BlocBuilder<CallBloc, CallState>(
                       builder: (context, state) {
-                        String statusText = 'Calling...';
+                        var statusText = 'Calling...';
                         if (state is CallConnecting) {
                           statusText = 'Connecting...';
                         }
@@ -290,7 +319,6 @@ class _OutgoingCallScreenState extends State<OutgoingCallScreen>
                     ),
                   ],
                 ),
-                // Cancel Button
                 Padding(
                   padding: const EdgeInsets.all(48.0),
                   child: FloatingActionButton(
@@ -335,8 +363,7 @@ class _CallingRingsPainter extends CustomPainter {
     final center = Offset(size.width / 2, size.height / 2);
     final maxRadius = size.width / 2;
 
-    // Draw three expanding rings
-    for (int i = 0; i < 3; i++) {
+    for (var i = 0; i < 3; i++) {
       final progress = (animation.value + (i * 0.3)) % 1.0;
       final radius = maxRadius * progress;
       final opacity = 1.0 - progress;
@@ -347,5 +374,5 @@ class _CallingRingsPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_CallingRingsPainter oldDelegate) => true;
+  bool shouldRepaint(covariant _CallingRingsPainter oldDelegate) => true;
 }

@@ -841,6 +841,7 @@ class _ProviderTrackingScreenState extends State<ProviderTrackingScreen> {
                             );
                             context.push(AppRoutes.callOutgoing, extra: {
                               'callId': 'pending',
+                              'receiverId': seekerId,
                               'receiverName': seekerName ?? 'Seeker',
                               'receiverRole': AppConstants.roleSeeker,
                               'callType': AppConstants.callTypeVoice,
@@ -992,6 +993,7 @@ class _ProviderTrackingScreenState extends State<ProviderTrackingScreen> {
                                         );
                                         context.push(AppRoutes.callOutgoing, extra: {
                                           'callId': 'pending',
+                                          'receiverId': seekerId,
                                           'receiverName': seekerName ?? 'Seeker',
                                           'receiverRole': AppConstants.roleSeeker,
                                           'callType': AppConstants.callTypeVoice,
@@ -1057,6 +1059,7 @@ class _ProviderTrackingScreenState extends State<ProviderTrackingScreen> {
                                       );
                                       context.push(AppRoutes.callOutgoing, extra: {
                                         'callId': 'pending',
+                                        'receiverId': seekerId,
                                         'receiverName': seekerName ?? 'Seeker',
                                         'receiverRole': AppConstants.roleSeeker,
                                         'callType': AppConstants.callTypeVideo,

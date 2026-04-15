@@ -12,6 +12,7 @@ import 'package:latlong2/latlong.dart';
 import '../../../../core/constants/app_constants.dart';
 import '../../../../core/services/api_service.dart';
 import '../../../../core/theme/app_theme.dart';
+import '../../../../core/utils/call_identity_resolver.dart';
 import '../../../feedback/data/datasources/feedback_remote_datasource.dart';
 import '../../../feedback/data/repositories/feedback_repository_impl.dart';
 import '../../../call/presentation/bloc/call_bloc.dart';
@@ -94,17 +95,11 @@ class _TrackingScreenState extends State<TrackingScreen> {
 
   /// Get provider name, using cached value or falling back to widget parameter
   String _getProviderName() {
-    final name = _cachedProviderName ?? widget.providerName;
-    if (name != null && name.trim().isNotEmpty && name != 'Provider') {
-      return name;
-    }
-
-    final currentUserName = FirebaseAuth.instance.currentUser?.displayName?.trim();
-    if (currentUserName != null && currentUserName.isNotEmpty) {
-      return currentUserName;
-    }
-
-    return _cachedProviderId ?? widget.providerId;
+    return CallIdentityResolver.resolveDisplayName(
+      preferredName: _cachedProviderName,
+      fallbackName: widget.providerName,
+      defaultLabel: _cachedProviderId ?? widget.providerId,
+    );
   }
 
   /// Get provider ID, using cached value or falling back to widget parameter
@@ -113,37 +108,10 @@ class _TrackingScreenState extends State<TrackingScreen> {
   }
 
   String? _getProviderProfileImageUrl() {
-    return _cachedProviderProfileImageUrl;
-  }
-
-  Future<void> _resolveProviderIdentity() async {
-    final providerId = _getProviderId();
-    if (providerId.isEmpty) return;
-
-    final cachedName = (_cachedProviderName ?? widget.providerName ?? '').trim();
-    final needsName = cachedName.isEmpty || cachedName == 'Provider';
-    final needsImage = (_cachedProviderProfileImageUrl ?? '').trim().isEmpty;
-    if (!needsName && !needsImage) return;
-
-    try {
-      final response = await _apiService.get('/auth/user/$providerId');
-      if (response['success'] == true && response['user'] is Map<String, dynamic>) {
-        final user = response['user'] as Map<String, dynamic>;
-        final fetchedName = (user['name'] ?? user['fullName'] ?? user['displayName'])?.toString().trim();
-        final fetchedImage = (user['profileImageUrl'] ?? user['profile_image_url'])?.toString().trim();
-
-        if (needsName && fetchedName != null && fetchedName.isNotEmpty) {
-          _cachedProviderName = fetchedName;
-        }
-        if (needsImage && fetchedImage != null && fetchedImage.isNotEmpty) {
-          _cachedProviderProfileImageUrl = fetchedImage;
-        }
-
-        if (mounted) setState(() {});
-      }
-    } catch (_) {
-      // Keep using fallback values when profile lookup fails.
-    }
+    return CallIdentityResolver.resolveProfileImageUrl(
+      preferredImageUrl: _cachedProviderProfileImageUrl,
+      fallbackImageUrl: FirebaseAuth.instance.currentUser?.photoURL,
+    );
   }
 
   @override
@@ -240,7 +208,15 @@ class _TrackingScreenState extends State<TrackingScreen> {
           _cachedProviderProfileImageUrl =
             (booking['providerProfileImageUrl'] ?? booking['provider_profile_image_url'])?.toString();
 
-        await _resolveProviderIdentity();
+          final resolved = await CallIdentityResolver.resolveParticipant(
+            userId: _cachedProviderId ?? widget.providerId,
+            fallbackName: _cachedProviderName,
+            fallbackRole: AppConstants.roleProvider,
+            fallbackProfileImageUrl: _cachedProviderProfileImageUrl,
+            defaultLabel: widget.providerId,
+          );
+          _cachedProviderName = resolved.displayName;
+          _cachedProviderProfileImageUrl = resolved.profileImageUrl;
 
       _currentBookingStatus = status;
       _isBookingStatusLoaded = true;
@@ -595,6 +571,7 @@ class _TrackingScreenState extends State<TrackingScreen> {
 
     context.push(AppRoutes.callOutgoing, extra: {
       'callId': 'pending',
+      'receiverId': providerId,
       'receiverName': providerName,
       'receiverRole': AppConstants.roleProvider,
       'callType': callType,

@@ -308,6 +308,7 @@ class _ChatScreenState extends State<ChatScreen> {
     // Navigate to outgoing call screen
     context.push(AppRoutes.callOutgoing, extra: {
       'callId': 'pending', // Will be set by bloc
+      'receiverId': widget.otherUserId,
       'receiverName': widget.otherUserName,
       'receiverRole': receiverRole,
       'receiverProfileImageUrl': widget.otherUserImage,

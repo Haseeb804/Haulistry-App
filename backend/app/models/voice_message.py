@@ -57,7 +57,13 @@ class VoiceMessage:
         CREATE (vm)-[:SENT_TO]->(receiver)
         CREATE (vm)-[:FOR_BOOKING]->(b)
         
-        RETURN vm, sender.name as senderName, receiver.name as receiverName
+         RETURN vm,
+             sender.name as senderName,
+             sender.role as senderRole,
+             coalesce(sender.profileImageUrl, sender.profile_image_url, '') as senderProfileImageUrl,
+             receiver.name as receiverName,
+             receiver.role as receiverRole,
+             coalesce(receiver.profileImageUrl, receiver.profile_image_url, '') as receiverProfileImageUrl
         """
         
         params = {
@@ -75,7 +81,11 @@ class VoiceMessage:
             if vm_record:
                 voice_message = VoiceMessage._serialize_neo4j_data(vm_record)
                 voice_message['senderName'] = result[0].get('senderName')
+                voice_message['senderRole'] = result[0].get('senderRole')
+                voice_message['senderProfileImageUrl'] = result[0].get('senderProfileImageUrl') or None
                 voice_message['receiverName'] = result[0].get('receiverName')
+                voice_message['receiverRole'] = result[0].get('receiverRole')
+                voice_message['receiverProfileImageUrl'] = result[0].get('receiverProfileImageUrl') or None
                 return voice_message
         
         return None
@@ -90,8 +100,14 @@ class VoiceMessage:
         MATCH (vm:VoiceMessage {bookingId: $bookingId})
         OPTIONAL MATCH (vm)-[:SENT_BY]->(sender)
         OPTIONAL MATCH (vm)-[:SENT_TO]->(receiver)
-        WITH vm, sender.name as senderName, receiver.name as receiverName
-        RETURN vm, senderName, receiverName
+           WITH vm,
+               sender.name as senderName,
+               sender.role as senderRole,
+               coalesce(sender.profileImageUrl, sender.profile_image_url, '') as senderProfileImageUrl,
+               receiver.name as receiverName,
+               receiver.role as receiverRole,
+               coalesce(receiver.profileImageUrl, receiver.profile_image_url, '') as receiverProfileImageUrl
+           RETURN vm, senderName, senderRole, senderProfileImageUrl, receiverName, receiverRole, receiverProfileImageUrl
         ORDER BY vm.createdAt DESC
         LIMIT $limit
         """
@@ -104,7 +120,11 @@ class VoiceMessage:
                 if record['vm']:
                     vm = VoiceMessage._serialize_neo4j_data(record['vm'])
                     vm['senderName'] = record['senderName']
+                    vm['senderRole'] = record.get('senderRole')
+                    vm['senderProfileImageUrl'] = record.get('senderProfileImageUrl') or None
                     vm['receiverName'] = record['receiverName']
+                    vm['receiverRole'] = record.get('receiverRole')
+                    vm['receiverProfileImageUrl'] = record.get('receiverProfileImageUrl') or None
                     messages.append(vm)
         
         return messages

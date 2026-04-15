@@ -72,8 +72,13 @@ class Message:
         CREATE (m)-[:SENT_TO]->(receiver)
         CREATE (m)-[:FOR_BOOKING]->(b)
         
-        RETURN m, sender.name as senderName, sender.phone as senderPhone,
-               receiver.name as receiverName, receiver.phone as receiverPhone
+         RETURN m,
+             sender.name as senderName, sender.phone as senderPhone,
+             sender.role as senderRole,
+             coalesce(sender.profileImageUrl, sender.profile_image_url, '') as senderProfileImageUrl,
+             receiver.name as receiverName, receiver.phone as receiverPhone,
+             receiver.role as receiverRole,
+             coalesce(receiver.profileImageUrl, receiver.profile_image_url, '') as receiverProfileImageUrl
         """
         
         params = {
@@ -94,8 +99,12 @@ class Message:
                 message = Message._serialize_neo4j_data(message_record)
                 message['senderName'] = result[0].get('senderName')
                 message['senderPhone'] = result[0].get('senderPhone')
+                message['senderRole'] = result[0].get('senderRole')
+                message['senderProfileImageUrl'] = result[0].get('senderProfileImageUrl') or None
                 message['receiverName'] = result[0].get('receiverName')
                 message['receiverPhone'] = result[0].get('receiverPhone')
+                message['receiverRole'] = result[0].get('receiverRole')
+                message['receiverProfileImageUrl'] = result[0].get('receiverProfileImageUrl') or None
                 return message
         
         return None
@@ -110,9 +119,14 @@ class Message:
         MATCH (m:Message {bookingId: $bookingId})
         OPTIONAL MATCH (m)-[:SENT_BY]->(sender)
         OPTIONAL MATCH (m)-[:SENT_TO]->(receiver)
-        WITH m, sender.name as senderName, sender.phone as senderPhone,
-             receiver.name as receiverName, receiver.phone as receiverPhone
-        RETURN m, senderName, senderPhone, receiverName, receiverPhone
+           WITH m,
+               sender.name as senderName, sender.phone as senderPhone,
+               sender.role as senderRole,
+               coalesce(sender.profileImageUrl, sender.profile_image_url, '') as senderProfileImageUrl,
+               receiver.name as receiverName, receiver.phone as receiverPhone,
+               receiver.role as receiverRole,
+               coalesce(receiver.profileImageUrl, receiver.profile_image_url, '') as receiverProfileImageUrl
+           RETURN m, senderName, senderPhone, senderRole, senderProfileImageUrl, receiverName, receiverPhone, receiverRole, receiverProfileImageUrl
         ORDER BY m.createdAt ASC
         LIMIT $limit
         """
@@ -126,8 +140,12 @@ class Message:
                     msg = Message._serialize_neo4j_data(record['m'])
                     msg['senderName'] = record['senderName']
                     msg['senderPhone'] = record['senderPhone']
+                    msg['senderRole'] = record.get('senderRole')
+                    msg['senderProfileImageUrl'] = record.get('senderProfileImageUrl') or None
                     msg['receiverName'] = record['receiverName']
                     msg['receiverPhone'] = record['receiverPhone']
+                    msg['receiverRole'] = record.get('receiverRole')
+                    msg['receiverProfileImageUrl'] = record.get('receiverProfileImageUrl') or None
                     messages.append(msg)
         
         return messages
@@ -146,8 +164,14 @@ class Message:
            OR (m.senderId = $user2Id AND m.receiverId = $user1Id)
         OPTIONAL MATCH (m)-[:SENT_BY]->(sender)
         OPTIONAL MATCH (m)-[:SENT_TO]->(receiver)
-        WITH m, sender.name as senderName, receiver.name as receiverName
-        RETURN m, senderName, receiverName
+           WITH m,
+               sender.name as senderName,
+               sender.role as senderRole,
+               coalesce(sender.profileImageUrl, sender.profile_image_url, '') as senderProfileImageUrl,
+               receiver.name as receiverName,
+               receiver.role as receiverRole,
+               coalesce(receiver.profileImageUrl, receiver.profile_image_url, '') as receiverProfileImageUrl
+           RETURN m, senderName, senderRole, senderProfileImageUrl, receiverName, receiverRole, receiverProfileImageUrl
         ORDER BY m.createdAt ASC
         LIMIT $limit
         """
@@ -165,7 +189,11 @@ class Message:
                 if record['m']:
                     msg = Message._serialize_neo4j_data(record['m'])
                     msg['senderName'] = record['senderName']
+                    msg['senderRole'] = record.get('senderRole')
+                    msg['senderProfileImageUrl'] = record.get('senderProfileImageUrl') or None
                     msg['receiverName'] = record['receiverName']
+                    msg['receiverRole'] = record.get('receiverRole')
+                    msg['receiverProfileImageUrl'] = record.get('receiverProfileImageUrl') or None
                     messages.append(msg)
         
         return messages

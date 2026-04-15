@@ -591,6 +591,7 @@ final _router = GoRouter(
           value: context.read<CallBloc>(),
           child: OutgoingCallScreen(
             callId: extra['callId'] as String,
+            receiverId: extra['receiverId'] as String? ?? '',
             receiverName: extra['receiverName'] as String,
             receiverRole: extra['receiverRole'] as String? ?? AppConstants.roleUser,
             receiverProfileImageUrl: extra['receiverProfileImageUrl'] as String?,

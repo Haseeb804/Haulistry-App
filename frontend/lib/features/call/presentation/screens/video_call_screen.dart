@@ -9,6 +9,7 @@ import '../bloc/call_state.dart';
 import '../../../../core/services/agora_call_service.dart' as agora;
 import '../../../../core/constants/app_constants.dart';
 import '../../../../core/services/api_service.dart';
+import '../../../../core/utils/call_identity_resolver.dart';
 
 class VideoCallScreen extends StatefulWidget {
   final String callId;
@@ -36,8 +37,7 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
   Duration _callDuration = Duration.zero;
   bool _showControls = true;
   Timer? _controlsTimer;
-  String? _resolvedOtherUserName;
-  String? _resolvedOtherUserImageUrl;
+  CallParticipantIdentity? _resolvedOtherUser;
 
   @override
   void initState() {
@@ -52,26 +52,18 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
   }
 
   Future<void> _resolveOtherUserIdentity() async {
-    final candidateName = widget.otherUserName.trim();
-    final needsLookup = candidateName.isEmpty || candidateName == 'Provider' || candidateName == 'Seeker' || candidateName == 'User' || candidateName == 'Video Call';
-    final needsImage = (widget.otherUserProfileImageUrl ?? '').trim().isEmpty;
-    if (!needsLookup && !needsImage) return;
-    if (widget.otherUserId.trim().isEmpty) return;
-
-    try {
-      final response = await ApiService.instance.get('/auth/user/${widget.otherUserId}');
-      if (response['success'] == true && response['user'] is Map<String, dynamic>) {
-        final user = response['user'] as Map<String, dynamic>;
-        final name = (user['name'] ?? user['fullName'] ?? user['displayName'])?.toString().trim();
-        final image = (user['profileImageUrl'] ?? user['profile_image_url'])?.toString().trim();
-        if (mounted) {
-          setState(() {
-            if (name != null && name.isNotEmpty) _resolvedOtherUserName = name;
-            if (image != null && image.isNotEmpty) _resolvedOtherUserImageUrl = image;
-          });
-        }
-      }
-    } catch (_) {}
+    final resolved = await CallIdentityResolver.resolveParticipant(
+      userId: widget.otherUserId,
+      fallbackName: widget.otherUserName,
+      fallbackRole: widget.otherUserRole,
+      fallbackProfileImageUrl: widget.otherUserProfileImageUrl,
+      defaultLabel: 'Video Call',
+    );
+    if (mounted) {
+      setState(() {
+        _resolvedOtherUser = resolved;
+      });
+    }
   }
 
   Future<void> _pollCallStatus() async {
@@ -172,12 +164,19 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
           child: BlocBuilder<CallBloc, CallState>(
             builder: (context, state) {
               if (state is! CallConnected) {
-                final displayName = widget.otherUserName.isNotEmpty
-                    ? widget.otherUserName
-                    : 'Video Call';
-                final displayRole = widget.otherUserRole != AppConstants.roleUser
-                    ? widget.otherUserRole
-                    : '';
+                final displayName = CallIdentityResolver.resolveDisplayName(
+                  preferredName: null,
+                  fallbackName: _resolvedOtherUser?.displayName ?? widget.otherUserName,
+                  defaultLabel: 'Video Call',
+                );
+                final displayRole = CallIdentityResolver.resolveRole(
+                  preferredRole: _resolvedOtherUser?.role,
+                  fallbackRole: widget.otherUserRole,
+                );
+                final displayImageUrl = CallIdentityResolver.resolveProfileImageUrl(
+                  preferredImageUrl: _resolvedOtherUser?.profileImageUrl,
+                  fallbackImageUrl: widget.otherUserProfileImageUrl,
+                );
 
                 return Container(
                   decoration: BoxDecoration(
@@ -200,10 +199,10 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
                             CircleAvatar(
                               radius: 60,
                               backgroundColor: Colors.white.withOpacity(0.3),
-                              backgroundImage: widget.otherUserProfileImageUrl != null
-                                  ? NetworkImage(widget.otherUserProfileImageUrl!)
+                              backgroundImage: displayImageUrl != null
+                                ? NetworkImage(displayImageUrl)
                                   : null,
-                              child: widget.otherUserProfileImageUrl == null
+                              child: displayImageUrl == null
                                   ? Text(
                                       displayName.isNotEmpty ? displayName[0].toUpperCase() : '?',
                                       style: const TextStyle(
@@ -303,16 +302,29 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
                             CircleAvatar(
                               radius: 40,
                               backgroundColor: Colors.white24,
-                              backgroundImage: (state.otherUserProfileImageUrl ?? widget.otherUserProfileImageUrl) != null
-                                  ? NetworkImage((state.otherUserProfileImageUrl ?? widget.otherUserProfileImageUrl)!)
+                              backgroundImage: CallIdentityResolver.resolveProfileImageUrl(
+                                        preferredImageUrl: state.otherUserProfileImageUrl,
+                                        fallbackImageUrl: _resolvedOtherUser?.profileImageUrl ?? widget.otherUserProfileImageUrl,
+                                      ) != null
+                                  ? NetworkImage(
+                                      CallIdentityResolver.resolveProfileImageUrl(
+                                        preferredImageUrl: state.otherUserProfileImageUrl,
+                                        fallbackImageUrl: _resolvedOtherUser?.profileImageUrl ?? widget.otherUserProfileImageUrl,
+                                      )!,
+                                    )
                                   : null,
-                              child: (state.otherUserProfileImageUrl ?? widget.otherUserProfileImageUrl) == null
+                              child: CallIdentityResolver.resolveProfileImageUrl(
+                                        preferredImageUrl: state.otherUserProfileImageUrl,
+                                        fallbackImageUrl: _resolvedOtherUser?.profileImageUrl ?? widget.otherUserProfileImageUrl,
+                                      ) == null
                                   ? Text(
                                       (state.otherUserName.isNotEmpty
                                               ? state.otherUserName
-                                              : widget.otherUserName.isNotEmpty
-                                                  ? widget.otherUserName
-                                                  : '?')[0]
+                                              : CallIdentityResolver.resolveDisplayName(
+                                                  preferredName: _resolvedOtherUser?.displayName,
+                                                  fallbackName: widget.otherUserName,
+                                                  defaultLabel: 'Video Call',
+                                                ))[0]
                                           .toUpperCase(),
                                       style: const TextStyle(
                                         fontSize: 36,
@@ -324,19 +336,22 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
                             ),
                             const SizedBox(height: 16),
                             Text(
-                              state.otherUserName.isNotEmpty
-                                  ? state.otherUserName
-                                  : widget.otherUserName.isNotEmpty
-                                      ? widget.otherUserName
-                                      : 'Waiting for other person...',
+                              CallIdentityResolver.resolveDisplayName(
+                                preferredName: state.otherUserName,
+                                fallbackName: _resolvedOtherUser?.displayName ?? widget.otherUserName,
+                                defaultLabel: 'Waiting for other person...',
+                              ),
                               style: const TextStyle(
                                 color: Colors.white,
                                 fontSize: 18,
                                 fontWeight: FontWeight.w600,
                               ),
                             ),
-                            if ((state.otherUserRole != AppConstants.roleUser && state.otherUserRole.isNotEmpty) ||
-                              (widget.otherUserRole != AppConstants.roleUser && widget.otherUserRole.isNotEmpty)) ...[
+                            if (CallIdentityResolver.resolveRole(
+                                  preferredRole: state.otherUserRole,
+                                  fallbackRole: _resolvedOtherUser?.role ?? widget.otherUserRole,
+                                ) !=
+                                AppConstants.roleUser) ...[
                               const SizedBox(height: 6),
                               Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
@@ -346,7 +361,10 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
                                 ),
                                 child: Text(
                                   () {
-                                    final role = state.otherUserRole != AppConstants.roleUser ? state.otherUserRole : widget.otherUserRole;
+                                    final role = CallIdentityResolver.resolveRole(
+                                      preferredRole: state.otherUserRole,
+                                      fallbackRole: _resolvedOtherUser?.role ?? widget.otherUserRole,
+                                    );
                                     return role[0].toUpperCase() + role.substring(1);
                                   }(),
                                   style: TextStyle(

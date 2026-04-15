@@ -53,6 +53,18 @@ class FCMService:
     
     def __init__(self):
         pass
+
+    @staticmethod
+    def _extract_fcm_token(user_data: Optional[Dict[str, Any]]) -> Optional[str]:
+        if not user_data:
+            return None
+
+        token = user_data.get('fcmToken') or user_data.get('fcm_token')
+        if token is None:
+            return None
+
+        token = str(token).strip()
+        return token or None
     
     async def send_to_user(
         self,
@@ -75,7 +87,7 @@ class FCMService:
                 logger.warning(f"User not found: {user_id}")
                 return False
             
-            fcm_token = user_data.get('fcmToken')
+            fcm_token = self._extract_fcm_token(user_data)
             if not fcm_token:
                 logger.warning(f"No FCM token for user: {user_id}")
                 return False
@@ -133,14 +145,15 @@ class FCMService:
             # Query all providers with FCM tokens
             query = """
             MATCH (p:Provider)
-            WHERE p.fcmToken IS NOT NULL AND p.fcmToken <> ''
+                WHERE (p.fcmToken IS NOT NULL AND p.fcmToken <> '')
+                    OR (p.fcm_token IS NOT NULL AND p.fcm_token <> '')
             AND p.isActive = true
             """
             
             if exclude_user:
                 query += " AND p.id <> $excludeUser"
             
-            query += " RETURN p.id as id, p.fcmToken as fcmToken"
+            query += " RETURN p.id as id, coalesce(p.fcmToken, p.fcm_token) as fcmToken"
             
             params = {"excludeUser": exclude_user} if exclude_user else {}
             result = neo4j_driver.execute_read(query, params)
