@@ -1,9 +1,9 @@
+import 'dart:convert';
 import 'dart:io';
 import 'dart:async';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:firebase_storage/firebase_storage.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
@@ -65,6 +65,28 @@ class _ChatScreenState extends State<ChatScreen> {
 
   bool get _useBackendMessaging => widget.bookingId != null && widget.bookingId!.isNotEmpty;
 
+  ChatMessage _parseBackendMessage(Map<String, dynamic> row) {
+    final messageType = (row['messageType'] as String? ?? 'text').toLowerCase();
+    final messageText = (row['messageText'] as String? ?? '').trim();
+    final isImage = messageType == 'image' &&
+        (messageText.startsWith('http') || messageText.startsWith('data:image/'));
+    final isVoice = messageType == 'voice' &&
+        (messageText.startsWith('http') || messageText.startsWith('data:audio/'));
+
+    return ChatMessage(
+      id: row['id']?.toString() ?? '',
+      senderId: row['senderId']?.toString() ?? '',
+      senderName: row['senderName']?.toString() ?? 'User',
+      message: (isImage || isVoice) ? '' : messageText,
+      messageType: messageType,
+      imageUrl: isImage ? messageText : null,
+      voiceUrl: isVoice ? messageText : null,
+      voiceDuration: _tryParseInt(row['mediaDuration']) ?? _tryParseInt(row['duration']),
+      timestamp: _parseBackendTimestamp(row),
+      isRead: row['isRead'] == true,
+    );
+  }
+
   @override
   void initState() {
     super.initState();
@@ -91,7 +113,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
       _loadBackendMessages();
       _backendMessagesPollingTimer = Timer.periodic(
-        const Duration(seconds: 2),
+        const Duration(seconds: 3),
         (_) => _loadBackendMessages(),
       );
     }
@@ -168,25 +190,7 @@ class _ChatScreenState extends State<ChatScreen> {
         final rows = (response['messages'] as List<dynamic>? ?? const [])
             .cast<Map<String, dynamic>>();
 
-        final parsed = rows.map((row) {
-          final messageType = (row['messageType'] as String? ?? 'text').toLowerCase();
-          final messageText = (row['messageText'] as String? ?? '').trim();
-          final isImage = messageType == 'image' && messageText.startsWith('http');
-          final isVoice = messageType == 'voice' && messageText.startsWith('http');
-
-          return ChatMessage(
-            id: row['id']?.toString() ?? '',
-            senderId: row['senderId']?.toString() ?? '',
-            senderName: row['senderName']?.toString() ?? 'User',
-            message: (isImage || isVoice) ? '' : messageText,
-            messageType: messageType,
-            imageUrl: isImage ? messageText : null,
-            voiceUrl: isVoice ? messageText : null,
-            voiceDuration: _tryParseInt(row['mediaDuration']) ?? _tryParseInt(row['duration']),
-            timestamp: _parseBackendTimestamp(row),
-            isRead: row['isRead'] == true,
-          );
-        }).toList();
+        final parsed = rows.map(_parseBackendMessage).toList();
 
         if (!mounted) return;
         setState(() {
@@ -375,24 +379,7 @@ class _ChatScreenState extends State<ChatScreen> {
         await _loadBackendMessages();
         _scrollToBottom();
       } else {
-        final filename = _generateImageFilename(image);
-        final ref = FirebaseStorage.instance
-            .ref()
-            .child('chat_images')
-            .child(filename);
-
-        await ref.putData(image.bytes);
-        final imageUrl = await ref.getDownloadURL();
-
-        if (!mounted) return;
-
-        context.read<ChatBloc>().add(
-              ChatSendMessageRequested(
-                conversationId: widget.conversationId,
-                message: '',
-                imageUrl: imageUrl,
-              ),
-            );
+        throw Exception('Image sharing is only supported via booking chat with Neo4j backend');
       }
     } catch (e) {
       if (mounted) {
@@ -990,6 +977,17 @@ class _MessageBubble extends StatelessWidget {
 
   const _MessageBubble({required this.message});
 
+  Uint8List? _decodeDataImage(String value) {
+    if (!value.startsWith('data:image/')) return null;
+    final commaIndex = value.indexOf(',');
+    if (commaIndex < 0 || commaIndex >= value.length - 1) return null;
+    try {
+      return base64Decode(value.substring(commaIndex + 1));
+    } catch (_) {
+      return null;
+    }
+  }
+
   String _formatTimestamp(DateTime timestamp) {
     return DateFormat.jm().format(timestamp);
   }
@@ -998,6 +996,8 @@ class _MessageBubble extends StatelessWidget {
   Widget build(BuildContext context) {
     final currentUserId = FirebaseAuth.instance.currentUser?.uid ?? '';
     final isCurrentUser = message.senderId == currentUserId;
+
+    final decodedImageBytes = message.imageUrl != null ? _decodeDataImage(message.imageUrl!) : null;
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
@@ -1055,31 +1055,37 @@ class _MessageBubble extends StatelessWidget {
                   if (message.imageUrl != null)
                     ClipRRect(
                       borderRadius: BorderRadius.circular(12),
-                      child: Image.network(
-                        message.imageUrl!,
-                        width: 200,
-                        fit: BoxFit.cover,
-                        loadingBuilder: (context, child, loadingProgress) {
-                          if (loadingProgress == null) return child;
-                          return Container(
-                            width: 200,
-                            height: 200,
-                            decoration: BoxDecoration(
-                              color: Colors.grey[200],
-                              borderRadius: BorderRadius.circular(12),
+                      child: decodedImageBytes != null
+                          ? Image.memory(
+                              decodedImageBytes,
+                              width: 200,
+                              fit: BoxFit.cover,
+                            )
+                          : Image.network(
+                              message.imageUrl!,
+                              width: 200,
+                              fit: BoxFit.cover,
+                              loadingBuilder: (context, child, loadingProgress) {
+                                if (loadingProgress == null) return child;
+                                return Container(
+                                  width: 200,
+                                  height: 200,
+                                  decoration: BoxDecoration(
+                                    color: Colors.grey[200],
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  child: Center(
+                                    child: CircularProgressIndicator(
+                                      value: loadingProgress.expectedTotalBytes != null
+                                          ? loadingProgress.cumulativeBytesLoaded /
+                                              loadingProgress.expectedTotalBytes!
+                                          : null,
+                                      color: AppTheme.primaryColor,
+                                    ),
+                                  ),
+                                );
+                              },
                             ),
-                            child: Center(
-                              child: CircularProgressIndicator(
-                                value: loadingProgress.expectedTotalBytes != null
-                                    ? loadingProgress.cumulativeBytesLoaded /
-                                        loadingProgress.expectedTotalBytes!
-                                    : null,
-                                color: AppTheme.primaryColor,
-                              ),
-                            ),
-                          );
-                        },
-                      ),
                     ),
                   if (message.voiceUrl != null) ...[
                     SizedBox(

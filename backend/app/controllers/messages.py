@@ -1,13 +1,14 @@
 """
 Messages Controller
-Handles text messaging endpoints with Agora RTM integration
+Handles text messaging endpoints with REST persistence.
+
+Realtime delivery is handled client-side without custom WebSocket servers.
 """
 from fastapi import APIRouter, HTTPException, status, UploadFile, File, Form
 from pydantic import BaseModel
 from typing import Optional, List
 import os
-import time
-from firebase_admin import storage
+import base64
 from ..models.message import Message
 
 router = APIRouter(prefix="/messages", tags=["messages"])
@@ -49,13 +50,6 @@ class AgoraConfigResponse(BaseModel):
     agoraConfig: dict
 
 
-def _safe_filename(name: Optional[str], fallback: str) -> str:
-    if not name:
-        return fallback
-    cleaned = os.path.basename(name).replace(' ', '_')
-    return cleaned or fallback
-
-
 def _detect_image_type(content: bytes) -> str:
     """Detect image type from file bytes (magic numbers)"""
     if content.startswith(b'\x89PNG'):
@@ -66,34 +60,32 @@ def _detect_image_type(content: bytes) -> str:
         return 'image/webp'
     elif content.startswith(b'GIF8'):
         return 'image/gif'
+    elif content.startswith(b'BM'):
+        return 'image/bmp'
     return 'image/jpeg'  # Default to JPEG
 
 
-async def _upload_to_storage(
-    file: UploadFile,
-    folder: str,
-    default_content_type: str,
-) -> str:
-    bucket = storage.bucket()
-    safe_name = _safe_filename(file.filename, f"{folder}_file")
-    filename = f"{folder}/{int(time.time() * 1000)}_{safe_name}"
+def _normalize_audio_content_type(uploaded: UploadFile, content: bytes) -> str:
+    mime_type = (uploaded.content_type or '').lower().strip()
+    if mime_type.startswith('audio/'):
+        return mime_type
 
-    content = await file.read()
-    blob = bucket.blob(filename)
-    
-    # Detect actual content type from file content if not provided
-    content_type = file.content_type or default_content_type
-    if default_content_type.startswith('image/') and not file.content_type:
-        # For images, try to detect actual format from bytes
-        content_type = _detect_image_type(content)
-    elif default_content_type.startswith('audio/'):
-        # For audio, be flexible with content type
-        if not file.content_type or 'audio' not in file.content_type:
-            content_type = default_content_type
-    
-    blob.upload_from_string(content, content_type=content_type)
-    blob.make_public()
-    return blob.public_url
+    # Best-effort detection by signature
+    if content.startswith(b'RIFF') and len(content) > 8 and content[8:12] == b'WAVE':
+        return 'audio/wav'
+    if content.startswith(b'ID3') or content.startswith((b'\xff\xfb', b'\xff\xfa', b'\xff\xf3')):
+        return 'audio/mpeg'
+    if b'ftyp' in content[:32]:
+        return 'audio/m4a'
+    if content.startswith(b'OggS'):
+        return 'audio/ogg'
+
+    return 'audio/m4a'
+
+
+def _to_data_url(content_type: str, content: bytes) -> str:
+    encoded = base64.b64encode(content).decode("ascii")
+    return f"data:{content_type};base64,{encoded}"
 
 
 @router.get("/agora-config")
@@ -136,7 +128,7 @@ async def send_message(request: SendMessageRequest):
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Failed to create message"
             )
-        
+
         return MessageResponse(
             success=True,
             message="Message sent successfully",
@@ -159,7 +151,7 @@ async def upload_image_message(
     receiverId: str = Form(...),
     bookingId: str = Form(...),
 ):
-    """Upload chat image to Firebase Storage and save as messageType=image."""
+    """Upload chat image and store as base64 data URL in Neo4j."""
     try:
         if senderId == receiverId:
             raise HTTPException(
@@ -192,11 +184,14 @@ async def upload_image_message(
                 detail="Invalid image file"
             )
 
-        image_url = await _upload_to_storage(
-            file=image,
-            folder=f"chat_images/{bookingId}",
-            default_content_type='image/jpeg',
-        )
+        if len(content) > 5 * 1024 * 1024:
+            raise HTTPException(
+                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                detail="Image file too large (max 5MB)"
+            )
+
+        image_content_type = _detect_image_type(content)
+        image_url = _to_data_url(image_content_type, content)
 
         message_data = Message.create_message(
             sender_id=senderId,
@@ -235,7 +230,7 @@ async def upload_voice_message(
     bookingId: str = Form(...),
     duration: int = Form(...),
 ):
-    """Upload chat voice note and save as messageType=voice."""
+    """Upload chat voice note and store as base64 data URL in Neo4j."""
     try:
         if senderId == receiverId:
             raise HTTPException(
@@ -289,11 +284,8 @@ async def upload_voice_message(
                 detail="Invalid audio file"
             )
 
-        audio_url = await _upload_to_storage(
-            file=audio,
-            folder=f"voice_messages/{bookingId}",
-            default_content_type='audio/m4a',
-        )
+        audio_content_type = _normalize_audio_content_type(audio, content)
+        audio_url = _to_data_url(audio_content_type, content)
 
         message_data = Message.create_message(
             sender_id=senderId,

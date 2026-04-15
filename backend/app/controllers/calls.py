@@ -1,25 +1,36 @@
 """
 Call Controller
-Handles voice/video calling endpoints with Agora integration
+Handles voice/video calling endpoints with Agora integration.
+
+Signaling is intentionally REST + FCM only (no custom WebSocket server).
 """
 from fastapi import APIRouter, HTTPException, status, UploadFile, File, Form
 from pydantic import BaseModel
 from typing import Optional, List
 import os
-import time
 import uuid
 import hashlib
+import base64
+import time
+import logging
 from ..models.call import Call
 from ..models.voice_message import VoiceMessage
-from firebase_admin import storage, messaging
+from firebase_admin import messaging
 from ..constants import LIVE_COMMUNICATION_STATUSES
 
+try:
+    from agora_token_builder import RtcTokenBuilder
+except Exception:  # pragma: no cover - optional dependency in local dev
+    RtcTokenBuilder = None
+
 router = APIRouter(prefix="/calls", tags=["calls"])
+logger = logging.getLogger(__name__)
 
 
 # Agora credentials (should be in environment variables)
 AGORA_APP_ID = os.getenv("AGORA_APP_ID", "your_agora_app_id")
 AGORA_APP_CERTIFICATE = os.getenv("AGORA_APP_CERTIFICATE", "")
+AGORA_TOKEN_TTL_SECONDS = int(os.getenv("AGORA_TOKEN_TTL_SECONDS", "3600"))
 
 
 # Request Models
@@ -37,6 +48,11 @@ class UpdateCallStatusRequest(BaseModel):
     callId: str
     status: str  # 'answered', 'ended', 'missed', 'rejected'
     duration: Optional[int] = None
+
+
+class RefreshCallTokenRequest(BaseModel):
+    callId: str
+    userId: str
 
 
 class VoiceMessageRequest(BaseModel):
@@ -65,7 +81,29 @@ class CallHistoryResponse(BaseModel):
     calls: List[dict]
 
 
-def generate_agora_token(channel_name: str, uid: int, role: int = 1) -> Optional[str]:
+def _to_data_url(content_type: str, content: bytes) -> str:
+    encoded = base64.b64encode(content).decode("ascii")
+    return f"data:{content_type};base64,{encoded}"
+
+
+def _normalize_audio_content_type(uploaded: UploadFile, content: bytes) -> str:
+    mime_type = (uploaded.content_type or '').lower().strip()
+    if mime_type.startswith('audio/'):
+        return mime_type
+
+    if content.startswith(b'RIFF') and len(content) > 8 and content[8:12] == b'WAVE':
+        return 'audio/wav'
+    if content.startswith(b'ID3') or content.startswith((b'\xff\xfb', b'\xff\xfa', b'\xff\xf3')):
+        return 'audio/mpeg'
+    if b'ftyp' in content[:32]:
+        return 'audio/m4a'
+    if content.startswith(b'OggS'):
+        return 'audio/ogg'
+
+    return 'audio/m4a'
+
+
+def generate_agora_token(channel_name: str, uid: int, role: int = 1) -> tuple[Optional[str], Optional[int]]:
     """
     Generate Agora RTC token
     role: 1 = publisher (can send/receive), 2 = subscriber (receive only)
@@ -73,18 +111,28 @@ def generate_agora_token(channel_name: str, uid: int, role: int = 1) -> Optional
     Note: For production, implement proper token generation with Agora AccessToken library
     For now, if no certificate is configured, Agora can work in testing mode without tokens
     """
-    if not AGORA_APP_CERTIFICATE:
-        return None  # Testing mode, no token needed
-    
-    # TODO: Implement actual Agora token generation
-    # from agora_token_builder import RtcTokenBuilder
-    # privilege_expired_ts = int(time.time()) + 3600  # 1 hour
-    # return RtcTokenBuilder.buildTokenWithUid(
-    #     AGORA_APP_ID, AGORA_APP_CERTIFICATE, 
-    #     channel_name, uid, role, privilege_expired_ts
-    # )
-    
-    return None
+    if (
+        not AGORA_APP_CERTIFICATE
+        or not AGORA_APP_ID
+        or AGORA_APP_ID == "your_agora_app_id"
+        or RtcTokenBuilder is None
+    ):
+        return None, None  # Testing mode, no token needed
+
+    privilege_expired_ts = int(time.time()) + AGORA_TOKEN_TTL_SECONDS
+    try:
+        token = RtcTokenBuilder.buildTokenWithUid(
+            AGORA_APP_ID,
+            AGORA_APP_CERTIFICATE,
+            channel_name,
+            uid,
+            role,
+            privilege_expired_ts,
+        )
+        return token, privilege_expired_ts
+    except Exception as exc:
+        logger.exception("Failed to generate Agora token", exc_info=exc)
+        return None, None
 
 
 async def send_call_notification(
@@ -114,6 +162,9 @@ async def send_call_notification(
                 'agoraChannel': agora_config['channel'],
                 'agoraToken': agora_config['token'] or '',
                 'agoraUid': str(agora_config['uid']),
+                'callerUid': str(agora_config.get('callerUid', '')),
+                'receiverUid': str(agora_config.get('receiverUid', '')),
+                'tokenExpiresAt': str(agora_config.get('tokenExpiresAt', '')),
             },
             android=messaging.AndroidConfig(
                 priority='high',
@@ -162,8 +213,9 @@ async def initiate_call(request: InitiateCallRequest):
         while receiver_uid == caller_uid:
             receiver_uid = (receiver_uid + 1) % 100000
         
-        # Generate Agora token (optional for testing)
-        agora_token = generate_agora_token(channel_name, caller_uid)
+        # Generate Agora tokens (per-user token is required when certificate is enabled)
+        caller_token, caller_token_expires_at = generate_agora_token(channel_name, caller_uid)
+        receiver_token, receiver_token_expires_at = generate_agora_token(channel_name, receiver_uid)
         
         # Fetch caller and receiver details including phone numbers
         caller_data = User.get_by_id(request.callerId)
@@ -188,7 +240,7 @@ async def initiate_call(request: InitiateCallRequest):
             booking_id=request.bookingId,
             call_type=request.callType,
             agora_channel=channel_name,
-            agora_token=agora_token
+            agora_token=caller_token
         )
         
         if not call_data:
@@ -203,12 +255,27 @@ async def initiate_call(request: InitiateCallRequest):
         call_data['callerRole'] = call_data.get('callerRole') or caller_data.get('role', 'user')
         call_data['receiverRole'] = call_data.get('receiverRole') or receiver_data.get('role', 'user')
         
-        # Prepare Agora config with caller UID
-        agora_config = {
+        # Prepare Agora configs with role-specific UIDs
+        caller_agora_config = {
             "appId": AGORA_APP_ID,
             "channel": channel_name,
-            "token": agora_token,
-            "uid": caller_uid  # Use caller UID from hash
+            "token": caller_token,
+            "uid": caller_uid,
+            "callerUid": caller_uid,
+            "receiverUid": receiver_uid,
+            "tokenExpiresAt": caller_token_expires_at,
+            "tokenExpiresIn": AGORA_TOKEN_TTL_SECONDS if caller_token_expires_at else None,
+        }
+
+        receiver_agora_config = {
+            "appId": AGORA_APP_ID,
+            "channel": channel_name,
+            "token": receiver_token,
+            "uid": receiver_uid,
+            "callerUid": caller_uid,
+            "receiverUid": receiver_uid,
+            "tokenExpiresAt": receiver_token_expires_at,
+            "tokenExpiresIn": AGORA_TOKEN_TTL_SECONDS if receiver_token_expires_at else None,
         }
         
         # Send FCM notification to receiver if token provided
@@ -223,15 +290,15 @@ async def initiate_call(request: InitiateCallRequest):
                 caller_name=request.callerName or caller_data.get('name', 'User'),
                 caller_role=caller_role,
                 call_type=request.callType,
-                agora_config=agora_config
+                agora_config=receiver_agora_config
             )
-        
+
         # Return call data with Agora config
         return CallResponse(
             success=True,
             message="Call initiated successfully",
             call=call_data,
-            agoraConfig=agora_config
+            agoraConfig=caller_agora_config
         )
     
     except HTTPException:
@@ -247,6 +314,7 @@ async def initiate_call(request: InitiateCallRequest):
 async def update_call_status(request: UpdateCallStatusRequest):
     """Update call status"""
     try:
+        call_before = Call.get_call_by_id(request.callId)
         success = Call.update_call_status(
             call_id=request.callId,
             status=request.status,
@@ -258,6 +326,8 @@ async def update_call_status(request: UpdateCallStatusRequest):
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Call not found"
             )
+
+        _ = call_before  # reserved for future auditing/analytics hooks
         
         return CallResponse(
             success=True,
@@ -318,6 +388,62 @@ async def get_call(call_id: str):
         )
 
 
+@router.post("/token", response_model=CallResponse)
+async def refresh_call_token(request: RefreshCallTokenRequest):
+    """Refresh Agora token for an existing call participant (REST signaling)."""
+    try:
+        call = Call.get_call_by_id(request.callId)
+        if not call:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Call not found"
+            )
+
+        caller_id = call.get("callerId")
+        receiver_id = call.get("receiverId")
+        channel_name = call.get("agoraChannel")
+
+        if request.userId not in {caller_id, receiver_id}:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="User is not a participant of this call"
+            )
+
+        if not channel_name:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Call channel not found"
+            )
+
+        uid = int(hashlib.md5(request.userId.encode()).hexdigest()[:8], 16) % 100000
+        token, token_expires_at = generate_agora_token(channel_name, uid)
+
+        agora_config = {
+            "appId": AGORA_APP_ID,
+            "channel": channel_name,
+            "uid": uid,
+            "token": token,
+            "callerUid": int(hashlib.md5(str(caller_id).encode()).hexdigest()[:8], 16) % 100000 if caller_id else None,
+            "receiverUid": int(hashlib.md5(str(receiver_id).encode()).hexdigest()[:8], 16) % 100000 if receiver_id else None,
+            "tokenExpiresAt": token_expires_at,
+            "tokenExpiresIn": AGORA_TOKEN_TTL_SECONDS if token_expires_at else None,
+        }
+
+        return CallResponse(
+            success=True,
+            message="Call token refreshed successfully",
+            call=call,
+            agoraConfig=agora_config,
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to refresh call token: {str(e)}"
+        )
+
+
 @router.post("/voice-message/upload", response_model=VoiceMessageResponse)
 async def upload_voice_message(
     audio: UploadFile = File(...),
@@ -326,7 +452,7 @@ async def upload_voice_message(
     bookingId: str = Form(...),
     duration: int = Form(...)
 ):
-    """Upload a voice message"""
+    """Upload a voice message and store as base64 data URL in Neo4j."""
     try:
         from ..models.booking import Booking
 
@@ -362,21 +488,17 @@ async def upload_voice_message(
                 detail="Users are not valid participants for this booking"
             )
 
-        # Generate unique filename
-        timestamp = int(time.time())
-        filename = f"voice_messages/{bookingId}/{senderId}_{timestamp}.m4a"
-        
-        # Upload to Firebase Storage
-        bucket = storage.bucket()
-        blob = bucket.blob(filename)
-        
         # Read file content
         content = await audio.read()
-        blob.upload_from_string(content, content_type='audio/m4a')
-        
-        # Make file publicly accessible
-        blob.make_public()
-        audio_url = blob.public_url
+
+        if len(content) > 10 * 1024 * 1024:
+            raise HTTPException(
+                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                detail="Voice file too large (max 10MB)"
+            )
+
+        content_type = _normalize_audio_content_type(audio, content)
+        audio_url = _to_data_url(content_type, content)
         
         # Create voice message record
         voice_message = VoiceMessage.create_voice_message(

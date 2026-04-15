@@ -6,6 +6,7 @@ import '../bloc/call_bloc.dart';
 import '../bloc/call_event.dart';
 import '../bloc/call_state.dart';
 import '../../../../core/constants/app_constants.dart';
+import '../../../../core/services/api_service.dart';
 
 class VoiceCallScreen extends StatefulWidget {
   final String callId;
@@ -27,12 +28,43 @@ class VoiceCallScreen extends StatefulWidget {
 
 class _VoiceCallScreenState extends State<VoiceCallScreen> {
   Timer? _durationTimer;
+  Timer? _statusPollingTimer;
   Duration _callDuration = Duration.zero;
 
   @override
   void initState() {
     super.initState();
     _startDurationTimer();
+    _statusPollingTimer = Timer.periodic(
+      const Duration(seconds: 3),
+      (_) => _pollCallStatus(),
+    );
+  }
+
+  Future<void> _pollCallStatus() async {
+    if (!mounted) return;
+
+    try {
+      final response = await ApiService.instance.get(ApiEndpoints.callById(widget.callId));
+      if (response['success'] != true || response['call'] == null) return;
+
+      final call = response['call'] as Map<String, dynamic>;
+      final status = (call['status'] as String? ?? '').toLowerCase();
+
+      if (status == AppConstants.callStatusRejected ||
+          status == AppConstants.callStatusMissed ||
+          status == AppConstants.callStatusEnded) {
+        if (!mounted) return;
+        context.read<CallBloc>().add(
+              EndCallRequested(
+                callId: widget.callId,
+                duration: _callDuration.inSeconds,
+              ),
+            );
+      }
+    } catch (_) {
+      // Keep call UI running during transient API errors.
+    }
   }
 
   void _startDurationTimer() {
@@ -46,6 +78,7 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> {
   @override
   void dispose() {
     _durationTimer?.cancel();
+    _statusPollingTimer?.cancel();
     super.dispose();
   }
 

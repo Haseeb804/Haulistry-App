@@ -9,13 +9,25 @@ class AgoraCallService {
 
   late RtcEngine _engine;
   bool _isInitialized = false;
+  CallState _currentCallState = CallState.idle;
+  String? _activeChannel;
+  int? _activeUid;
   final StreamController<CallState> _callStateController = StreamController<CallState>.broadcast();
   final StreamController<RemoteUserState> _remoteUserController = StreamController<RemoteUserState>.broadcast();
   final StreamController<int> _volumeController = StreamController<int>.broadcast();
+  final StreamController<void> _tokenExpiryController = StreamController<void>.broadcast();
 
   Stream<CallState> get callStateStream => _callStateController.stream;
   Stream<RemoteUserState> get remoteUserStream => _remoteUserController.stream;
   Stream<int> get volumeStream => _volumeController.stream;
+  Stream<void> get tokenExpiryStream => _tokenExpiryController.stream;
+  String? get activeChannel => _activeChannel;
+  int? get activeUid => _activeUid;
+
+  void _setCallState(CallState state) {
+    _currentCallState = state;
+    _callStateController.add(state);
+  }
 
   Future<void> initialize(String appId) async {
     if (_isInitialized) return;
@@ -34,7 +46,7 @@ class AgoraCallService {
     _engine.registerEventHandler(
       RtcEngineEventHandler(
         onJoinChannelSuccess: (RtcConnection connection, int elapsed) {
-          _callStateController.add(CallState.connected);
+          _setCallState(CallState.connected);
         },
         onUserJoined: (RtcConnection connection, int remoteUid, int elapsed) {
           _remoteUserController.add(RemoteUserState(remoteUid, true));
@@ -43,10 +55,13 @@ class AgoraCallService {
           _remoteUserController.add(RemoteUserState(remoteUid, false));
         },
         onLeaveChannel: (RtcConnection connection, RtcStats stats) {
-          _callStateController.add(CallState.disconnected);
+          _setCallState(CallState.disconnected);
         },
         onError: (ErrorCodeType error, String msg) {
-          _callStateController.add(CallState.error);
+          _setCallState(CallState.error);
+        },
+        onTokenPrivilegeWillExpire: (RtcConnection connection, String token) {
+          _tokenExpiryController.add(null);
         },
         onAudioVolumeIndication: (RtcConnection connection, List<AudioVolumeInfo> speakers, int speakerNumber, int totalVolume) {
           if (speakers.isNotEmpty) {
@@ -85,6 +100,10 @@ class AgoraCallService {
       reportVad: true,
     );
 
+    _setCallState(CallState.connecting);
+    _activeChannel = channel;
+    _activeUid = uid;
+
     // Join channel
     await _engine.joinChannel(
       token: token ?? '',
@@ -96,13 +115,11 @@ class AgoraCallService {
       ),
     );
 
-    _callStateController.add(CallState.connecting);
-    
     // Add connection timeout (30 seconds)
     Future.delayed(const Duration(seconds: 30), () {
-      // Check if still in connecting state
-      // If so, emit error
-      _callStateController.add(CallState.error);
+      if (_currentCallState == CallState.connecting) {
+        _setCallState(CallState.error);
+      }
     });
   }
 
@@ -133,6 +150,10 @@ class AgoraCallService {
     // Start local preview so camera renders immediately
     await _engine.startPreview();
 
+    _setCallState(CallState.connecting);
+    _activeChannel = channel;
+    _activeUid = uid;
+
     // Join channel
     await _engine.joinChannel(
       token: token ?? '',
@@ -146,18 +167,23 @@ class AgoraCallService {
       ),
     );
 
-    _callStateController.add(CallState.connecting);
-    
     // Add connection timeout (30 seconds)
     Future.delayed(const Duration(seconds: 30), () {
-      // Check if still in connecting state
-      // If so, emit error
-      _callStateController.add(CallState.error);
+      if (_currentCallState == CallState.connecting) {
+        _setCallState(CallState.error);
+      }
     });
   }
 
   Future<void> leaveChannel() async {
     await _engine.leaveChannel();
+    _activeChannel = null;
+    _activeUid = null;
+    _setCallState(CallState.disconnected);
+  }
+
+  Future<void> renewToken(String token) async {
+    await _engine.renewToken(token);
   }
 
   Future<void> muteLocalAudio(bool muted) async {
@@ -182,7 +208,11 @@ class AgoraCallService {
     await _callStateController.close();
     await _remoteUserController.close();
     await _volumeController.close();
+    await _tokenExpiryController.close();
     _isInitialized = false;
+    _currentCallState = CallState.idle;
+    _activeChannel = null;
+    _activeUid = null;
   }
 
   RtcEngine get engine => _engine;

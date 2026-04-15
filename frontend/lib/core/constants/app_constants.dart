@@ -225,6 +225,7 @@ class ApiEndpoints {
 
   static const String callInitiate = '/api/calls/initiate';
   static const String callUpdateStatus = '/api/calls/update-status';
+  static const String callRefreshToken = '/api/calls/token';
   static String callById(String callId) => '/api/calls/$callId';
 
   static const String messageSend = '/api/messages/send';

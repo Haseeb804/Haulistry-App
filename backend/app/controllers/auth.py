@@ -20,6 +20,7 @@ import os
 import json
 import base64
 import logging
+from typing import Optional, Dict, Any
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -28,6 +29,27 @@ router = APIRouter()
 class FcmTokenUpdateRequest(BaseModel):
     fcm_token: Optional[str] = None
     fcmToken: Optional[str] = None
+
+
+def _resolve_storage_bucket(service_account_info: Optional[Dict[str, Any]] = None) -> Optional[str]:
+    """Resolve Firebase Storage bucket from env vars or project id."""
+    explicit_bucket = (
+        os.getenv("FIREBASE_STORAGE_BUCKET")
+        or os.getenv("FIREBASE_BUCKET_NAME")
+        or ""
+    ).strip()
+    if explicit_bucket:
+        return explicit_bucket
+
+    project_id = (
+        (service_account_info or {}).get("project_id")
+        or os.getenv("FIREBASE_PROJECT_ID")
+        or ""
+    ).strip()
+    if project_id:
+        return f"{project_id}.appspot.com"
+
+    return None
 
 
 def _init_firebase() -> firebase_admin.App:
@@ -46,7 +68,9 @@ def _init_firebase() -> firebase_admin.App:
         try:
             service_account_info = json.loads(base64.b64decode(raw_b64).decode("utf-8"))
             cred = credentials.Certificate(service_account_info)
-            app = firebase_admin.initialize_app(cred)
+            bucket_name = _resolve_storage_bucket(service_account_info)
+            options = {"storageBucket": bucket_name} if bucket_name else None
+            app = firebase_admin.initialize_app(cred, options=options)
             logger.info("Firebase initialised from FIREBASE_CREDENTIALS_JSON env var")
             return app
         except Exception as exc:
@@ -55,12 +79,27 @@ def _init_firebase() -> firebase_admin.App:
     service_account_path = os.path.abspath(settings.FIREBASE_CREDENTIALS_PATH)
     if os.path.exists(service_account_path):
         cred = credentials.Certificate(service_account_path)
-        app = firebase_admin.initialize_app(cred)
+        service_account_info = {}
+        try:
+            with open(service_account_path, "r", encoding="utf-8") as fp:
+                service_account_info = json.load(fp)
+        except Exception:
+            # Keep startup resilient; credential-based init can still work.
+            service_account_info = {}
+
+        bucket_name = _resolve_storage_bucket(service_account_info)
+        options = {"storageBucket": bucket_name} if bucket_name else None
+        app = firebase_admin.initialize_app(cred, options=options)
         logger.info(f"Firebase initialised from file: {service_account_path}")
         return app
 
     # Last-resort fallback — auth token verification will not work
-    options = {"projectId": "haulistry-1b835"}
+    fallback_project_id = (os.getenv("FIREBASE_PROJECT_ID") or "haulistry-1b835").strip()
+    fallback_bucket = _resolve_storage_bucket({"project_id": fallback_project_id})
+    options = {
+        "projectId": fallback_project_id,
+        "storageBucket": fallback_bucket,
+    }
     app = firebase_admin.initialize_app(options=options)
     logger.warning("Firebase initialised with project ID only (no service account — token verification disabled)")
     return app

@@ -15,12 +15,14 @@ class CallBloc extends Bloc<CallEvent, CallState> {
 
   StreamSubscription? _callStateSubscription;
   StreamSubscription? _remoteUserSubscription;
+  StreamSubscription? _tokenExpirySubscription;
   
   DateTime? _callStartTime;
   String? _currentCallId;
   String _otherUserName = '';
   String _otherUserRole = AppConstants.roleUser;
   String? _otherUserProfileImageUrl;
+  String _currentCallType = AppConstants.callTypeVoice;
   int? _pendingRemoteUid; // Stores remote uid if they join before CallConnected
 
   CallBloc({
@@ -61,6 +63,10 @@ class CallBloc extends Bloc<CallEvent, CallState> {
         add(RemoteUserLeft(remoteUser.uid));
       }
     });
+
+    _tokenExpirySubscription = _agoraService.tokenExpiryStream.listen((_) {
+      unawaited(_refreshAgoraToken());
+    });
   }
 
   CallConnectionState _mapAgoraState(agora.CallState agoraState) {
@@ -76,6 +82,18 @@ class CallBloc extends Bloc<CallEvent, CallState> {
       default:
         return CallConnectionState.idle;
     }
+  }
+
+  int _deriveFallbackUid(String userId) {
+    final hash = userId.hashCode & 0x7fffffff;
+    return hash % 100000;
+  }
+
+  int _parseAgoraUid(dynamic rawUid, String fallbackUserId) {
+    if (rawUid is int && rawUid > 0) return rawUid;
+    final parsed = int.tryParse(rawUid?.toString() ?? '');
+    if (parsed != null && parsed > 0) return parsed;
+    return _deriveFallbackUid(fallbackUserId);
   }
 
   Future<void> _onInitiateCallRequested(
@@ -108,6 +126,7 @@ class CallBloc extends Bloc<CallEvent, CallState> {
         final agoraConfig = response['agoraConfig'];
 
         _currentCallId = call['id'];
+        _currentCallType = event.callType;
         _otherUserName = event.receiverName;
         _otherUserRole = event.receiverRole;
         _otherUserProfileImageUrl = event.receiverProfileImageUrl;
@@ -162,6 +181,7 @@ class CallBloc extends Bloc<CallEvent, CallState> {
   ) async {
     try {
       _currentCallId = event.callId;
+      _currentCallType = event.agoraConfig['callType'] ?? AppConstants.callTypeVoice;
 
       // Update call status to answered
       await _apiService.post(ApiEndpoints.callUpdateStatus, {
@@ -175,18 +195,32 @@ class CallBloc extends Bloc<CallEvent, CallState> {
         await _agoraService.initialize(appId);
       }
 
+      final user = _auth.currentUser;
+      if (user == null) {
+        emit(const CallError(message: 'User not authenticated'));
+        return;
+      }
+
+      final channel = event.agoraConfig['channel']?.toString() ?? '';
+      if (channel.isEmpty) {
+        emit(const CallError(message: 'Missing call channel configuration'));
+        return;
+      }
+
+      final uid = _parseAgoraUid(event.agoraConfig['uid'], user.uid);
+
       // Join Agora channel
       final callType = event.agoraConfig['callType'] ?? 'voice';
       if (callType == 'voice') {
         await _agoraService.joinVoiceCall(
-          channel: event.agoraConfig['channel'],
-          uid: event.agoraConfig['uid'],
+          channel: channel,
+          uid: uid,
           token: event.agoraConfig['token'],
         );
       } else {
         await _agoraService.joinVideoCall(
-          channel: event.agoraConfig['channel'],
-          uid: event.agoraConfig['uid'],
+          channel: channel,
+          uid: uid,
           token: event.agoraConfig['token'],
         );
       }
@@ -232,6 +266,7 @@ class CallBloc extends Bloc<CallEvent, CallState> {
       _callStartTime = null;
       _otherUserName = '';
       _otherUserRole = AppConstants.roleUser;
+      _currentCallType = AppConstants.callTypeVoice;
     } catch (e) {
       emit(CallError(message: 'Failed to end call: $e'));
     }
@@ -337,20 +372,49 @@ class CallBloc extends Bloc<CallEvent, CallState> {
     CallStateChanged event,
     Emitter<CallState> emit,
   ) async {
-    if (event.state == CallConnectionState.connected && state is CallConnecting) {
-      final connectingState = state as CallConnecting;
-      _callStartTime = DateTime.now();
-      
+    if (event.state == CallConnectionState.connected) {
+      if (state is CallConnected) {
+        return;
+      }
+
+      String callId = _currentCallId ?? '';
+      String callType = _currentCallType;
+      String otherUserName = _otherUserName;
+      String otherUserRole = _otherUserRole;
+      String? otherUserProfileImageUrl = _otherUserProfileImageUrl;
+
+      if (state is CallConnecting) {
+        final connectingState = state as CallConnecting;
+        callId = connectingState.callId;
+        callType = connectingState.callType;
+        otherUserName = connectingState.otherUserName;
+        otherUserRole = connectingState.otherUserRole;
+        otherUserProfileImageUrl = connectingState.otherUserProfileImageUrl;
+      }
+
+      if (callId.isEmpty) {
+        emit(const CallError(message: 'Unable to resolve active call while connecting'));
+        return;
+      }
+
+      _callStartTime ??= DateTime.now();
+
       emit(CallConnected(
-        callId: connectingState.callId,
-        callType: connectingState.callType,
+        callId: callId,
+        callType: callType,
         connectedAt: _callStartTime!,
-        otherUserName: connectingState.otherUserName,
-        otherUserRole: connectingState.otherUserRole,
-        otherUserProfileImageUrl: connectingState.otherUserProfileImageUrl,
+        otherUserName: otherUserName,
+        otherUserRole: otherUserRole,
+        otherUserProfileImageUrl: otherUserProfileImageUrl,
         remoteUid: _pendingRemoteUid,
       ));
       _pendingRemoteUid = null;
+      return;
+    }
+
+    if (event.state == CallConnectionState.error) {
+      emit(const CallError(message: 'Call connection timed out. Please try again.'));
+      return;
     } else if (event.state == CallConnectionState.disconnected) {
       if (_currentCallId != null && _callStartTime != null) {
         final duration = DateTime.now().difference(_callStartTime!).inSeconds;
@@ -372,6 +436,7 @@ class CallBloc extends Bloc<CallEvent, CallState> {
         _callStartTime = null;
         _otherUserName = '';
         _otherUserRole = AppConstants.roleUser;
+        _currentCallType = AppConstants.callTypeVoice;
       }
     }
   }
@@ -443,10 +508,35 @@ class CallBloc extends Bloc<CallEvent, CallState> {
     }
   }
 
+  Future<void> _refreshAgoraToken() async {
+    try {
+      final user = _auth.currentUser;
+      final callId = _currentCallId;
+      if (user == null || callId == null || callId.isEmpty) {
+        return;
+      }
+
+      final response = await _apiService.post(ApiEndpoints.callRefreshToken, {
+        'callId': callId,
+        'userId': user.uid,
+      });
+
+      if (response['success'] != true) return;
+      final agoraConfig = response['agoraConfig'] as Map<String, dynamic>?;
+      final token = agoraConfig?['token']?.toString();
+      if (token == null || token.isEmpty) return;
+
+      await _agoraService.renewToken(token);
+    } catch (_) {
+      // Best effort; call can continue in app-certificate-disabled mode.
+    }
+  }
+
   @override
   Future<void> close() {
     _callStateSubscription?.cancel();
     _remoteUserSubscription?.cancel();
+    _tokenExpirySubscription?.cancel();
     return super.close();
   }
 }

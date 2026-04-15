@@ -8,6 +8,7 @@ import '../bloc/call_event.dart';
 import '../bloc/call_state.dart';
 import '../../../../core/services/agora_call_service.dart' as agora;
 import '../../../../core/constants/app_constants.dart';
+import '../../../../core/services/api_service.dart';
 
 class VideoCallScreen extends StatefulWidget {
   final String callId;
@@ -29,6 +30,7 @@ class VideoCallScreen extends StatefulWidget {
 
 class _VideoCallScreenState extends State<VideoCallScreen> {
   Timer? _durationTimer;
+  Timer? _statusPollingTimer;
   Duration _callDuration = Duration.zero;
   bool _showControls = true;
   Timer? _controlsTimer;
@@ -38,6 +40,36 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
     super.initState();
     _startDurationTimer();
     _startControlsTimer();
+    _statusPollingTimer = Timer.periodic(
+      const Duration(seconds: 3),
+      (_) => _pollCallStatus(),
+    );
+  }
+
+  Future<void> _pollCallStatus() async {
+    if (!mounted) return;
+
+    try {
+      final response = await ApiService.instance.get(ApiEndpoints.callById(widget.callId));
+      if (response['success'] != true || response['call'] == null) return;
+
+      final call = response['call'] as Map<String, dynamic>;
+      final status = (call['status'] as String? ?? '').toLowerCase();
+
+      if (status == AppConstants.callStatusRejected ||
+          status == AppConstants.callStatusMissed ||
+          status == AppConstants.callStatusEnded) {
+        if (!mounted) return;
+        context.read<CallBloc>().add(
+              EndCallRequested(
+                callId: widget.callId,
+                duration: _callDuration.inSeconds,
+              ),
+            );
+      }
+    } catch (_) {
+      // Keep call UI running during transient API errors.
+    }
   }
 
   void _startDurationTimer() {
@@ -70,6 +102,7 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
   void dispose() {
     _durationTimer?.cancel();
     _controlsTimer?.cancel();
+    _statusPollingTimer?.cancel();
     super.dispose();
   }
 

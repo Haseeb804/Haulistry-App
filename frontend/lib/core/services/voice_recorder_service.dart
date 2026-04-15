@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'package:flutter_sound/flutter_sound.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -26,8 +27,56 @@ class VoiceRecorderService {
   Stream<Duration> get playbackPositionStream => _playbackPositionController.stream;
 
   String? _currentRecordingPath;
+  String? _lastTempPlaybackPath;
   Timer? _recordingTimer;
   Duration _recordingDuration = Duration.zero;
+
+  Future<String> _preparePlayablePath(String source) async {
+    if (!source.startsWith('data:audio/')) {
+      return source;
+    }
+
+    final commaIndex = source.indexOf(',');
+    if (commaIndex < 0 || commaIndex >= source.length - 1) {
+      throw Exception('Invalid audio data URL');
+    }
+
+    final header = source.substring(0, commaIndex).toLowerCase();
+    final isBase64 = header.contains(';base64');
+    if (!isBase64) {
+      throw Exception('Unsupported audio data URL encoding');
+    }
+
+    final mimeStart = 'data:'.length;
+    final mimeEnd = header.indexOf(';');
+    final mimeType = mimeEnd > mimeStart
+        ? header.substring(mimeStart, mimeEnd)
+        : 'audio/m4a';
+
+    final extension = switch (mimeType) {
+      'audio/wav' => 'wav',
+      'audio/mpeg' => 'mp3',
+      'audio/ogg' => 'ogg',
+      _ => 'm4a',
+    };
+
+    final bytes = base64Decode(source.substring(commaIndex + 1));
+    final tempDir = await getTemporaryDirectory();
+    final tempPath = '${tempDir.path}/voice_playback_${DateTime.now().millisecondsSinceEpoch}.$extension';
+    final file = File(tempPath);
+    await file.writeAsBytes(bytes, flush: true);
+
+    // Clean up previous temp playback file.
+    if (_lastTempPlaybackPath != null) {
+      final oldFile = File(_lastTempPlaybackPath!);
+      if (await oldFile.exists()) {
+        await oldFile.delete();
+      }
+    }
+    _lastTempPlaybackPath = tempPath;
+
+    return tempPath;
+  }
 
   Future<void> initialize() async {
     if (_isRecorderInitialized && _isPlayerInitialized) return;
@@ -135,9 +184,19 @@ class VoiceRecorderService {
       await _player.stopPlayer();
     }
 
+    final playablePath = await _preparePlayablePath(path);
+    final lowerPath = playablePath.toLowerCase();
+    final codec = lowerPath.endsWith('.wav')
+        ? Codec.pcm16WAV
+        : lowerPath.endsWith('.mp3')
+            ? Codec.mp3
+            : lowerPath.endsWith('.ogg')
+                ? Codec.opusOGG
+                : Codec.aacMP4;
+
     await _player.startPlayer(
-      fromURI: path,
-      codec: Codec.aacMP4,
+      fromURI: playablePath,
+      codec: codec,
       whenFinished: () {
         _playerStateController.add(PlayerState.stopped);
       },
@@ -194,6 +253,14 @@ class VoiceRecorderService {
     await _playerStateController.close();
     await _recordingDurationController.close();
     await _playbackPositionController.close();
+
+    if (_lastTempPlaybackPath != null) {
+      final tempFile = File(_lastTempPlaybackPath!);
+      if (await tempFile.exists()) {
+        await tempFile.delete();
+      }
+      _lastTempPlaybackPath = null;
+    }
 
     _isRecorderInitialized = false;
     _isPlayerInitialized = false;
