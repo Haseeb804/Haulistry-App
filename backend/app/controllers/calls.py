@@ -169,7 +169,8 @@ async def send_call_notification(
     caller_name: str,
     caller_role: str,
     call_type: str,
-    agora_config: dict
+    agora_config: dict,
+    caller_profile_image_url: Optional[str] = None,
 ):
     """Send FCM notification for incoming call"""
     try:
@@ -183,8 +184,7 @@ async def send_call_notification(
                 'callId': call_id,
                 'callerId': caller_id,
                 'callerName': caller_name,
-                'callerRole': caller_role,
-                'callType': call_type,
+                'callerRole': caller_role,                'callerProfileImageUrl': caller_profile_image_url or '',                'callType': call_type,
                 # Pass ALL Agora config fields for proper channel/token/uid coordination
                 'agoraAppId': agora_config.get('appId', ''),
                 'agoraChannel': agora_config.get('channel', ''),
@@ -377,12 +377,14 @@ async def initiate_call(request: InitiateCallRequest):
             # Always use database name as source of truth; frontend name might be 'User' fallback
             caller_name_actual = caller_data.get('name') or request.callerName or 'User'
             caller_role = request.callerRole or caller_data.get('role', 'user')
+            caller_profile_image_url = caller_data.get('profile_image_url') or request.callerProfileImageUrl
             await send_call_notification(
                 fcm_token=receiver_fcm_token,
                 call_id=call_data['id'],
                 caller_id=request.callerId,
                 caller_name=caller_name_actual,
                 caller_role=caller_role,
+                caller_profile_image_url=caller_profile_image_url,
                 call_type=request.callType,
                 agora_config=receiver_agora_config
             )

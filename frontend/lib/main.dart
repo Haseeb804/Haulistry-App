@@ -114,6 +114,7 @@ void _setupNotificationHandling() {
       }
       final callerName = data['callerName'] as String;
       final callerRole = data['callerRole'] as String? ?? AppConstants.roleUser;
+      final callerProfileImageUrl = data['callerProfileImageUrl'] as String?;
       final callType = data['callType'] as String;
       
       // Reconstruct agoraConfig from notification data with ALL required fields for proper joining
@@ -135,6 +136,7 @@ void _setupNotificationHandling() {
         'callerId': callerId,
         'callerName': callerName,
         'callerRole': callerRole,
+        'callerProfileImageUrl': callerProfileImageUrl,
         'callType': callType,
         'agoraConfig': agoraConfig,
       });

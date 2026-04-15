@@ -180,8 +180,6 @@ class CallBloc extends Bloc<CallEvent, CallState> {
       _currentCallId = event.callId;
       _currentCallType = event.agoraConfig['callType'] ?? AppConstants.callTypeVoice;
 
-
-
       final user = _auth.currentUser;
       if (user == null) {
         emit(const CallError(message: 'User not authenticated'));
@@ -209,10 +207,16 @@ class CallBloc extends Bloc<CallEvent, CallState> {
         otherUserProfileImageUrl: _otherUserProfileImageUrl,
       ));
 
-      // Initialize Agora engine with app ID
-      final appId = event.agoraConfig['appId'];
-      if (appId != null || AgoraConfig.isConfigured) {
-        await _agoraService.initialize(_resolveAgoraAppId(appId));
+      // Ensure Agora is initialized before joining
+      try {
+        final appId = event.agoraConfig['appId'];
+        final resolvedAppId = _resolveAgoraAppId(appId);
+        if (resolvedAppId.isNotEmpty) {
+          await _agoraService.initialize(resolvedAppId);
+        }
+      } catch (e) {
+        emit(CallError(message: 'Failed to initialize Agora engine: $e'));
+        return;
       }
 
       final channel = event.agoraConfig['channel']?.toString() ?? '';
@@ -222,9 +226,13 @@ class CallBloc extends Bloc<CallEvent, CallState> {
       }
 
       final uid = _parseAgoraUid(event.agoraConfig['uid'], user.uid);
-      final resolvedAppId = _resolveAgoraAppId(event.agoraConfig['appId']);
-      final token = event.agoraConfig['token'];
-      
+      final token = event.agoraConfig['token']?.toString();
+
+      if (token == null || token.isEmpty) {
+        emit(const CallError(message: 'Invalid Agora token for joining the call'));
+        return;
+      }
+
       // Join Agora channel
       if (callType == 'voice') {
         await _agoraService.joinVoiceCall(
@@ -262,14 +270,35 @@ class CallBloc extends Bloc<CallEvent, CallState> {
       // Use stored config if event config is empty
       final config = event.agoraConfig.isNotEmpty ? event.agoraConfig : (_currentAgoraConfig ?? {});
       
+      if (config.isEmpty) {
+        emit(const CallError(message: 'Missing Agora configuration for the receiver accepted call'));
+        return;
+      }
+
       final channel = config['channel']?.toString() ?? '';
       if (channel.isEmpty) {
         emit(const CallError(message: 'Missing call channel configuration'));
         return;
       }
 
-      final uid = _parseAgoraUid(config['uid'], 'caller_uid');
-      final token = config['token'];
+      // Ensure Agora is initialized before joining
+      try {
+        final appId = config['appId']?.toString() ?? '';
+        if (appId.isNotEmpty) {
+          await _agoraService.initialize(_resolveAgoraAppId(appId));
+        }
+      } catch (e) {
+        emit(CallError(message: 'Failed to initialize Agora engine: $e'));
+        return;
+      }
+
+      final uid = _parseAgoraUid(config['uid'], _auth.currentUser?.uid ?? 'unknown');
+      final token = config['token']?.toString();
+
+      if (token == null || token.isEmpty) {
+        emit(const CallError(message: 'Invalid Agora token for joining the call'));
+        return;
+      }
 
       // Join Agora channel now that receiver accepted
       if (event.callType == 'voice') {
@@ -447,6 +476,7 @@ class CallBloc extends Bloc<CallEvent, CallState> {
       String otherUserRole = _otherUserRole;
       String? otherUserProfileImageUrl = _otherUserProfileImageUrl;
 
+      // Extract metadata from current state
       if (state is CallConnecting) {
         final connectingState = state as CallConnecting;
         callId = connectingState.callId;
@@ -454,6 +484,14 @@ class CallBloc extends Bloc<CallEvent, CallState> {
         otherUserName = connectingState.otherUserName;
         otherUserRole = connectingState.otherUserRole;
         otherUserProfileImageUrl = connectingState.otherUserProfileImageUrl;
+      } else if (state is CallInitiated) {
+        // Caller case: CallInitiated has receiver info
+        final initiatedState = state as CallInitiated;
+        callId = initiatedState.callId;
+        callType = initiatedState.callType;
+        otherUserName = initiatedState.receiverName;
+        otherUserRole = initiatedState.receiverRole;
+        otherUserProfileImageUrl = initiatedState.receiverProfileImageUrl;
       }
 
       if (callId.isEmpty) {
