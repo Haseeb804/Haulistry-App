@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 import '../../../../core/constants/app_constants.dart';
 import '../../../../core/services/api_service.dart';
@@ -154,11 +155,24 @@ class _OutgoingCallScreenState extends State<OutgoingCallScreen>
     if (callId.isEmpty || callId == 'pending') return;
 
     try {
-      final response = await ApiService.instance.get(ApiEndpoints.callById(callId));
+      final user = FirebaseAuth.instance.currentUser;
+      final userId = user?.uid ?? '';
+      
+      // Include userId so backend can return caller/receiver specific config
+      final endpoint = userId.isNotEmpty 
+        ? '${ApiEndpoints.callById(callId)}?user_id=$userId'
+        : ApiEndpoints.callById(callId);
+        
+      final response = await ApiService.instance.get(endpoint);
       if (response['success'] != true || response['call'] == null) return;
 
       final call = response['call'] as Map<String, dynamic>;
       final status = (call['status'] as String? ?? '').toLowerCase();
+      
+      // Extract Agora config from response if available
+      final agoraConfig = (response['agoraConfig'] is Map<String, dynamic>)
+        ? response['agoraConfig'] as Map<String, dynamic>
+        : <String, dynamic>{};
 
       if (status == 'answered' && !_navigatedToLiveSession) {
         _navigatedToLiveSession = true;
@@ -168,7 +182,7 @@ class _OutgoingCallScreenState extends State<OutgoingCallScreen>
               CallAnswerAcceptedByReceiver(
                 callId: callId,
                 callType: widget.callType,
-                agoraConfig: const {},
+                agoraConfig: agoraConfig,  // Pass actual config from backend
               ),
             );
 

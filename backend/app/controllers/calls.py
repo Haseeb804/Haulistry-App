@@ -440,6 +440,8 @@ async def update_call_status(request: UpdateCallStatusRequest):
             )
 
         call_after = Call.get_call_by_id(request.callId) or call_before
+        
+        logger.info(f"Call status updated: callId={request.callId}, status={request.status}, updatedBy={request.userId}")
 
         # Push real-time status updates via FCM to both participants.
         if call_after:
@@ -456,27 +458,27 @@ async def update_call_status(request: UpdateCallStatusRequest):
                     or (target_user or {}).get('fcm_token')
                 ) if target_user else None
                 if not target_token:
+                    logger.warning(
+                        f"FCM token not found for status notification: callId={request.callId}, "
+                        f"status={request.status}, targetUser={target_user_id}"
+                    )
                     continue
 
-                if target_user_id == caller_id:
-                    other_name = call_after.get('receiverName') or 'User'
-                    other_role = call_after.get('receiverRole') or 'user'
-                    other_profile_image_url = call_after.get('receiverProfileImageUrl')
-                else:
-                    other_name = call_after.get('callerName') or 'User'
-                    other_role = call_after.get('callerRole') or 'user'
-                    other_profile_image_url = call_after.get('callerProfileImageUrl')
-
-                await send_call_status_notification(
+                notification_sent = await send_call_status_notification(
                     target_token,
                     call_id=request.callId,
                     status_value=request.status,
                     call_type=call_after.get('callType') or 'voice',
-                    other_user_name=other_name,
-                    other_user_role=other_role,
-                    other_user_profile_image_url=other_profile_image_url,
+                    other_user_name=call_after.get('receiverName') if target_user_id == caller_id else call_after.get('callerName') or 'User',
+                    other_user_role=call_after.get('receiverRole') if target_user_id == caller_id else call_after.get('callerRole') or 'user',
+                    other_user_profile_image_url=call_after.get('receiverProfileImageUrl') if target_user_id == caller_id else call_after.get('callerProfileImageUrl'),
                     duration=request.duration,
                 )
+                
+                if notification_sent:
+                    logger.info(f"Status notification sent: callId={request.callId}, status={request.status}, targetUser={target_user_id}")
+                else:
+                    logger.error(f"Failed to send status notification: callId={request.callId}, status={request.status}, targetUser={target_user_id}")
         
         return CallResponse(
             success=True,
@@ -486,6 +488,7 @@ async def update_call_status(request: UpdateCallStatusRequest):
     except HTTPException:
         raise
     except Exception as e:
+        logger.exception(f"Failed to update call status: callId={request.callId}, status={request.status}, error={str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to update call status: {str(e)}"
@@ -511,8 +514,8 @@ async def get_call_history(user_id: str, limit: int = 20):
 
 
 @router.get("/{call_id}", response_model=CallResponse)
-async def get_call(call_id: str):
-    """Get call details by ID"""
+async def get_call(call_id: str, user_id: Optional[str] = None):
+    """Get call details by ID (with Agora config for active/answered calls)"""
     try:
         call = Call.get_call_by_id(call_id)
         
@@ -522,10 +525,58 @@ async def get_call(call_id: str):
                 detail="Call not found"
             )
         
+        # For answered/active calls, generate fresh Agora config if caller/receiver are specified
+        call_status = (call.get('status') or '').lower()
+        if call_status in ['answered', 'initiated'] and user_id:
+            try:
+                channel = call.get('agoraChannel') or f"call_{call_id}"
+                caller_id = call.get('callerId')
+                receiver_id = call.get('receiverId')
+                
+                if user_id == caller_id:
+                    # Return caller's config with their UID
+                    caller_uid = _stable_agora_uid(caller_id)
+                    receiver_uid = _stable_agora_uid(receiver_id)
+                    while receiver_uid == caller_uid:
+                        receiver_uid = (receiver_uid % 99999) + 1
+                    
+                    token, token_expires_at = generate_agora_token(channel, caller_uid)
+                    call['agoraConfig'] = {
+                        "appId": AGORA_APP_ID,
+                        "channel": channel,
+                        "token": token or '',
+                        "uid": caller_uid,
+                        "callerUid": caller_uid,
+                        "receiverUid": receiver_uid,
+                        "tokenExpiresAt": token_expires_at,
+                        "tokenExpiresIn": AGORA_TOKEN_TTL_SECONDS if token_expires_at else None,
+                    }
+                elif user_id == receiver_id:
+                    # Return receiver's config with their UID
+                    caller_uid = _stable_agora_uid(caller_id)
+                    receiver_uid = _stable_agora_uid(receiver_id)
+                    while receiver_uid == caller_uid:
+                        receiver_uid = (receiver_uid % 99999) + 1
+                    
+                    token, token_expires_at = generate_agora_token(channel, receiver_uid)
+                    call['agoraConfig'] = {
+                        "appId": AGORA_APP_ID,
+                        "channel": channel,
+                        "token": token or '',
+                        "uid": receiver_uid,
+                        "callerUid": caller_uid,
+                        "receiverUid": receiver_uid,
+                        "tokenExpiresAt": token_expires_at,
+                        "tokenExpiresIn": AGORA_TOKEN_TTL_SECONDS if token_expires_at else None,
+                    }
+            except Exception as e:
+                logger.error(f"Failed to generate Agora config for call {call_id}: {str(e)}")
+        
         return CallResponse(
             success=True,
             message="Call retrieved successfully",
-            call=call
+            call=call,
+            agoraConfig=call.get('agoraConfig')
         )
     
     except HTTPException:
