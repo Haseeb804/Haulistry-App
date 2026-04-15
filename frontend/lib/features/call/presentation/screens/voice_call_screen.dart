@@ -92,6 +92,15 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> {
     return '$twoDigitMinutes:$twoDigitSeconds';
   }
 
+  String _resolveActiveCallId(CallState state) {
+    return switch (state) {
+      CallConnecting s => s.callId,
+      CallConnected s => s.callId,
+      CallEnded s => s.callId,
+      _ => widget.callId,
+    };
+  }
+
   @override
   Widget build(BuildContext context) {
     return BlocListener<CallBloc, CallState>(
@@ -200,9 +209,10 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> {
                         padding: const EdgeInsets.all(48.0),
                         child: FloatingActionButton.extended(
                           onPressed: () {
+                            final activeCallId = _resolveActiveCallId(context.read<CallBloc>().state);
                             context.read<CallBloc>().add(
                                   EndCallRequested(
-                                    callId: widget.callId,
+                                    callId: activeCallId,
                                     duration: _callDuration.inSeconds,
                                   ),
                                 );
@@ -358,9 +368,10 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> {
                           // End Call Button
                           FloatingActionButton.extended(
                             onPressed: () {
+                                  final activeCallId = _resolveActiveCallId(context.read<CallBloc>().state);
                               context.read<CallBloc>().add(
                                     EndCallRequested(
-                                      callId: widget.callId,
+                                      callId: activeCallId,
                                       duration: _callDuration.inSeconds,
                                     ),
                                   );

@@ -7,6 +7,7 @@ import '../../../../core/services/agora_call_service.dart' as agora;
 import '../../../../core/services/api_service.dart';
 import '../../../../core/services/notification_service.dart';
 import '../../../../core/constants/app_constants.dart';
+import '../../../../core/constants/agora_config.dart';
 
 class CallBloc extends Bloc<CallEvent, CallState> {
   final agora.AgoraCallService _agoraService;
@@ -96,6 +97,14 @@ class CallBloc extends Bloc<CallEvent, CallState> {
     return _deriveFallbackUid(fallbackUserId);
   }
 
+  String _resolveAgoraAppId(dynamic rawAppId) {
+    final appId = rawAppId?.toString().trim() ?? '';
+    if (appId.isNotEmpty && appId != 'your_agora_app_id') {
+      return appId;
+    }
+    return AgoraConfig.appId;
+  }
+
   Future<void> _onInitiateCallRequested(
     InitiateCallRequested event,
     Emitter<CallState> emit,
@@ -150,20 +159,28 @@ class CallBloc extends Bloc<CallEvent, CallState> {
           otherUserProfileImageUrl: _otherUserProfileImageUrl,
         ));
 
+        final channel = agoraConfig['channel']?.toString() ?? '';
+        if (channel.isEmpty) {
+          emit(const CallError(message: 'Missing call channel configuration'));
+          return;
+        }
+
+        final uid = _parseAgoraUid(agoraConfig['uid'], user.uid);
+
         // Initialize Agora engine with app ID
-        await _agoraService.initialize(agoraConfig['appId']);
+        await _agoraService.initialize(_resolveAgoraAppId(agoraConfig['appId']));
 
         // Join Agora channel
         if (event.callType == 'voice') {
           await _agoraService.joinVoiceCall(
-            channel: agoraConfig['channel'],
-            uid: agoraConfig['uid'],
+            channel: channel,
+            uid: uid,
             token: agoraConfig['token'],
           );
         } else {
           await _agoraService.joinVideoCall(
-            channel: agoraConfig['channel'],
-            uid: agoraConfig['uid'],
+            channel: channel,
+            uid: uid,
             token: agoraConfig['token'],
           );
         }
@@ -212,8 +229,8 @@ class CallBloc extends Bloc<CallEvent, CallState> {
 
       // Initialize Agora engine with app ID
       final appId = event.agoraConfig['appId'];
-      if (appId != null) {
-        await _agoraService.initialize(appId);
+      if (appId != null || AgoraConfig.isConfigured) {
+        await _agoraService.initialize(_resolveAgoraAppId(appId));
       }
 
       final channel = event.agoraConfig['channel']?.toString() ?? '';
@@ -249,19 +266,26 @@ class CallBloc extends Bloc<CallEvent, CallState> {
   ) async {
     try {
       // Leave Agora channel
-      await _agoraService.leaveChannel();
+      try {
+        await _agoraService.leaveChannel();
+      } catch (_) {
+        // Continue local teardown even if engine/channel already gone.
+      }
 
       // Cancel call notification
       await NotificationService().cancelCallNotification(event.callId);
 
-      // Update call status
+      // Update call status when we have a valid persisted call id.
+      final canUpdateBackend = event.callId.isNotEmpty && event.callId != 'pending';
       final user = _auth.currentUser;
-      await _apiService.post(ApiEndpoints.callUpdateStatus, {
-        'callId': event.callId,
-        'status': 'ended',
-        'duration': event.duration,
-        if (user != null) 'userId': user.uid,
-      });
+      if (canUpdateBackend) {
+        await _apiService.post(ApiEndpoints.callUpdateStatus, {
+          'callId': event.callId,
+          'status': 'ended',
+          'duration': event.duration,
+          if (user != null) 'userId': user.uid,
+        });
+      }
 
       emit(CallEnded(
         callId: event.callId,
@@ -274,6 +298,7 @@ class CallBloc extends Bloc<CallEvent, CallState> {
       _otherUserName = '';
       _otherUserRole = AppConstants.roleUser;
       _currentCallType = AppConstants.callTypeVoice;
+      _pendingRemoteUid = null;
     } catch (e) {
       emit(CallError(message: 'Failed to end call: $e'));
     }
