@@ -35,11 +35,25 @@ _rtc_token_builder = None
 
 
 def _is_placeholder_app_id(app_id: str) -> bool:
-    return not app_id or app_id == "your_agora_app_id"
+    normalized = (app_id or "").strip().lower()
+    return (
+        not normalized
+        or normalized.startswith("your_agora_app_id")
+        or normalized in {"your_app_id", "agora_app_id", "placeholder"}
+    )
+
+
+def _is_placeholder_certificate(certificate: str) -> bool:
+    normalized = (certificate or "").strip().lower()
+    return (
+        not normalized
+        or normalized.startswith("your_agora_app_certificate")
+        or normalized in {"your_certificate", "agora_app_certificate", "placeholder"}
+    )
 
 
 def _token_required() -> bool:
-    return bool(AGORA_APP_CERTIFICATE) and not _is_placeholder_app_id(AGORA_APP_ID)
+    return (not _is_placeholder_certificate(AGORA_APP_CERTIFICATE)) and (not _is_placeholder_app_id(AGORA_APP_ID))
 
 
 def _get_rtc_token_builder():
@@ -138,14 +152,11 @@ def generate_agora_token(channel_name: str, uid: int, role: int = 1) -> tuple[Op
     """
     Generate Agora RTC token
     role: 1 = publisher (can send/receive), 2 = subscriber (receive only)
-    
-    Note: For production, implement proper token generation with Agora AccessToken library
-    For now, if no certificate is configured, Agora can work in testing mode without tokens
     """
     rtc_token_builder = _get_rtc_token_builder()
 
     if not _token_required() or rtc_token_builder is None:
-        return None, None  # Testing mode, no token needed
+        return None, None
 
     privilege_expired_ts = int(time.time()) + AGORA_TOKEN_TTL_SECONDS
     try:
@@ -268,13 +279,6 @@ async def initiate_call(request: InitiateCallRequest):
     try:
         from ..models.user import User
 
-        logger.info(
-            "Call initiate requested: booking=%s token_required=%s token_builder_available=%s",
-            request.bookingId,
-            _token_required(),
-            _get_rtc_token_builder() is not None,
-        )
-        
         # Generate unique channel name using UUID (much better than timestamp-based)
         # Format: call_booking_uuid
         channel_name = f"call_{request.bookingId}_{uuid.uuid4().hex[:8]}"
@@ -346,13 +350,6 @@ async def initiate_call(request: InitiateCallRequest):
             "receiverUid": receiver_uid,
             "tokenExpiresAt": caller_token_expires_at,
             "tokenExpiresIn": AGORA_TOKEN_TTL_SECONDS if caller_token_expires_at else None,
-            "_debug": {
-                "token_required": _token_required(),
-                "token_builder_available": _get_rtc_token_builder() is not None,
-                "token_generated": caller_token is not None,
-                "app_id_set": not _is_placeholder_app_id(AGORA_APP_ID),
-                "app_id_length": len(AGORA_APP_ID),
-            },
         }
 
         receiver_agora_config = {
@@ -364,13 +361,6 @@ async def initiate_call(request: InitiateCallRequest):
             "receiverUid": receiver_uid,
             "tokenExpiresAt": receiver_token_expires_at,
             "tokenExpiresIn": AGORA_TOKEN_TTL_SECONDS if receiver_token_expires_at else None,
-            "_debug": {
-                "token_required": _token_required(),
-                "token_builder_available": _get_rtc_token_builder() is not None,
-                "token_generated": receiver_token is not None,
-                "app_id_set": not _is_placeholder_app_id(AGORA_APP_ID),
-                "app_id_length": len(AGORA_APP_ID),
-            },
         }
         
         # Send FCM notification to receiver if token provided
@@ -535,13 +525,6 @@ async def get_call(call_id: str):
 async def refresh_call_token(request: RefreshCallTokenRequest):
     """Refresh Agora token for an existing call participant (REST signaling)."""
     try:
-        logger.info(
-            "Call token refresh requested: callId=%s token_required=%s token_builder_available=%s",
-            request.callId,
-            _token_required(),
-            _get_rtc_token_builder() is not None,
-        )
-
         call = Call.get_call_by_id(request.callId)
         if not call:
             raise HTTPException(
@@ -583,13 +566,6 @@ async def refresh_call_token(request: RefreshCallTokenRequest):
             "receiverUid": _stable_agora_uid(str(receiver_id)) if receiver_id else None,
             "tokenExpiresAt": token_expires_at,
             "tokenExpiresIn": AGORA_TOKEN_TTL_SECONDS if token_expires_at else None,
-            "_debug": {
-                "token_required": _token_required(),
-                "token_builder_available": _get_rtc_token_builder() is not None,
-                "token_generated": token is not None,
-                "app_id_set": not _is_placeholder_app_id(AGORA_APP_ID),
-                "app_id_length": len(AGORA_APP_ID),
-            },
         }
 
         return CallResponse(
@@ -757,7 +733,7 @@ async def get_unread_count(user_id: str):
 
 @router.get("/config-check")
 async def check_config():
-    """Diagnostic endpoint to verify Agora backend configuration (safe, no secrets)."""
+    """Return sanitized Agora configuration status."""
     return {
         "success": True,
         "config": {

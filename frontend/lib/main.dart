@@ -86,7 +86,7 @@ void main() async {
 
 void _setupNotificationHandling() {
   NotificationService().notificationStream.listen((data) {
-    final type = data['type'];
+    final type = data['type']?.toString();
     final tapped = data['tapped'] ?? false;
 
     if (type == 'booking_accepted' ||
@@ -105,28 +105,56 @@ void _setupNotificationHandling() {
 
     if (type == NotificationService.notificationTypeCall) {
       // Handle incoming call notification
-      final callId = data['callId'] as String;
-      final callerId = data['callerId'] as String;
+      final callId = data['callId']?.toString() ?? '';
+      final callerId = data['callerId']?.toString() ?? '';
+      if (callId.isEmpty || callerId.isEmpty) {
+      // Ignore malformed payloads instead of throwing and killing the stream listener.
+      return;
+      }
       final currentUserId = FirebaseAuth.instance.currentUser?.uid;
       if (currentUserId != null && callerId == currentUserId) {
         // Defensive guard: ignore call notifications that loop back to sender.
         return;
       }
-      final callerName = data['callerName'] as String;
-      final callerRole = data['callerRole'] as String? ?? AppConstants.roleUser;
-      final callerProfileImageUrl = data['callerProfileImageUrl'] as String?;
-      final callType = data['callType'] as String;
+      final callerName = data['callerName']?.toString() ?? 'User';
+      final callerRole = data['callerRole']?.toString() ?? AppConstants.roleUser;
+      final callerProfileImageUrl = data['callerProfileImageUrl']?.toString();
+      final callType = data['callType']?.toString() ?? AppConstants.callTypeVoice;
+
+      final nestedAgoraConfig =
+        (data['agoraConfig'] is Map<String, dynamic>)
+          ? data['agoraConfig'] as Map<String, dynamic>
+          : <String, dynamic>{};
+
+      final appIdRaw =
+        nestedAgoraConfig['appId'] ?? data['agoraAppId'] ?? '';
+      final channelRaw =
+        nestedAgoraConfig['channel'] ?? data['agoraChannel'] ?? '';
+      final tokenRaw =
+        nestedAgoraConfig['token'] ?? data['agoraToken'] ?? '';
+      final uidRaw =
+        nestedAgoraConfig['uid'] ?? data['agoraUid'] ?? '0';
+      final callerUidRaw =
+        nestedAgoraConfig['callerUid'] ?? data['agoraCallerUid'] ?? '0';
+      final receiverUidRaw =
+        nestedAgoraConfig['receiverUid'] ?? data['agoraReceiverUid'] ?? '0';
+      final tokenExpiresAtRaw =
+        nestedAgoraConfig['tokenExpiresAt'] ?? data['agoraTokenExpiresAt'] ?? '0';
+      final tokenExpiresInRaw =
+        nestedAgoraConfig['tokenExpiresIn'] ?? data['agoraTokenExpiresIn'];
       
       // Reconstruct agoraConfig from notification data with ALL required fields for proper joining
       final agoraConfig = {
-        'appId': data['agoraAppId']?.toString() ?? '',
-        'channel': data['agoraChannel']?.toString() ?? '',
-        'token': data['agoraToken']?.toString() ?? '',
-        'uid': int.tryParse(data['agoraUid']?.toString() ?? '0') ?? 0,
-        'callerUid': int.tryParse(data['agoraCallerUid']?.toString() ?? '0') ?? 0,
-        'receiverUid': int.tryParse(data['agoraReceiverUid']?.toString() ?? '0') ?? 0,
-        'tokenExpiresAt': int.tryParse(data['agoraTokenExpiresAt']?.toString() ?? '0') ?? 0,
-        'tokenExpiresIn': int.tryParse(data['agoraTokenExpiresIn']?.toString() ?? '0'),
+      'appId': appIdRaw.toString(),
+      'channel': channelRaw.toString(),
+      'token': tokenRaw.toString(),
+      'uid': int.tryParse(uidRaw.toString()) ?? 0,
+      'callerUid': int.tryParse(callerUidRaw.toString()) ?? 0,
+      'receiverUid': int.tryParse(receiverUidRaw.toString()) ?? 0,
+      'tokenExpiresAt': int.tryParse(tokenExpiresAtRaw.toString()) ?? 0,
+      'tokenExpiresIn': tokenExpiresInRaw == null
+        ? null
+        : int.tryParse(tokenExpiresInRaw.toString()),
         'callType': callType,
       };
 

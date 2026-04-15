@@ -194,7 +194,14 @@ class CallBloc extends Bloc<CallEvent, CallState> {
 
   String _resolveAgoraAppId(dynamic rawAppId) {
     final appId = rawAppId?.toString().trim() ?? '';
-    if (appId.isNotEmpty && appId != 'your_agora_app_id') {
+    final normalized = appId.toLowerCase();
+    final looksPlaceholder =
+        normalized.isEmpty ||
+        normalized == 'your_agora_app_id' ||
+        normalized.startsWith('your_agora_app_id') ||
+        normalized == 'your_app_id' ||
+        normalized == 'placeholder';
+    if (!looksPlaceholder) {
       return appId;
     }
     return AgoraConfig.appId;
@@ -334,11 +341,6 @@ class CallBloc extends Bloc<CallEvent, CallState> {
       final uid = _parseAgoraUid(event.agoraConfig['uid'], user.uid);
       final token = event.agoraConfig['token']?.toString();
 
-      if (token == null || token.isEmpty) {
-        emit(const CallError(message: 'Invalid Agora token for joining the call'));
-        return;
-      }
-
       // Join Agora channel
       if (callType == 'voice') {
         await _agoraService.joinVoiceCall(
@@ -402,11 +404,6 @@ class CallBloc extends Bloc<CallEvent, CallState> {
 
       final uid = _parseAgoraUid(config['uid'], _auth.currentUser?.uid ?? 'unknown');
       final token = config['token']?.toString();
-
-      if (token == null || token.isEmpty) {
-        emit(const CallError(message: 'Invalid Agora token for joining the call'));
-        return;
-      }
 
       // Join Agora channel now that receiver accepted
       if (event.callType == 'voice') {

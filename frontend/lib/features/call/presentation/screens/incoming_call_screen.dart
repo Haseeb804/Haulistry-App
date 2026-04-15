@@ -159,20 +159,13 @@ class IncomingCallScreen extends StatelessWidget {
                         label: 'Accept',
                         backgroundColor: Colors.green,
                         onPressed: () {
-                          // Only emit the event; let BlocListener handle navigation
+                          // Emit answer request; navigate only when BLoC reaches CallConnecting.
                           context.read<CallBloc>().add(
                                 AnswerCallRequested(
                                   callId: callId,
                                   agoraConfig: agoraConfig,
                                 ),
                               );
-                          context.go(route, extra: {
-                            'callId': callId,
-                            'otherUserId': callerId,
-                            'otherUserName': callerName,
-                            'otherUserRole': callerRole,
-                            'otherUserProfileImageUrl': callerProfileImageUrl,
-                          });
                         },
                       ),
                     ],

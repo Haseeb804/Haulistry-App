@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -179,18 +180,27 @@ class NotificationService {
   }
 
   String _encodePayload(Map<String, dynamic> data) {
-    return data.entries.map((e) => '${e.key}=${e.value}').join('&');
+    return jsonEncode(data);
   }
 
   Map<String, dynamic> _decodePayload(String payload) {
-    final map = <String, dynamic>{};
-    for (var pair in payload.split('&')) {
-      final parts = pair.split('=');
-      if (parts.length == 2) {
-        map[parts[0]] = parts[1];
+    try {
+      final decoded = jsonDecode(payload);
+      if (decoded is Map<String, dynamic>) {
+        return decoded;
       }
+      return const <String, dynamic>{};
+    } catch (_) {
+      // Backward-compatible fallback for old key=value&... payloads.
+      final map = <String, dynamic>{};
+      for (var pair in payload.split('&')) {
+        final parts = pair.split('=');
+        if (parts.length == 2) {
+          map[parts[0]] = parts[1];
+        }
+      }
+      return map;
     }
-    return map;
   }
 
   // Show local notification
