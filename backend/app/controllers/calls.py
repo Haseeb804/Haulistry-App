@@ -13,24 +13,47 @@ import hashlib
 import base64
 import time
 import logging
+import importlib
 from ..models.call import Call
 from ..models.voice_message import VoiceMessage
 from firebase_admin import messaging
 from ..constants import LIVE_COMMUNICATION_STATUSES
-
-try:
-    from agora_token_builder import RtcTokenBuilder
-except Exception:  # pragma: no cover - optional dependency in local dev
-    RtcTokenBuilder = None
 
 router = APIRouter(prefix="/calls", tags=["calls"])
 logger = logging.getLogger(__name__)
 
 
 # Agora credentials (should be in environment variables)
-AGORA_APP_ID = os.getenv("AGORA_APP_ID", "your_agora_app_id")
-AGORA_APP_CERTIFICATE = os.getenv("AGORA_APP_CERTIFICATE", "")
-AGORA_TOKEN_TTL_SECONDS = int(os.getenv("AGORA_TOKEN_TTL_SECONDS", "3600"))
+AGORA_APP_ID = os.getenv("AGORA_APP_ID", "your_agora_app_id").strip()
+AGORA_APP_CERTIFICATE = os.getenv("AGORA_APP_CERTIFICATE", "").strip()
+try:
+    AGORA_TOKEN_TTL_SECONDS = int((os.getenv("AGORA_TOKEN_TTL_SECONDS", "3600") or "3600").strip())
+except ValueError:
+    AGORA_TOKEN_TTL_SECONDS = 3600
+
+_rtc_token_builder = None
+
+
+def _is_placeholder_app_id(app_id: str) -> bool:
+    return not app_id or app_id == "your_agora_app_id"
+
+
+def _token_required() -> bool:
+    return bool(AGORA_APP_CERTIFICATE) and not _is_placeholder_app_id(AGORA_APP_ID)
+
+
+def _get_rtc_token_builder():
+    global _rtc_token_builder
+    if _rtc_token_builder is not None:
+        return _rtc_token_builder
+
+    try:
+        module = importlib.import_module("agora_token_builder")
+        _rtc_token_builder = getattr(module, "RtcTokenBuilder", None)
+    except Exception:
+        _rtc_token_builder = None
+
+    return _rtc_token_builder
 
 
 # Request Models
@@ -118,17 +141,14 @@ def generate_agora_token(channel_name: str, uid: int, role: int = 1) -> tuple[Op
     Note: For production, implement proper token generation with Agora AccessToken library
     For now, if no certificate is configured, Agora can work in testing mode without tokens
     """
-    if (
-        not AGORA_APP_CERTIFICATE
-        or not AGORA_APP_ID
-        or AGORA_APP_ID == "your_agora_app_id"
-        or RtcTokenBuilder is None
-    ):
+    rtc_token_builder = _get_rtc_token_builder()
+
+    if not _token_required() or rtc_token_builder is None:
         return None, None  # Testing mode, no token needed
 
     privilege_expired_ts = int(time.time()) + AGORA_TOKEN_TTL_SECONDS
     try:
-        token = RtcTokenBuilder.buildTokenWithUid(
+        token = rtc_token_builder.buildTokenWithUid(
             AGORA_APP_ID,
             AGORA_APP_CERTIFICATE,
             channel_name,
@@ -137,8 +157,8 @@ def generate_agora_token(channel_name: str, uid: int, role: int = 1) -> tuple[Op
             privilege_expired_ts,
         )
         return token, privilege_expired_ts
-    except Exception as exc:
-        logger.exception("Failed to generate Agora token", exc_info=exc)
+    except Exception:
+        logger.exception("Failed to generate Agora token")
         return None, None
 
 
@@ -242,6 +262,13 @@ async def initiate_call(request: InitiateCallRequest):
     """Initiate a new call"""
     try:
         from ..models.user import User
+
+        logger.info(
+            "Call initiate requested: booking=%s token_required=%s token_builder_available=%s",
+            request.bookingId,
+            _token_required(),
+            _get_rtc_token_builder() is not None,
+        )
         
         # Generate unique channel name using UUID (much better than timestamp-based)
         # Format: call_booking_uuid
@@ -259,6 +286,12 @@ async def initiate_call(request: InitiateCallRequest):
         # Generate Agora tokens (per-user token is required when certificate is enabled)
         caller_token, caller_token_expires_at = generate_agora_token(channel_name, caller_uid)
         receiver_token, receiver_token_expires_at = generate_agora_token(channel_name, receiver_uid)
+
+        if _token_required() and (not caller_token or not receiver_token):
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Agora token generation failed. Verify AGORA_APP_ID, AGORA_APP_CERTIFICATE, and server dependency setup."
+            )
         
         # Fetch caller and receiver details including phone numbers
         caller_data = User.get_by_id(request.callerId)
@@ -472,6 +505,13 @@ async def get_call(call_id: str):
 async def refresh_call_token(request: RefreshCallTokenRequest):
     """Refresh Agora token for an existing call participant (REST signaling)."""
     try:
+        logger.info(
+            "Call token refresh requested: callId=%s token_required=%s token_builder_available=%s",
+            request.callId,
+            _token_required(),
+            _get_rtc_token_builder() is not None,
+        )
+
         call = Call.get_call_by_id(request.callId)
         if not call:
             raise HTTPException(
@@ -497,6 +537,12 @@ async def refresh_call_token(request: RefreshCallTokenRequest):
 
         uid = _stable_agora_uid(request.userId)
         token, token_expires_at = generate_agora_token(channel_name, uid)
+
+        if _token_required() and not token:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Agora token refresh failed. Verify AGORA_APP_ID, AGORA_APP_CERTIFICATE, and server dependency setup."
+            )
 
         agora_config = {
             "appId": AGORA_APP_ID,
