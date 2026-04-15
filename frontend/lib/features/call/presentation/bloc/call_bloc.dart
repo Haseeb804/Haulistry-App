@@ -78,6 +78,60 @@ class CallBloc extends Bloc<CallEvent, CallState> {
   void _setupNotificationListener() {
     _notificationSubscription = NotificationService().notificationStream.listen((data) {
       final type = data['type']?.toString();
+      
+      // Handle incoming call notifications
+      if (type == 'call') {
+        final callId = data['callId']?.toString() ?? '';
+        final callerId = data['callerId']?.toString() ?? '';
+        if (callId.isEmpty || callerId.isEmpty) {
+          return; // Ignore malformed payloads
+        }
+        
+        final callerName = data['callerName']?.toString() ?? 'User';
+        final callerRole = data['callerRole']?.toString() ?? AppConstants.roleUser;
+        final callerProfileImageUrl = data['callerProfileImageUrl']?.toString();
+        final callType = data['callType']?.toString() ?? AppConstants.callTypeVoice;
+
+        // Reconstruct agoraConfig from notification data
+        final nestedAgoraConfig =
+          (data['agoraConfig'] is Map<String, dynamic>)
+            ? data['agoraConfig'] as Map<String, dynamic>
+            : <String, dynamic>{};
+
+        final appIdRaw = nestedAgoraConfig['appId'] ?? data['agoraAppId'] ?? '';
+        final channelRaw = nestedAgoraConfig['channel'] ?? data['agoraChannel'] ?? '';
+        final tokenRaw = nestedAgoraConfig['token'] ?? data['agoraToken'] ?? '';
+        final uidRaw = nestedAgoraConfig['uid'] ?? data['agoraUid'] ?? '0';
+        final callerUidRaw = nestedAgoraConfig['callerUid'] ?? data['agoraCallerUid'] ?? '0';
+        final receiverUidRaw = nestedAgoraConfig['receiverUid'] ?? data['agoraReceiverUid'] ?? '0';
+        final tokenExpiresAtRaw = nestedAgoraConfig['tokenExpiresAt'] ?? data['agoraTokenExpiresAt'] ?? '0';
+        final tokenExpiresInRaw = nestedAgoraConfig['tokenExpiresIn'] ?? data['agoraTokenExpiresIn'];
+
+        final agoraConfig = {
+          'appId': appIdRaw.toString(),
+          'channel': channelRaw.toString(),
+          'token': tokenRaw.toString(),
+          'uid': int.tryParse(uidRaw.toString()) ?? 0,
+          'callerUid': int.tryParse(callerUidRaw.toString()) ?? 0,
+          'receiverUid': int.tryParse(receiverUidRaw.toString()) ?? 0,
+          'tokenExpiresAt': int.tryParse(tokenExpiresAtRaw.toString()) ?? 0,
+          'tokenExpiresIn': tokenExpiresInRaw == null
+            ? null
+            : int.tryParse(tokenExpiresInRaw.toString()),
+        };
+
+        add(IncomingCallReceived(
+          callId: callId,
+          callerId: callerId,
+          callerName: callerName,
+          callerRole: callerRole,
+          callerProfileImageUrl: callerProfileImageUrl,
+          callType: callType,
+          agoraConfig: agoraConfig,
+        ));
+        return;
+      }
+      
       if (type != 'call_status') return;
 
       final callId = data['callId']?.toString() ?? '';

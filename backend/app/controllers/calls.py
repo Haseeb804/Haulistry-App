@@ -196,7 +196,9 @@ async def send_call_notification(
                 'callId': call_id,
                 'callerId': caller_id,
                 'callerName': caller_name,
-                'callerRole': caller_role,                'callerProfileImageUrl': caller_profile_image_url or '',                'callType': call_type,
+                'callerRole': caller_role,
+                'callerProfileImageUrl': caller_profile_image_url or '',
+                'callType': call_type,
                 # Pass ALL Agora config fields for proper channel/token/uid coordination
                 'agoraAppId': agora_config.get('appId', ''),
                 'agoraChannel': agora_config.get('channel', ''),
@@ -229,9 +231,11 @@ async def send_call_notification(
             token=fcm_token,
         )
         
-        messaging.send(message)
+        message_id = messaging.send(message)
+        logger.info(f"Call notification sent successfully: callId={call_id}, messageId={message_id}, receiverToken={fcm_token[:20]}...")
         return True
-    except Exception:
+    except Exception as e:
+        logger.error(f"Failed to send call notification: callId={call_id}, caller={caller_id}, error={str(e)}", exc_info=True)
         return False
 
 
@@ -369,7 +373,13 @@ async def initiate_call(request: InitiateCallRequest):
             receiver_data.get('fcmToken')
             or receiver_data.get('fcm_token')
         )
-        if receiver_fcm_token:
+        
+        if not receiver_fcm_token:
+            logger.warning(
+                f"Receiver FCM token not found for incoming call: callId={call_data['id']}, "
+                f"caller={request.callerId}, receiver={request.receiverId}"
+            )
+        else:
             # Always use database name as source of truth; frontend name might be 'User' fallback
             caller_name_actual = caller_data.get('name') or request.callerName or 'User'
             caller_role = request.callerRole or caller_data.get('role', 'user')
@@ -378,7 +388,7 @@ async def initiate_call(request: InitiateCallRequest):
                 or caller_data.get('profile_image_url')
                 or request.callerProfileImageUrl
             )
-            await send_call_notification(
+            notification_sent = await send_call_notification(
                 fcm_token=receiver_fcm_token,
                 call_id=call_data['id'],
                 caller_id=request.callerId,
@@ -388,6 +398,12 @@ async def initiate_call(request: InitiateCallRequest):
                 call_type=request.callType,
                 agora_config=receiver_agora_config
             )
+            
+            if not notification_sent:
+                logger.error(
+                    f"Failed to send call notification for incoming call: callId={call_data['id']}, "
+                    f"caller={request.callerId}, receiver={request.receiverId}"
+                )
 
         # Return call data with Agora config
         return CallResponse(
