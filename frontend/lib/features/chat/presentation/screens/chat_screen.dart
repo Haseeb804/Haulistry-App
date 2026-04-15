@@ -11,6 +11,7 @@ import '../../../../core/constants/app_constants.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/utils/image_helper.dart';
 import '../../../../core/utils/cross_platform_image_picker.dart';
+import '../../../../core/utils/call_identity_resolver.dart';
 import '../../../../core/services/api_service.dart';
 import '../bloc/chat_bloc.dart';
 import '../bloc/chat_event.dart';
@@ -50,6 +51,7 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _isSending = false;
   bool _isCommunicationAllowed = false;
   bool _isCheckingCommunication = true;
+  CallParticipantIdentity? _resolvedOtherUser;
   bool _isBackendMessagesLoading = false;
   String? _backendMessagesError;
   List<ChatMessage> _backendMessages = const [];
@@ -90,6 +92,7 @@ class _ChatScreenState extends State<ChatScreen> {
   @override
   void initState() {
     super.initState();
+    _resolveOtherUserIdentity();
     if (!_useBackendMessaging) {
       context
         .read<ChatBloc>()
@@ -118,6 +121,37 @@ class _ChatScreenState extends State<ChatScreen> {
       );
     }
   }
+
+  Future<void> _resolveOtherUserIdentity() async {
+    final resolved = await CallIdentityResolver.resolveParticipant(
+      userId: widget.otherUserId,
+      fallbackName: widget.otherUserName,
+      fallbackRole: widget.otherUserRole,
+      fallbackProfileImageUrl: widget.otherUserImage,
+      defaultLabel: 'User',
+    );
+
+    if (!mounted) return;
+    setState(() {
+      _resolvedOtherUser = resolved;
+    });
+  }
+
+  String get _displayOtherUserName => CallIdentityResolver.resolveDisplayName(
+        preferredName: _resolvedOtherUser?.displayName,
+        fallbackName: widget.otherUserName,
+        defaultLabel: 'User',
+      );
+
+  String get _displayOtherUserRole => CallIdentityResolver.resolveRole(
+        preferredRole: _resolvedOtherUser?.role,
+        fallbackRole: widget.otherUserRole,
+      );
+
+  String? get _displayOtherUserImage => CallIdentityResolver.resolveProfileImageUrl(
+        preferredImageUrl: _resolvedOtherUser?.profileImageUrl,
+        fallbackImageUrl: widget.otherUserImage,
+      );
 
   Future<void> _checkCommunicationPermission() async {
     if (widget.bookingId == null || widget.bookingId!.isEmpty) {
@@ -297,9 +331,9 @@ class _ChatScreenState extends State<ChatScreen> {
     context.read<CallBloc>().add(
           InitiateCallRequested(
             receiverId: widget.otherUserId,
-            receiverName: widget.otherUserName,
-            receiverRole: receiverRole,
-            receiverProfileImageUrl: widget.otherUserImage,
+            receiverName: _displayOtherUserName,
+            receiverRole: _displayOtherUserRole,
+            receiverProfileImageUrl: _displayOtherUserImage,
             bookingId: bookingId,
             callType: callType,
           ),
@@ -309,9 +343,9 @@ class _ChatScreenState extends State<ChatScreen> {
     context.push(AppRoutes.callOutgoing, extra: {
       'callId': 'pending', // Will be set by bloc
       'receiverId': widget.otherUserId,
-      'receiverName': widget.otherUserName,
-      'receiverRole': receiverRole,
-      'receiverProfileImageUrl': widget.otherUserImage,
+      'receiverName': _displayOtherUserName,
+      'receiverRole': _displayOtherUserRole,
+      'receiverProfileImageUrl': _displayOtherUserImage,
       'callType': callType,
     });
   }
@@ -518,10 +552,10 @@ class _ChatScreenState extends State<ChatScreen> {
                 child: CircleAvatar(
                   radius: 18,
                   backgroundColor: AppTheme.primaryColor.withOpacity(0.1),
-                  backgroundImage: ImageHelper.providerFor(widget.otherUserImage),
-                  child: widget.otherUserImage == null
+                  backgroundImage: ImageHelper.providerFor(_displayOtherUserImage),
+                  child: _displayOtherUserImage == null
                       ? Text(
-                          widget.otherUserName[0].toUpperCase(),
+                          _displayOtherUserName.isNotEmpty ? _displayOtherUserName[0].toUpperCase() : 'U',
                           style: const TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.bold,
@@ -538,7 +572,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    widget.otherUserName,
+                    _displayOtherUserName,
                     style: const TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.bold,
@@ -548,8 +582,8 @@ class _ChatScreenState extends State<ChatScreen> {
                     overflow: TextOverflow.ellipsis,
                   ),
                   Text(
-                    widget.otherUserRole != null && widget.otherUserRole!.isNotEmpty && widget.otherUserRole != AppConstants.roleUser
-                        ? widget.otherUserRole![0].toUpperCase() + widget.otherUserRole!.substring(1)
+                    _displayOtherUserRole.isNotEmpty && _displayOtherUserRole != AppConstants.roleUser
+                        ? _displayOtherUserRole[0].toUpperCase() + _displayOtherUserRole.substring(1)
                         : 'Online',
                     style: const TextStyle(
                       fontSize: 12,

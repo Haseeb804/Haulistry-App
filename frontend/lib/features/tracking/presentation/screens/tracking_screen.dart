@@ -98,7 +98,7 @@ class _TrackingScreenState extends State<TrackingScreen> {
     return CallIdentityResolver.resolveDisplayName(
       preferredName: _cachedProviderName,
       fallbackName: widget.providerName,
-      defaultLabel: _cachedProviderId ?? widget.providerId,
+      defaultLabel: 'Provider',
     );
   }
 
@@ -213,7 +213,7 @@ class _TrackingScreenState extends State<TrackingScreen> {
             fallbackName: _cachedProviderName,
             fallbackRole: AppConstants.roleProvider,
             fallbackProfileImageUrl: _cachedProviderProfileImageUrl,
-            defaultLabel: widget.providerId,
+            defaultLabel: 'Provider',
           );
           _cachedProviderName = resolved.displayName;
           _cachedProviderProfileImageUrl = resolved.profileImageUrl;

@@ -269,7 +269,8 @@ class Booking:
             MERGE (b)-[:USES_VEHICLE]->(v)
         )
         WITH b, provider
-        OPTIONAL MATCH (seeker:User {id: b.seekerId})
+        OPTIONAL MATCH (seeker)
+        WHERE (seeker:Seeker OR seeker:Provider OR seeker:User) AND seeker.id = b.seekerId
         RETURN b, seeker.name as seekerName, provider.name as providerName
         """
         
@@ -356,8 +357,10 @@ class Booking:
         """Get booking by ID"""
         query = """
         MATCH (b:Booking {id: $bookingId})
-        OPTIONAL MATCH (seeker:User {id: b.seekerId})
-        OPTIONAL MATCH (provider:User {id: b.providerId})
+        OPTIONAL MATCH (seeker)
+        WHERE (seeker:Seeker OR seeker:Provider OR seeker:User) AND seeker.id = b.seekerId
+        OPTIONAL MATCH (provider)
+        WHERE (provider:Seeker OR provider:Provider OR provider:User) AND provider.id = b.providerId
         OPTIONAL MATCH (vehicle:Vehicle {id: b.vehicleId})
         RETURN b, seeker.name as seekerName, seeker.phone as seekerPhone,
                provider.name as providerName, provider.phone as providerPhone,
@@ -390,8 +393,10 @@ class Booking:
             params['status'] = status
         
         query += """
-        OPTIONAL MATCH (provider:User {id: b.providerId})
-        OPTIONAL MATCH (seeker:User {id: b.seekerId})
+        OPTIONAL MATCH (provider)
+        WHERE (provider:Seeker OR provider:Provider OR provider:User) AND provider.id = b.providerId
+        OPTIONAL MATCH (seeker)
+        WHERE (seeker:Seeker OR seeker:Provider OR seeker:User) AND seeker.id = b.seekerId
         RETURN b, provider.name as providerName, provider.rating as providerRating,
                seeker.name as seekerName
         ORDER BY b.createdAt DESC
@@ -422,8 +427,10 @@ class Booking:
             params['status'] = status
         
         query += """
-        OPTIONAL MATCH (seeker:User {id: b.seekerId})
-        OPTIONAL MATCH (provider:User {id: b.providerId})
+        OPTIONAL MATCH (seeker)
+        WHERE (seeker:Seeker OR seeker:Provider OR seeker:User) AND seeker.id = b.seekerId
+        OPTIONAL MATCH (provider)
+        WHERE (provider:Seeker OR provider:Provider OR provider:User) AND provider.id = b.providerId
         RETURN b, seeker.name as seekerName, seeker.phone as seekerPhone,
                provider.name as providerName
         ORDER BY b.createdAt DESC
@@ -448,8 +455,10 @@ class Booking:
         query = f"""
         MATCH (b:Booking {{{field}: $userId}})
         WHERE b.status IN $activeStatuses
-        OPTIONAL MATCH (seeker:User {{id: b.seekerId}})
-        OPTIONAL MATCH (provider:User {{id: b.providerId}})
+        OPTIONAL MATCH (seeker)
+        WHERE (seeker:Seeker OR seeker:Provider OR seeker:User) AND seeker.id = b.seekerId
+        OPTIONAL MATCH (provider)
+        WHERE (provider:Seeker OR provider:Provider OR provider:User) AND provider.id = b.providerId
         RETURN b, seeker.name as seekerName, seeker.phone as seekerPhone,
                provider.name as providerName, provider.phone as providerPhone
         ORDER BY b.createdAt DESC
@@ -487,7 +496,8 @@ class Booking:
             params['serviceType'] = service_type
         
         query += """
-        OPTIONAL MATCH (seeker:User {id: b.seekerId})
+        OPTIONAL MATCH (seeker)
+        WHERE (seeker:Seeker OR seeker:Provider OR seeker:User) AND seeker.id = b.seekerId
         RETURN b, seeker.name as seekerName
         ORDER BY b.createdAt DESC
         """
@@ -511,8 +521,10 @@ class Booking:
         SET b.status = $status,
             b.updatedAt = datetime()
         WITH b
-        OPTIONAL MATCH (seeker:User {id: b.seekerId})
-        OPTIONAL MATCH (provider:User {id: b.providerId})
+        OPTIONAL MATCH (seeker)
+        WHERE (seeker:Seeker OR seeker:Provider OR seeker:User) AND seeker.id = b.seekerId
+        OPTIONAL MATCH (provider)
+        WHERE (provider:Seeker OR provider:Provider OR provider:User) AND provider.id = b.providerId
         RETURN b, seeker.name as seekerName, provider.name as providerName
         """
         result = neo4j_driver.execute_write(query, {'bookingId': booking_id, 'status': status})
@@ -532,8 +544,10 @@ class Booking:
             b.startedAt = datetime(),
             b.updatedAt = datetime()
         WITH b
-        OPTIONAL MATCH (seeker:User {id: b.seekerId})
-        OPTIONAL MATCH (provider:User {id: b.providerId})
+        OPTIONAL MATCH (seeker)
+        WHERE (seeker:Seeker OR seeker:Provider OR seeker:User) AND seeker.id = b.seekerId
+        OPTIONAL MATCH (provider)
+        WHERE (provider:Seeker OR provider:Provider OR provider:User) AND provider.id = b.providerId
         RETURN b, seeker.name as seekerName, provider.name as providerName
         """
         result = neo4j_driver.execute_write(query, {
@@ -577,7 +591,8 @@ class Booking:
             b.updatedAt = datetime()
         
         WITH b
-        MATCH (provider:User {id: b.providerId})
+        MATCH (provider)
+        WHERE (provider:Seeker OR provider:Provider OR provider:User) AND provider.id = b.providerId
         
         // Update provider's average rating
         OPTIONAL MATCH (allBookings:Booking {providerId: provider.id})

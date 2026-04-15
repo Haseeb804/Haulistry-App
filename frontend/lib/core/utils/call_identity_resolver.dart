@@ -47,10 +47,23 @@ class CallIdentityResolver {
     'service',
   };
 
+  static bool _looksLikeGeneratedId(String value) {
+    final normalized = value.trim();
+    if (normalized.length < 16) return false;
+    if (normalized.contains(RegExp(r'\s'))) return false;
+
+    final idShape = RegExp(r'^[A-Za-z0-9_-]+$');
+    if (!idShape.hasMatch(normalized)) return false;
+
+    final hasLetter = RegExp(r'[A-Za-z]').hasMatch(normalized);
+    final hasDigit = RegExp(r'\d').hasMatch(normalized);
+    return hasLetter && hasDigit;
+  }
+
   static bool isGenericDisplayName(String? value) {
     final normalized = value?.trim().toLowerCase() ?? '';
     if (normalized.isEmpty) return true;
-    return _genericLabels.contains(normalized);
+    return _genericLabels.contains(normalized) || _looksLikeGeneratedId(normalized);
   }
 
   static String resolveDisplayName({
