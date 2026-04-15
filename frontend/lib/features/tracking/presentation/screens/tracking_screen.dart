@@ -532,7 +532,7 @@ class _TrackingScreenState extends State<TrackingScreen> {
     final providerId = _getProviderId();
     final providerName = _getProviderName();
 
-    if (providerId.isEmpty) return;
+    if (providerId.isEmpty || providerId == '') return;
 
     context.read<CallBloc>().add(
           InitiateCallRequested(

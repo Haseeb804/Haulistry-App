@@ -130,7 +130,7 @@ class CallBloc extends Bloc<CallEvent, CallState> {
         'callerRole': event.receiverRole == AppConstants.roleProvider
             ? AppConstants.roleSeeker
             : AppConstants.roleProvider,
-        'callerProfileImageUrl': user.photoUrl, // Caller's profile image for notification
+        'callerProfileImageUrl': user.photoURL, // Caller's profile image for notification
       });
 
       if (response['success'] == true) {
