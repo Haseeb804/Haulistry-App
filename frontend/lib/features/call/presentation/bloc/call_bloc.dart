@@ -17,6 +17,7 @@ class CallBloc extends Bloc<CallEvent, CallState> {
   StreamSubscription? _callStateSubscription;
   StreamSubscription? _remoteUserSubscription;
   StreamSubscription? _tokenExpirySubscription;
+  StreamSubscription? _notificationSubscription;
   
   DateTime? _callStartTime;
   String? _currentCallId;
@@ -26,6 +27,7 @@ class CallBloc extends Bloc<CallEvent, CallState> {
   String _currentCallType = AppConstants.callTypeVoice;
   int? _pendingRemoteUid; // Stores remote uid if they join before CallConnected
   Map<String, dynamic>? _currentAgoraConfig; // Store current call's Agora config
+  bool _isLocalParticipantConnected = false;
 
   CallBloc({
     agora.AgoraCallService? agoraService,
@@ -52,6 +54,7 @@ class CallBloc extends Bloc<CallEvent, CallState> {
     on<LoadCallHistoryRequested>(_onLoadCallHistoryRequested);
 
     _setupCallStateListener();
+    _setupNotificationListener();
   }
 
   void _setupCallStateListener() {
@@ -70,6 +73,96 @@ class CallBloc extends Bloc<CallEvent, CallState> {
     _tokenExpirySubscription = _agoraService.tokenExpiryStream.listen((_) {
       unawaited(_refreshAgoraToken());
     });
+  }
+
+  void _setupNotificationListener() {
+    _notificationSubscription = NotificationService().notificationStream.listen((data) {
+      final type = data['type']?.toString();
+      if (type != 'call_status') return;
+
+      final callId = data['callId']?.toString() ?? '';
+      if (callId.isEmpty || callId != _currentCallId) return;
+
+      final status = data['status']?.toString().toLowerCase() ?? '';
+
+      final otherName = data['otherUserName']?.toString();
+      final otherRole = data['otherUserRole']?.toString();
+      final otherProfileImage = data['otherUserProfileImageUrl']?.toString();
+      if (otherName != null && otherName.isNotEmpty) {
+        _otherUserName = otherName;
+      }
+      if (otherRole != null && otherRole.isNotEmpty) {
+        _otherUserRole = otherRole;
+      }
+      if (otherProfileImage != null && otherProfileImage.isNotEmpty) {
+        _otherUserProfileImageUrl = otherProfileImage;
+      }
+
+      if (status == 'answered' && state is CallInitiated) {
+        add(CallAnswerAcceptedByReceiver(
+          callId: callId,
+          callType: data['callType']?.toString() ?? _currentCallType,
+          agoraConfig: _currentAgoraConfig ?? const <String, dynamic>{},
+        ));
+        return;
+      }
+
+      if (status == AppConstants.callStatusRejected ||
+          status == AppConstants.callStatusMissed ||
+          status == AppConstants.callStatusEnded) {
+        if (state is CallEnded || state is CallError) return;
+        final duration = int.tryParse(data['duration']?.toString() ?? '0') ?? 0;
+        add(EndCallRequested(callId: callId, duration: duration));
+      }
+    });
+  }
+
+  void _emitConnectedIfReady(Emitter<CallState> emit) {
+    if (!_isLocalParticipantConnected || _pendingRemoteUid == null) {
+      return;
+    }
+    if (state is CallConnected) {
+      return;
+    }
+
+    String callId = _currentCallId ?? '';
+    String callType = _currentCallType;
+    String otherUserName = _otherUserName;
+    String otherUserRole = _otherUserRole;
+    String? otherUserProfileImageUrl = _otherUserProfileImageUrl;
+
+    if (state is CallConnecting) {
+      final connectingState = state as CallConnecting;
+      callId = connectingState.callId;
+      callType = connectingState.callType;
+      otherUserName = connectingState.otherUserName;
+      otherUserRole = connectingState.otherUserRole;
+      otherUserProfileImageUrl = connectingState.otherUserProfileImageUrl;
+    } else if (state is CallInitiated) {
+      final initiatedState = state as CallInitiated;
+      callId = initiatedState.callId;
+      callType = initiatedState.callType;
+      otherUserName = initiatedState.receiverName;
+      otherUserRole = initiatedState.receiverRole;
+      otherUserProfileImageUrl = initiatedState.receiverProfileImageUrl;
+    }
+
+    if (callId.isEmpty) {
+      emit(const CallError(message: 'Unable to resolve active call while connecting'));
+      return;
+    }
+
+    _callStartTime ??= DateTime.now();
+
+    emit(CallConnected(
+      callId: callId,
+      callType: callType,
+      connectedAt: _callStartTime!,
+      otherUserName: otherUserName,
+      otherUserRole: otherUserRole,
+      otherUserProfileImageUrl: otherUserProfileImageUrl,
+      remoteUid: _pendingRemoteUid,
+    ));
   }
 
   CallConnectionState _mapAgoraState(agora.CallState agoraState) {
@@ -141,17 +234,26 @@ class CallBloc extends Bloc<CallEvent, CallState> {
 
         _currentCallId = call['id'];
         _currentCallType = event.callType;
-        _otherUserName = event.receiverName;
-        _otherUserRole = event.receiverRole;
-        _otherUserProfileImageUrl = event.receiverProfileImageUrl;
+        _otherUserName = (call['receiverName'] as String?)?.trim().isNotEmpty == true
+          ? call['receiverName'] as String
+          : event.receiverName;
+        _otherUserRole = (call['receiverRole'] as String?)?.trim().isNotEmpty == true
+          ? call['receiverRole'] as String
+          : event.receiverRole;
+        _otherUserProfileImageUrl =
+          (call['receiverProfileImageUrl'] as String?)?.isNotEmpty == true
+            ? call['receiverProfileImageUrl'] as String
+            : event.receiverProfileImageUrl;
         _currentAgoraConfig = agoraConfig; // Store for later use when receiver accepts
+        _isLocalParticipantConnected = false;
+        _pendingRemoteUid = null;
 
         emit(CallInitiated(
           callId: call['id'],
           receiverId: event.receiverId,
-          receiverName: event.receiverName,
-          receiverRole: event.receiverRole,
-          receiverProfileImageUrl: event.receiverProfileImageUrl,
+          receiverName: _otherUserName,
+          receiverRole: _otherUserRole,
+          receiverProfileImageUrl: _otherUserProfileImageUrl,
           callType: event.callType,
           agoraConfig: agoraConfig,
         ));
@@ -180,6 +282,9 @@ class CallBloc extends Bloc<CallEvent, CallState> {
     try {
       _currentCallId = event.callId;
       _currentCallType = event.agoraConfig['callType'] ?? AppConstants.callTypeVoice;
+      _currentAgoraConfig = event.agoraConfig;
+      _isLocalParticipantConnected = false;
+      _pendingRemoteUid = null;
 
       final user = _auth.currentUser;
       if (user == null) {
@@ -267,6 +372,8 @@ class CallBloc extends Bloc<CallEvent, CallState> {
         otherUserRole: _otherUserRole,
         otherUserProfileImageUrl: _otherUserProfileImageUrl,
       ));
+      _isLocalParticipantConnected = false;
+      _pendingRemoteUid = null;
 
       // Use stored config if event config is empty
       final config = event.agoraConfig.isNotEmpty ? event.agoraConfig : (_currentAgoraConfig ?? {});
@@ -357,8 +464,11 @@ class CallBloc extends Bloc<CallEvent, CallState> {
       _callStartTime = null;
       _otherUserName = '';
       _otherUserRole = AppConstants.roleUser;
+      _otherUserProfileImageUrl = null;
       _currentCallType = AppConstants.callTypeVoice;
       _pendingRemoteUid = null;
+      _currentAgoraConfig = null;
+      _isLocalParticipantConnected = false;
     } catch (e) {
       emit(CallError(message: 'Failed to end call: $e'));
     }
@@ -383,6 +493,15 @@ class CallBloc extends Bloc<CallEvent, CallState> {
         duration: 0,
         reason: 'rejected',
       ));
+      _currentCallId = null;
+      _callStartTime = null;
+      _otherUserName = '';
+      _otherUserRole = AppConstants.roleUser;
+      _otherUserProfileImageUrl = null;
+      _currentCallType = AppConstants.callTypeVoice;
+      _pendingRemoteUid = null;
+      _currentAgoraConfig = null;
+      _isLocalParticipantConnected = false;
     } catch (e) {
       emit(CallError(message: 'Failed to reject call: $e'));
     }
@@ -404,6 +523,15 @@ class CallBloc extends Bloc<CallEvent, CallState> {
         duration: 0,
         reason: 'missed',
       ));
+      _currentCallId = null;
+      _callStartTime = null;
+      _otherUserName = '';
+      _otherUserRole = AppConstants.roleUser;
+      _otherUserProfileImageUrl = null;
+      _currentCallType = AppConstants.callTypeVoice;
+      _pendingRemoteUid = null;
+      _currentAgoraConfig = null;
+      _isLocalParticipantConnected = false;
     } catch (e) {
       emit(CallError(message: 'Failed to report missed call: $e'));
     }
@@ -467,60 +595,18 @@ class CallBloc extends Bloc<CallEvent, CallState> {
     Emitter<CallState> emit,
   ) async {
     if (event.state == CallConnectionState.connected) {
-      if (state is CallConnected) {
-        return;
-      }
-
-      String callId = _currentCallId ?? '';
-      String callType = _currentCallType;
-      String otherUserName = _otherUserName;
-      String otherUserRole = _otherUserRole;
-      String? otherUserProfileImageUrl = _otherUserProfileImageUrl;
-
-      // Extract metadata from current state
-      if (state is CallConnecting) {
-        final connectingState = state as CallConnecting;
-        callId = connectingState.callId;
-        callType = connectingState.callType;
-        otherUserName = connectingState.otherUserName;
-        otherUserRole = connectingState.otherUserRole;
-        otherUserProfileImageUrl = connectingState.otherUserProfileImageUrl;
-      } else if (state is CallInitiated) {
-        // Caller case: CallInitiated has receiver info
-        final initiatedState = state as CallInitiated;
-        callId = initiatedState.callId;
-        callType = initiatedState.callType;
-        otherUserName = initiatedState.receiverName;
-        otherUserRole = initiatedState.receiverRole;
-        otherUserProfileImageUrl = initiatedState.receiverProfileImageUrl;
-      }
-
-      if (callId.isEmpty) {
-        emit(const CallError(message: 'Unable to resolve active call while connecting'));
-        return;
-      }
-
-      _callStartTime ??= DateTime.now();
-
-      emit(CallConnected(
-        callId: callId,
-        callType: callType,
-        connectedAt: _callStartTime!,
-        otherUserName: otherUserName,
-        otherUserRole: otherUserRole,
-        otherUserProfileImageUrl: otherUserProfileImageUrl,
-        remoteUid: _pendingRemoteUid,
-      ));
-      _pendingRemoteUid = null;
+      _isLocalParticipantConnected = true;
+      _emitConnectedIfReady(emit);
       return;
     }
 
     if (event.state == CallConnectionState.error) {
       if (state is! CallConnected) {
-        emit(const CallError(message: 'Call connection timed out. Please try again.'));
+        emit(const CallError(message: 'Call connection failed. Please try again.'));
       }
       return;
     } else if (event.state == CallConnectionState.disconnected) {
+      _isLocalParticipantConnected = false;
       if (_currentCallId != null && _callStartTime != null) {
         final duration = DateTime.now().difference(_callStartTime!).inSeconds;
         
@@ -542,7 +628,10 @@ class CallBloc extends Bloc<CallEvent, CallState> {
         _callStartTime = null;
         _otherUserName = '';
         _otherUserRole = AppConstants.roleUser;
+        _otherUserProfileImageUrl = null;
         _currentCallType = AppConstants.callTypeVoice;
+        _pendingRemoteUid = null;
+        _currentAgoraConfig = null;
       }
     }
   }
@@ -551,12 +640,12 @@ class CallBloc extends Bloc<CallEvent, CallState> {
     RemoteUserJoined event,
     Emitter<CallState> emit,
   ) async {
+    _pendingRemoteUid = event.uid;
     if (state is CallConnected) {
       final currentState = state as CallConnected;
       emit(currentState.copyWith(remoteUid: event.uid));
     } else if (state is CallConnecting) {
-      // Remote user joined before we transitioned to CallConnected — store for later
-      _pendingRemoteUid = event.uid;
+      _emitConnectedIfReady(emit);
     }
   }
 
@@ -564,6 +653,7 @@ class CallBloc extends Bloc<CallEvent, CallState> {
     RemoteUserLeft event,
     Emitter<CallState> emit,
   ) async {
+    _pendingRemoteUid = null;
     if (state is CallConnected) {
       final currentState = state as CallConnected;
       emit(currentState.copyWith(remoteUid: null));
@@ -643,6 +733,7 @@ class CallBloc extends Bloc<CallEvent, CallState> {
     _callStateSubscription?.cancel();
     _remoteUserSubscription?.cancel();
     _tokenExpirySubscription?.cancel();
+    _notificationSubscription?.cancel();
     return super.close();
   }
 }

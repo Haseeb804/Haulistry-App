@@ -56,6 +56,33 @@ class _OutgoingCallScreenState extends State<OutgoingCallScreen>
     };
   }
 
+  String _resolveDisplayName(CallState state) {
+    return switch (state) {
+      CallInitiated s => s.receiverName,
+      CallConnecting s => s.otherUserName,
+      CallConnected s => s.otherUserName,
+      _ => widget.receiverName,
+    };
+  }
+
+  String _resolveDisplayRole(CallState state) {
+    return switch (state) {
+      CallInitiated s => s.receiverRole,
+      CallConnecting s => s.otherUserRole,
+      CallConnected s => s.otherUserRole,
+      _ => widget.receiverRole,
+    };
+  }
+
+  String? _resolveDisplayImage(CallState state) {
+    return switch (state) {
+      CallInitiated s => s.receiverProfileImageUrl,
+      CallConnecting s => s.otherUserProfileImageUrl,
+      CallConnected s => s.otherUserProfileImageUrl,
+      _ => widget.receiverProfileImageUrl,
+    };
+  }
+
   Future<void> _pollCallStatus() async {
     if (!mounted) return;
 
@@ -85,6 +112,11 @@ class _OutgoingCallScreenState extends State<OutgoingCallScreen>
           callType: widget.callType,
           agoraConfig: {}, // Empty; BLoC will use stored config
         ));
+
+        final latestState = context.read<CallBloc>().state;
+        final displayName = _resolveDisplayName(latestState);
+        final displayRole = _resolveDisplayRole(latestState);
+        final displayImage = _resolveDisplayImage(latestState);
         
         final route = widget.callType == AppConstants.callTypeVoice
             ? AppRoutes.callVoice
@@ -92,9 +124,9 @@ class _OutgoingCallScreenState extends State<OutgoingCallScreen>
         if (!mounted) return;
         context.go(route, extra: {
           'callId': callId,
-          'otherUserName': widget.receiverName,
-          'otherUserRole': widget.receiverRole,
-          'otherUserProfileImageUrl': widget.receiverProfileImageUrl,
+          'otherUserName': displayName,
+          'otherUserRole': displayRole,
+          'otherUserProfileImageUrl': displayImage,
         });
         return;
       }
@@ -124,6 +156,11 @@ class _OutgoingCallScreenState extends State<OutgoingCallScreen>
 
   @override
   Widget build(BuildContext context) {
+    final blocState = context.watch<CallBloc>().state;
+    final displayName = _resolveDisplayName(blocState);
+    final displayRole = _resolveDisplayRole(blocState);
+    final displayImage = _resolveDisplayImage(blocState);
+
     return BlocListener<CallBloc, CallState>(
       listener: (context, state) {
         if (state is CallConnected) {
@@ -133,9 +170,9 @@ class _OutgoingCallScreenState extends State<OutgoingCallScreen>
               : AppRoutes.callVideo;
           context.go(route, extra: {
             'callId': state.callId,
-            'otherUserName': widget.receiverName,
-            'otherUserRole': widget.receiverRole,
-            'otherUserProfileImageUrl': widget.receiverProfileImageUrl,
+            'otherUserName': state.otherUserName,
+            'otherUserRole': state.otherUserRole,
+            'otherUserProfileImageUrl': state.otherUserProfileImageUrl,
           });
         } else if (state is CallEnded) {
           context.pop();
@@ -186,13 +223,13 @@ class _OutgoingCallScreenState extends State<OutgoingCallScreen>
                         CircleAvatar(
                           radius: 60,
                           backgroundColor: Colors.white.withOpacity(0.3),
-                          backgroundImage: widget.receiverProfileImageUrl != null
-                              ? NetworkImage(widget.receiverProfileImageUrl!)
+                          backgroundImage: displayImage != null
+                            ? NetworkImage(displayImage)
                               : null,
-                          child: widget.receiverProfileImageUrl == null
+                          child: displayImage == null
                               ? Text(
-                                  widget.receiverName.isNotEmpty
-                                      ? widget.receiverName[0].toUpperCase()
+                              displayName.isNotEmpty
+                                ? displayName[0].toUpperCase()
                                       : '?',
                                   style: const TextStyle(
                                     fontSize: 48,
@@ -206,14 +243,14 @@ class _OutgoingCallScreenState extends State<OutgoingCallScreen>
                     ),
                     const SizedBox(height: 24),
                     Text(
-                      widget.receiverName,
+                      displayName,
                       style: const TextStyle(
                         fontSize: 28,
                         fontWeight: FontWeight.bold,
                         color: Colors.white,
                       ),
                     ),
-                    if (widget.receiverRole != AppConstants.roleUser && widget.receiverRole.isNotEmpty) ...[
+                    if (displayRole != AppConstants.roleUser && displayRole.isNotEmpty) ...[
                       const SizedBox(height: 6),
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
@@ -222,7 +259,7 @@ class _OutgoingCallScreenState extends State<OutgoingCallScreen>
                           borderRadius: BorderRadius.circular(12),
                         ),
                         child: Text(
-                          widget.receiverRole[0].toUpperCase() + widget.receiverRole.substring(1),
+                          displayRole[0].toUpperCase() + displayRole.substring(1),
                           style: TextStyle(
                             fontSize: 13,
                             color: Colors.white.withOpacity(0.9),

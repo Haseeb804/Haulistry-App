@@ -74,7 +74,9 @@ class Call:
         
         RETURN c, caller.name as callerName, receiver.name as receiverName,
                CASE WHEN caller:Provider THEN 'provider' WHEN caller:Seeker THEN 'seeker' ELSE coalesce(caller.role, 'user') END as callerRole,
-               CASE WHEN receiver:Provider THEN 'provider' WHEN receiver:Seeker THEN 'seeker' ELSE coalesce(receiver.role, 'user') END as receiverRole
+             CASE WHEN receiver:Provider THEN 'provider' WHEN receiver:Seeker THEN 'seeker' ELSE coalesce(receiver.role, 'user') END as receiverRole,
+             coalesce(caller.profileImageUrl, caller.profile_image_url, '') as callerProfileImageUrl,
+             coalesce(receiver.profileImageUrl, receiver.profile_image_url, '') as receiverProfileImageUrl
         """
         
         params = {
@@ -97,6 +99,8 @@ class Call:
                 call['receiverName'] = result[0].get('receiverName')
                 call['callerRole'] = result[0].get('callerRole', 'user')
                 call['receiverRole'] = result[0].get('receiverRole', 'user')
+                call['callerProfileImageUrl'] = result[0].get('callerProfileImageUrl') or None
+                call['receiverProfileImageUrl'] = result[0].get('receiverProfileImageUrl') or None
                 return call
         
         return None
@@ -138,8 +142,10 @@ class Call:
         OPTIONAL MATCH (c)-[:CALL_TO]->(receiver)
         WITH c, caller.name as callerName, receiver.name as receiverName,
              CASE WHEN caller:Provider THEN 'provider' WHEN caller:Seeker THEN 'seeker' ELSE coalesce(caller.role, 'user') END as callerRole,
-             CASE WHEN receiver:Provider THEN 'provider' WHEN receiver:Seeker THEN 'seeker' ELSE coalesce(receiver.role, 'user') END as receiverRole
-        RETURN c, callerName, receiverName, callerRole, receiverRole
+               CASE WHEN receiver:Provider THEN 'provider' WHEN receiver:Seeker THEN 'seeker' ELSE coalesce(receiver.role, 'user') END as receiverRole,
+               coalesce(caller.profileImageUrl, caller.profile_image_url, '') as callerProfileImageUrl,
+               coalesce(receiver.profileImageUrl, receiver.profile_image_url, '') as receiverProfileImageUrl
+           RETURN c, callerName, receiverName, callerRole, receiverRole, callerProfileImageUrl, receiverProfileImageUrl
         ORDER BY c.startedAt DESC
         LIMIT $limit
         """
@@ -155,6 +161,8 @@ class Call:
                     call['receiverName'] = record['receiverName']
                     call['callerRole'] = record.get('callerRole', 'user')
                     call['receiverRole'] = record.get('receiverRole', 'user')
+                    call['callerProfileImageUrl'] = record.get('callerProfileImageUrl') or None
+                    call['receiverProfileImageUrl'] = record.get('receiverProfileImageUrl') or None
                     calls.append(call)
         
         return calls
@@ -168,7 +176,9 @@ class Call:
         OPTIONAL MATCH (c)-[:CALL_TO]->(receiver)
         RETURN c, caller.name as callerName, receiver.name as receiverName,
                CASE WHEN caller:Provider THEN 'provider' WHEN caller:Seeker THEN 'seeker' ELSE coalesce(caller.role, 'user') END as callerRole,
-               CASE WHEN receiver:Provider THEN 'provider' WHEN receiver:Seeker THEN 'seeker' ELSE coalesce(receiver.role, 'user') END as receiverRole
+             CASE WHEN receiver:Provider THEN 'provider' WHEN receiver:Seeker THEN 'seeker' ELSE coalesce(receiver.role, 'user') END as receiverRole,
+             coalesce(caller.profileImageUrl, caller.profile_image_url, '') as callerProfileImageUrl,
+             coalesce(receiver.profileImageUrl, receiver.profile_image_url, '') as receiverProfileImageUrl
         """
         
         result = neo4j_driver.execute_read(query, {"callId": call_id})
@@ -179,6 +189,8 @@ class Call:
             call['receiverName'] = result[0].get('receiverName')
             call['callerRole'] = result[0].get('callerRole', 'user')
             call['receiverRole'] = result[0].get('receiverRole', 'user')
+            call['callerProfileImageUrl'] = result[0].get('callerProfileImageUrl') or None
+            call['receiverProfileImageUrl'] = result[0].get('receiverProfileImageUrl') or None
             return call
         
         return None

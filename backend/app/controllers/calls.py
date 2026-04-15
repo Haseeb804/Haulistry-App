@@ -232,6 +232,7 @@ async def send_call_status_notification(
     call_type: str,
     other_user_name: str,
     other_user_role: str,
+    other_user_profile_image_url: Optional[str] = None,
     duration: Optional[int] = None,
 ):
     """Send FCM notification about call status updates to the other participant."""
@@ -244,6 +245,7 @@ async def send_call_status_notification(
                 'callType': call_type,
                 'otherUserName': other_user_name,
                 'otherUserRole': other_user_role,
+                'otherUserProfileImageUrl': other_user_profile_image_url or '',
                 'duration': str(duration or 0),
             },
             android=messaging.AndroidConfig(priority='high'),
@@ -378,7 +380,11 @@ async def initiate_call(request: InitiateCallRequest):
             # Always use database name as source of truth; frontend name might be 'User' fallback
             caller_name_actual = caller_data.get('name') or request.callerName or 'User'
             caller_role = request.callerRole or caller_data.get('role', 'user')
-            caller_profile_image_url = caller_data.get('profile_image_url') or request.callerProfileImageUrl
+            caller_profile_image_url = (
+                caller_data.get('profileImageUrl')
+                or caller_data.get('profile_image_url')
+                or request.callerProfileImageUrl
+            )
             await send_call_notification(
                 fcm_token=receiver_fcm_token,
                 call_id=call_data['id'],
@@ -426,42 +432,39 @@ async def update_call_status(request: UpdateCallStatusRequest):
 
         call_after = Call.get_call_by_id(request.callId) or call_before
 
-        # Push counterpart real-time status updates via FCM.
+        # Push real-time status updates via FCM to both participants.
         if call_after:
             from ..models.user import User
 
             caller_id = call_after.get('callerId')
             receiver_id = call_after.get('receiverId')
-            actor_id = request.userId
+            participant_ids = [uid for uid in [caller_id, receiver_id] if uid]
 
-            # Prefer explicit actor if provided; fallback by status semantics.
-            if actor_id in {caller_id, receiver_id}:
-                target_user_id = receiver_id if actor_id == caller_id else caller_id
-            elif request.status == 'answered':
-                target_user_id = caller_id
-            else:
-                target_user_id = receiver_id
-
-            if target_user_id:
+            for target_user_id in participant_ids:
                 target_user = User.get_by_id(target_user_id)
                 target_token = (target_user or {}).get('fcmToken') if target_user else None
-                if target_token:
-                    if target_user_id == caller_id:
-                        other_name = call_after.get('receiverName') or 'User'
-                        other_role = call_after.get('receiverRole') or 'user'
-                    else:
-                        other_name = call_after.get('callerName') or 'User'
-                        other_role = call_after.get('callerRole') or 'user'
+                if not target_token:
+                    continue
 
-                    await send_call_status_notification(
-                        target_token,
-                        call_id=request.callId,
-                        status_value=request.status,
-                        call_type=call_after.get('callType') or 'voice',
-                        other_user_name=other_name,
-                        other_user_role=other_role,
-                        duration=request.duration,
-                    )
+                if target_user_id == caller_id:
+                    other_name = call_after.get('receiverName') or 'User'
+                    other_role = call_after.get('receiverRole') or 'user'
+                    other_profile_image_url = call_after.get('receiverProfileImageUrl')
+                else:
+                    other_name = call_after.get('callerName') or 'User'
+                    other_role = call_after.get('callerRole') or 'user'
+                    other_profile_image_url = call_after.get('callerProfileImageUrl')
+
+                await send_call_status_notification(
+                    target_token,
+                    call_id=request.callId,
+                    status_value=request.status,
+                    call_type=call_after.get('callType') or 'voice',
+                    other_user_name=other_name,
+                    other_user_role=other_role,
+                    other_user_profile_image_url=other_profile_image_url,
+                    duration=request.duration,
+                )
         
         return CallResponse(
             success=True,

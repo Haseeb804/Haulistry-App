@@ -9,7 +9,6 @@ class AgoraCallService {
 
   late RtcEngine _engine;
   bool _isInitialized = false;
-  CallState _currentCallState = CallState.idle;
   String? _activeChannel;
   int? _activeUid;
   final StreamController<CallState> _callStateController = StreamController<CallState>.broadcast();
@@ -25,7 +24,6 @@ class AgoraCallService {
   int? get activeUid => _activeUid;
 
   void _setCallState(CallState state) {
-    _currentCallState = state;
     _callStateController.add(state);
   }
 
@@ -115,13 +113,6 @@ class AgoraCallService {
         clientRoleType: ClientRoleType.clientRoleBroadcaster,
       ),
     );
-
-    // Add connection timeout (30 seconds)
-    Future.delayed(const Duration(seconds: 30), () {
-      if (_currentCallState == CallState.connecting) {
-        _setCallState(CallState.error);
-      }
-    });
   }
 
   Future<void> joinVideoCall({
@@ -168,13 +159,6 @@ class AgoraCallService {
         publishMicrophoneTrack: true,
       ),
     );
-
-    // Add connection timeout (30 seconds)
-    Future.delayed(const Duration(seconds: 30), () {
-      if (_currentCallState == CallState.connecting) {
-        _setCallState(CallState.error);
-      }
-    });
   }
 
   Future<void> leaveChannel() async {
@@ -212,7 +196,6 @@ class AgoraCallService {
     await _volumeController.close();
     await _tokenExpiryController.close();
     _isInitialized = false;
-    _currentCallState = CallState.idle;
     _activeChannel = null;
     _activeUid = null;
   }
