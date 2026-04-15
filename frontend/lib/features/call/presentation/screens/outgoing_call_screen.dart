@@ -10,6 +10,7 @@ import '../../../../core/services/api_service.dart';
 
 class OutgoingCallScreen extends StatefulWidget {
   final String callId;
+  final String receiverId;
   final String receiverName;
   final String receiverRole;
   final String? receiverProfileImageUrl;
@@ -18,6 +19,7 @@ class OutgoingCallScreen extends StatefulWidget {
   const OutgoingCallScreen({
     super.key,
     required this.callId,
+    this.receiverId = '',
     required this.receiverName,
     this.receiverRole = AppConstants.roleUser,
     this.receiverProfileImageUrl,
@@ -124,6 +126,7 @@ class _OutgoingCallScreenState extends State<OutgoingCallScreen>
         if (!mounted) return;
         context.go(route, extra: {
           'callId': callId,
+          'otherUserId': widget.receiverId,
           'otherUserName': displayName,
           'otherUserRole': displayRole,
           'otherUserProfileImageUrl': displayImage,
@@ -170,6 +173,7 @@ class _OutgoingCallScreenState extends State<OutgoingCallScreen>
               : AppRoutes.callVideo;
           context.go(route, extra: {
             'callId': state.callId,
+            'otherUserId': widget.receiverId,
             'otherUserName': state.otherUserName,
             'otherUserRole': state.otherUserRole,
             'otherUserProfileImageUrl': state.otherUserProfileImageUrl,

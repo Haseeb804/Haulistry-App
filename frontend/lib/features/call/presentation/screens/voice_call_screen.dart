@@ -10,6 +10,7 @@ import '../../../../core/services/api_service.dart';
 
 class VoiceCallScreen extends StatefulWidget {
   final String callId;
+  final String otherUserId;
   final String otherUserName;
   final String otherUserRole;
   final String? otherUserProfileImageUrl;
@@ -17,6 +18,7 @@ class VoiceCallScreen extends StatefulWidget {
   const VoiceCallScreen({
     super.key,
     required this.callId,
+    this.otherUserId = '',
     this.otherUserName = '',
     this.otherUserRole = AppConstants.roleUser,
     this.otherUserProfileImageUrl,
@@ -30,6 +32,8 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> {
   Timer? _durationTimer;
   Timer? _statusPollingTimer;
   Duration _callDuration = Duration.zero;
+  String? _resolvedOtherUserName;
+  String? _resolvedOtherUserImageUrl;
 
   @override
   void initState() {
@@ -39,6 +43,30 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> {
       const Duration(seconds: 3),
       (_) => _pollCallStatus(),
     );
+    _resolveOtherUserIdentity();
+  }
+
+  Future<void> _resolveOtherUserIdentity() async {
+    final candidateName = widget.otherUserName.trim();
+    final needsLookup = candidateName.isEmpty || candidateName == 'Provider' || candidateName == 'Seeker' || candidateName == 'User' || candidateName == 'Voice Call';
+    final needsImage = (widget.otherUserProfileImageUrl ?? '').trim().isEmpty;
+    if (!needsLookup && !needsImage) return;
+    if (widget.otherUserId.trim().isEmpty) return;
+
+    try {
+      final response = await ApiService.instance.get('/auth/user/${widget.otherUserId}');
+      if (response['success'] == true && response['user'] is Map<String, dynamic>) {
+        final user = response['user'] as Map<String, dynamic>;
+        final name = (user['name'] ?? user['fullName'] ?? user['displayName'])?.toString().trim();
+        final image = (user['profileImageUrl'] ?? user['profile_image_url'])?.toString().trim();
+        if (mounted) {
+          setState(() {
+            if (name != null && name.isNotEmpty) _resolvedOtherUserName = name;
+            if (image != null && image.isNotEmpty) _resolvedOtherUserImageUrl = image;
+          });
+        }
+      }
+    } catch (_) {}
   }
 
   Future<void> _pollCallStatus() async {
@@ -131,12 +159,15 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> {
             child: BlocBuilder<CallBloc, CallState>(
               builder: (context, state) {
                 if (state is! CallConnected) {
-                  final displayName = widget.otherUserName.isNotEmpty
+                  final displayName = (_resolvedOtherUserName?.isNotEmpty ?? false)
+                    ? _resolvedOtherUserName!
+                    : widget.otherUserName.isNotEmpty
                       ? widget.otherUserName
                       : 'Voice Call';
                   final displayRole = widget.otherUserRole != AppConstants.roleUser
                       ? widget.otherUserRole
                       : '';
+                  final displayImageUrl = _resolvedOtherUserImageUrl ?? widget.otherUserProfileImageUrl;
 
                   return Column(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -147,10 +178,10 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> {
                           CircleAvatar(
                             radius: 60,
                             backgroundColor: Colors.white.withOpacity(0.3),
-                            backgroundImage: widget.otherUserProfileImageUrl != null
-                                ? NetworkImage(widget.otherUserProfileImageUrl!)
+                            backgroundImage: displayImageUrl != null
+                              ? NetworkImage(displayImageUrl)
                                 : null,
-                            child: widget.otherUserProfileImageUrl == null
+                            child: displayImageUrl == null
                                 ? Text(
                                     displayName.isNotEmpty ? displayName[0].toUpperCase() : '?',
                                     style: const TextStyle(
@@ -244,6 +275,8 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> {
 
                 final displayName = state.otherUserName.isNotEmpty
                     ? state.otherUserName
+                  : (_resolvedOtherUserName?.isNotEmpty ?? false)
+                    ? _resolvedOtherUserName!
                     : widget.otherUserName.isNotEmpty
                         ? widget.otherUserName
                         : 'Voice Call';
@@ -252,7 +285,7 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> {
                   : widget.otherUserRole != AppConstants.roleUser
                         ? widget.otherUserRole
                         : '';
-                final displayImageUrl = state.otherUserProfileImageUrl ?? widget.otherUserProfileImageUrl;
+                final displayImageUrl = state.otherUserProfileImageUrl ?? _resolvedOtherUserImageUrl ?? widget.otherUserProfileImageUrl;
 
                 return Column(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,

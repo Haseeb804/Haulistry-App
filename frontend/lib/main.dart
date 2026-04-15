@@ -607,6 +607,7 @@ final _router = GoRouter(
           value: context.read<CallBloc>(),
           child: VoiceCallScreen(
             callId: extra['callId'] as String,
+            otherUserId: extra['otherUserId'] as String? ?? '',
             otherUserName: extra['otherUserName'] as String? ?? '',
             otherUserRole: extra['otherUserRole'] as String? ?? AppConstants.roleUser,
             otherUserProfileImageUrl: extra['otherUserProfileImageUrl'] as String?,
@@ -622,6 +623,7 @@ final _router = GoRouter(
           value: context.read<CallBloc>(),
           child: VideoCallScreen(
             callId: extra['callId'] as String,
+            otherUserId: extra['otherUserId'] as String? ?? '',
             otherUserName: extra['otherUserName'] as String? ?? '',
             otherUserRole: extra['otherUserRole'] as String? ?? AppConstants.roleUser,
             otherUserProfileImageUrl: extra['otherUserProfileImageUrl'] as String?,

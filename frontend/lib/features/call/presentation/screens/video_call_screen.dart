@@ -12,6 +12,7 @@ import '../../../../core/services/api_service.dart';
 
 class VideoCallScreen extends StatefulWidget {
   final String callId;
+  final String otherUserId;
   final String otherUserName;
   final String otherUserRole;
   final String? otherUserProfileImageUrl;
@@ -19,6 +20,7 @@ class VideoCallScreen extends StatefulWidget {
   const VideoCallScreen({
     super.key,
     required this.callId,
+    this.otherUserId = '',
     this.otherUserName = '',
     this.otherUserRole = AppConstants.roleUser,
     this.otherUserProfileImageUrl,
@@ -34,6 +36,8 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
   Duration _callDuration = Duration.zero;
   bool _showControls = true;
   Timer? _controlsTimer;
+  String? _resolvedOtherUserName;
+  String? _resolvedOtherUserImageUrl;
 
   @override
   void initState() {
@@ -44,6 +48,30 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
       const Duration(seconds: 3),
       (_) => _pollCallStatus(),
     );
+    _resolveOtherUserIdentity();
+  }
+
+  Future<void> _resolveOtherUserIdentity() async {
+    final candidateName = widget.otherUserName.trim();
+    final needsLookup = candidateName.isEmpty || candidateName == 'Provider' || candidateName == 'Seeker' || candidateName == 'User' || candidateName == 'Video Call';
+    final needsImage = (widget.otherUserProfileImageUrl ?? '').trim().isEmpty;
+    if (!needsLookup && !needsImage) return;
+    if (widget.otherUserId.trim().isEmpty) return;
+
+    try {
+      final response = await ApiService.instance.get('/auth/user/${widget.otherUserId}');
+      if (response['success'] == true && response['user'] is Map<String, dynamic>) {
+        final user = response['user'] as Map<String, dynamic>;
+        final name = (user['name'] ?? user['fullName'] ?? user['displayName'])?.toString().trim();
+        final image = (user['profileImageUrl'] ?? user['profile_image_url'])?.toString().trim();
+        if (mounted) {
+          setState(() {
+            if (name != null && name.isNotEmpty) _resolvedOtherUserName = name;
+            if (image != null && image.isNotEmpty) _resolvedOtherUserImageUrl = image;
+          });
+        }
+      }
+    } catch (_) {}
   }
 
   Future<void> _pollCallStatus() async {

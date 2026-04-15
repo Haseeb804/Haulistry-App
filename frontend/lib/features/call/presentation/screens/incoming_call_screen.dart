@@ -37,6 +37,7 @@ class IncomingCallScreen extends StatelessWidget {
         if (state is CallConnecting) {
           context.go(route, extra: {
             'callId': callId,
+            'otherUserId': callerId,
             'otherUserName': callerName,
             'otherUserRole': callerRole,
             'otherUserProfileImageUrl': callerProfileImageUrl,
@@ -165,6 +166,13 @@ class IncomingCallScreen extends StatelessWidget {
                                   agoraConfig: agoraConfig,
                                 ),
                               );
+                          context.go(route, extra: {
+                            'callId': callId,
+                            'otherUserId': callerId,
+                            'otherUserName': callerName,
+                            'otherUserRole': callerRole,
+                            'otherUserProfileImageUrl': callerProfileImageUrl,
+                          });
                         },
                       ),
                     ],
