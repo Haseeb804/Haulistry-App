@@ -368,16 +368,28 @@ class NotificationService {
         'agoraChannel': agoraConfig['channel'] ?? '',
         'agoraToken': agoraConfig['token'] ?? '',
         'agoraUid': agoraConfig['uid']?.toString() ?? '0',
+        'agoraCallerUid': agoraConfig['callerUid']?.toString() ?? '0',
+        'agoraReceiverUid': agoraConfig['receiverUid']?.toString() ?? '0',
+        'agoraTokenExpiresAt': agoraConfig['tokenExpiresAt']?.toString() ?? '0',
+        'agoraTokenExpiresIn': agoraConfig['tokenExpiresIn']?.toString(),
       }),
     );
 
-    // Also emit to stream for foreground handling
+    // Also emit to stream for foreground handling with full config
     _notificationStreamController.add({
       'type': notificationTypeCall,
       'callId': callId,
       'callerId': callerId,
       'callerName': callerName,
       'callType': callType,
+      'agoraAppId': agoraConfig['appId'] ?? '',
+      'agoraChannel': agoraConfig['channel'] ?? '',
+      'agoraToken': agoraConfig['token'] ?? '',
+      'agoraUid': agoraConfig['uid']?.toString() ?? '0',
+      'agoraCallerUid': agoraConfig['callerUid']?.toString() ?? '0',
+      'agoraReceiverUid': agoraConfig['receiverUid']?.toString() ?? '0',
+      'agoraTokenExpiresAt': agoraConfig['tokenExpiresAt']?.toString() ?? '0',
+      'agoraTokenExpiresIn': agoraConfig['tokenExpiresIn']?.toString(),
       'agoraConfig': agoraConfig,
       'tapped': false,
     });
