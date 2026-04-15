@@ -166,24 +166,31 @@ class CallBloc extends Bloc<CallEvent, CallState> {
         }
 
         final uid = _parseAgoraUid(agoraConfig['uid'], user.uid);
+        final resolvedAppId = _resolveAgoraAppId(agoraConfig['appId']);
+        final token = agoraConfig['token'];
+        
+        print('[CallBloc] DIAGNOSE_JOIN_INITIATE: '
+            'channel=$channel, uid=$uid, appId=$resolvedAppId, '
+            'token_length=${token?.toString().length ?? 0}, token_null=${token == null}');
 
         // Initialize Agora engine with app ID
-        await _agoraService.initialize(_resolveAgoraAppId(agoraConfig['appId']));
+        await _agoraService.initialize(resolvedAppId);
 
         // Join Agora channel
         if (event.callType == 'voice') {
           await _agoraService.joinVoiceCall(
             channel: channel,
             uid: uid,
-            token: agoraConfig['token'],
+            token: token,
           );
         } else {
           await _agoraService.joinVideoCall(
             channel: channel,
             uid: uid,
-            token: agoraConfig['token'],
+            token: token,
           );
         }
+
       } else {
         emit(CallError(message: response['message'] ?? 'Failed to initiate call'));
       }
@@ -240,19 +247,25 @@ class CallBloc extends Bloc<CallEvent, CallState> {
       }
 
       final uid = _parseAgoraUid(event.agoraConfig['uid'], user.uid);
+      final resolvedAppId = _resolveAgoraAppId(event.agoraConfig['appId']);
+      final token = event.agoraConfig['token'];
+      
+      print('[CallBloc] DIAGNOSE_JOIN_ANSWER: '
+          'channel=$channel, uid=$uid, appId=$resolvedAppId, '
+          'token_length=${token?.toString().length ?? 0}, token_null=${token == null}');
 
       // Join Agora channel
       if (callType == 'voice') {
         await _agoraService.joinVoiceCall(
           channel: channel,
           uid: uid,
-          token: event.agoraConfig['token'],
+          token: token,
         );
       } else {
         await _agoraService.joinVideoCall(
           channel: channel,
           uid: uid,
-          token: event.agoraConfig['token'],
+          token: token,
         );
       }
     } catch (e) {

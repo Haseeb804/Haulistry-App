@@ -716,3 +716,20 @@ async def get_unread_count(user_id: str):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to fetch unread count: {str(e)}"
         )
+
+
+@router.get("/config-check")
+async def check_config():
+    """Diagnostic endpoint to verify Agora backend configuration (safe, no secrets)."""
+    return {
+        "success": True,
+        "config": {
+            "agora_app_id_set": not _is_placeholder_app_id(AGORA_APP_ID),
+            "agora_certificate_set": bool(AGORA_APP_CERTIFICATE),
+            "token_required": _token_required(),
+            "token_builder_available": _get_rtc_token_builder() is not None,
+            "token_ttl_seconds": AGORA_TOKEN_TTL_SECONDS,
+            "app_id_length": len(AGORA_APP_ID),
+            "certificate_length": len(AGORA_APP_CERTIFICATE),
+        }
+    }

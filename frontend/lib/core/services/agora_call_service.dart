@@ -25,6 +25,7 @@ class AgoraCallService {
   int? get activeUid => _activeUid;
 
   void _setCallState(CallState state) {
+    print('[AgoraCallService] setState: $state');
     _currentCallState = state;
     _callStateController.add(state);
   }
@@ -46,21 +47,27 @@ class AgoraCallService {
     _engine.registerEventHandler(
       RtcEngineEventHandler(
         onJoinChannelSuccess: (RtcConnection connection, int elapsed) {
+          print('[AgoraCallService] onJoinChannelSuccess: connection=${connection.channelId}, uid=${connection.localUid}');
           _setCallState(CallState.connected);
         },
         onUserJoined: (RtcConnection connection, int remoteUid, int elapsed) {
+          print('[AgoraCallService] onUserJoined: remoteUid=$remoteUid');
           _remoteUserController.add(RemoteUserState(remoteUid, true));
         },
         onUserOffline: (RtcConnection connection, int remoteUid, UserOfflineReasonType reason) {
+          print('[AgoraCallService] onUserOffline: remoteUid=$remoteUid');
           _remoteUserController.add(RemoteUserState(remoteUid, false));
         },
         onLeaveChannel: (RtcConnection connection, RtcStats stats) {
+          print('[AgoraCallService] onLeaveChannel');
           _setCallState(CallState.disconnected);
         },
         onError: (ErrorCodeType error, String msg) {
+          print('[AgoraCallService] onError: error=$error, msg=$msg');
           _setCallState(CallState.error);
         },
         onTokenPrivilegeWillExpire: (RtcConnection connection, String token) {
+          print('[AgoraCallService] onTokenPrivilegeWillExpire');
           _tokenExpiryController.add(null);
         },
         onAudioVolumeIndication: (RtcConnection connection, List<AudioVolumeInfo> speakers, int speakerNumber, int totalVolume) {
@@ -83,9 +90,12 @@ class AgoraCallService {
       throw Exception('Agora engine not initialized');
     }
 
+    print('[AgoraCallService] joinVoiceCall: channel=$channel, uid=$uid, token=${token?.length ?? 0}, token_empty=${token?.isEmpty ?? true}');
+
     // Enable audio
     await _engine.enableAudio();
     await _engine.enableLocalAudio(true);
+
     
     // Set audio profile for voice call
     await _engine.setAudioProfile(
@@ -132,9 +142,12 @@ class AgoraCallService {
       throw Exception('Agora engine not initialized');
     }
 
+    print('[AgoraCallService] joinVideoCall: channel=$channel, uid=$uid, token=${token?.length ?? 0}, token_empty=${token?.isEmpty ?? true}');
+
     // Enable audio and video
     await _engine.enableAudio();
     await _engine.enableVideo();
+
     await _engine.enableLocalAudio(true);
     await _engine.enableLocalVideo(true);
 
