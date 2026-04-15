@@ -48,6 +48,7 @@ class UpdateCallStatusRequest(BaseModel):
     callId: str
     status: str  # 'answered', 'ended', 'missed', 'rejected'
     duration: Optional[int] = None
+    userId: Optional[str] = None
 
 
 class RefreshCallTokenRequest(BaseModel):
@@ -194,6 +195,42 @@ async def send_call_notification(
         return False
 
 
+async def send_call_status_notification(
+    fcm_token: str,
+    *,
+    call_id: str,
+    status_value: str,
+    call_type: str,
+    other_user_name: str,
+    other_user_role: str,
+    duration: Optional[int] = None,
+):
+    """Send FCM notification about call status updates to the other participant."""
+    try:
+        message = messaging.Message(
+            data={
+                'type': 'call_status',
+                'callId': call_id,
+                'status': status_value,
+                'callType': call_type,
+                'otherUserName': other_user_name,
+                'otherUserRole': other_user_role,
+                'duration': str(duration or 0),
+            },
+            android=messaging.AndroidConfig(priority='high'),
+            apns=messaging.APNSConfig(
+                payload=messaging.APNSPayload(
+                    aps=messaging.Aps(content_available=True)
+                )
+            ),
+            token=fcm_token,
+        )
+        messaging.send(message)
+        return True
+    except Exception:
+        return False
+
+
 @router.post("/initiate", response_model=CallResponse)
 async def initiate_call(request: InitiateCallRequest):
     """Initiate a new call"""
@@ -327,7 +364,44 @@ async def update_call_status(request: UpdateCallStatusRequest):
                 detail="Call not found"
             )
 
-        _ = call_before  # reserved for future auditing/analytics hooks
+        call_after = Call.get_call_by_id(request.callId) or call_before
+
+        # Push counterpart real-time status updates via FCM.
+        if call_after:
+            from ..models.user import User
+
+            caller_id = call_after.get('callerId')
+            receiver_id = call_after.get('receiverId')
+            actor_id = request.userId
+
+            # Prefer explicit actor if provided; fallback by status semantics.
+            if actor_id in {caller_id, receiver_id}:
+                target_user_id = receiver_id if actor_id == caller_id else caller_id
+            elif request.status == 'answered':
+                target_user_id = caller_id
+            else:
+                target_user_id = receiver_id
+
+            if target_user_id:
+                target_user = User.get_by_id(target_user_id)
+                target_token = (target_user or {}).get('fcmToken') if target_user else None
+                if target_token:
+                    if target_user_id == caller_id:
+                        other_name = call_after.get('receiverName') or 'User'
+                        other_role = call_after.get('receiverRole') or 'user'
+                    else:
+                        other_name = call_after.get('callerName') or 'User'
+                        other_role = call_after.get('callerRole') or 'user'
+
+                    await send_call_status_notification(
+                        target_token,
+                        call_id=request.callId,
+                        status_value=request.status,
+                        call_type=call_after.get('callType') or 'voice',
+                        other_user_name=other_name,
+                        other_user_role=other_role,
+                        duration=request.duration,
+                    )
         
         return CallResponse(
             success=True,

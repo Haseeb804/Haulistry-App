@@ -28,13 +28,13 @@ class IncomingCallScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final route = callType == AppConstants.callTypeVoice
+        ? AppRoutes.callVoice
+        : AppRoutes.callVideo;
+
     return BlocListener<CallBloc, CallState>(
       listener: (context, state) {
         if (state is CallConnecting) {
-          // Navigate to voice or video call screen
-            final route = callType == AppConstants.callTypeVoice
-              ? AppRoutes.callVoice
-              : AppRoutes.callVideo;
           context.go(route, extra: {
             'callId': callId,
             'otherUserName': callerName,
@@ -164,6 +164,14 @@ class IncomingCallScreen extends StatelessWidget {
                                   agoraConfig: agoraConfig,
                                 ),
                               );
+
+                          // Immediately leave incoming UI and open live call session.
+                          context.go(route, extra: {
+                            'callId': callId,
+                            'otherUserName': callerName,
+                            'otherUserRole': callerRole,
+                            'otherUserProfileImageUrl': callerProfileImageUrl,
+                          });
                         },
                       ),
                     ],

@@ -11,6 +11,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
 import '../../../../core/constants/app_constants.dart';
 import '../../../../core/theme/app_theme.dart';
+import '../../../../core/services/api_service.dart';
 import '../../../../core/domain/entities/booking_entity.dart';
 import '../../../call/presentation/bloc/call_bloc.dart';
 import '../../../call/presentation/bloc/call_event.dart';
@@ -58,13 +59,18 @@ class _ProviderTrackingScreenState extends State<ProviderTrackingScreen> {
   bool _isNearDropLocation = false;
   bool _autoFollowSeeker = false;
   bool _hasAutoCompletionTriggered = false;
+  bool _hasInitializedTracking = false;
   Timer? _seekerAnimationTimer;
   Timer? _clockTimer;
   DateTime _now = DateTime.now();
   static const double _completionRadiusMeters = 100;
+  final ApiService _apiService = ApiService.instance;
+  Timer? _bookingStatusTimer;
+  bool _isBookingStatusLoaded = false;
+  String? _currentBookingStatus;
 
   bool get _isActiveServiceStatus {
-    final status = (widget.bookingStatus ?? '').toLowerCase();
+    final status = (_currentBookingStatus ?? widget.bookingStatus ?? '').toLowerCase();
     return AppConstants.trackingStatuses.contains(status);
   }
 
@@ -72,17 +78,66 @@ class _ProviderTrackingScreenState extends State<ProviderTrackingScreen> {
   void initState() {
     super.initState();
     _mapController = MapController();
+    _currentBookingStatus = widget.bookingStatus;
+    _isBookingStatusLoaded = (widget.bookingStatus?.isNotEmpty ?? false);
     _clockTimer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!mounted) return;
       setState(() {
         _now = DateTime.now();
       });
     });
+    _loadInitialBookingStatus();
+  }
+
+  Future<void> _loadInitialBookingStatus() async {
+    if (!_isBookingStatusLoaded && widget.bookingId.isNotEmpty) {
+      await _pollBookingStatus();
+    }
+
+    if (!mounted) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!_isActiveServiceStatus) return;
-      _setupMap();
-      _startLocationTracking();
+      if (!mounted) return;
+      _startBookingStatusPolling();
+      _ensureTrackingStarted();
     });
+  }
+
+  void _ensureTrackingStarted() {
+    if (!_isActiveServiceStatus || _hasInitializedTracking) return;
+    _hasInitializedTracking = true;
+    _mapController ??= MapController();
+    _setupMap();
+    _startLocationTracking();
+  }
+
+  void _startBookingStatusPolling() {
+    _bookingStatusTimer?.cancel();
+    _bookingStatusTimer = Timer.periodic(const Duration(seconds: 5), (_) {
+      _pollBookingStatus();
+    });
+    _pollBookingStatus();
+  }
+
+  Future<void> _pollBookingStatus() async {
+    if (!mounted || widget.bookingId.isEmpty) return;
+
+    try {
+      final response = await _apiService.getBooking(widget.bookingId);
+      if (response['success'] != true || response['booking'] == null) return;
+
+      final booking = response['booking'] as Map<String, dynamic>;
+      final status = (booking['status'] as String? ?? '').toLowerCase();
+
+      _currentBookingStatus = status;
+      _isBookingStatusLoaded = true;
+      _ensureTrackingStarted();
+
+      if (mounted) {
+        setState(() {});
+      }
+    } catch (_) {
+      // Keep existing UI during transient failures.
+    }
   }
 
   @override
@@ -90,6 +145,7 @@ class _ProviderTrackingScreenState extends State<ProviderTrackingScreen> {
     // Stop location tracking when leaving screen
     _seekerAnimationTimer?.cancel();
     _clockTimer?.cancel();
+    _bookingStatusTimer?.cancel();
     context.read<LocationTrackingBloc>().add(const StopLocationTracking());
     super.dispose();
   }
@@ -429,6 +485,18 @@ class _ProviderTrackingScreenState extends State<ProviderTrackingScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (!_isBookingStatusLoaded && (widget.bookingStatus == null || widget.bookingStatus!.isEmpty)) {
+      return Scaffold(
+        backgroundColor: AppTheme.backgroundColor,
+        appBar: AppBar(
+          backgroundColor: AppTheme.primaryColor,
+          foregroundColor: Colors.white,
+          title: const Text('Loading Booking Status'),
+        ),
+        body: const Center(child: CircularProgressIndicator()),
+      );
+    }
+
     if (!_isActiveServiceStatus) {
       return Scaffold(
         backgroundColor: AppTheme.backgroundColor,
@@ -466,7 +534,7 @@ class _ProviderTrackingScreenState extends State<ProviderTrackingScreen> {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    'This booking is ${widget.bookingStatus ?? 'unavailable'}.',
+                    'This booking is ${_currentBookingStatus ?? widget.bookingStatus ?? 'unavailable'}.',
                     textAlign: TextAlign.center,
                     style: TextStyle(color: Colors.grey.shade600),
                   ),
@@ -571,10 +639,16 @@ class _ProviderTrackingScreenState extends State<ProviderTrackingScreen> {
           _booking = [...state.activeBookings, ...state.pendingBookings]
               .cast<BookingEntity?>()
               .firstWhere((b) => b?.id == widget.bookingId, orElse: () => null);
+
+          final liveStatus = _booking?.status.toLowerCase();
+          if (liveStatus != null && liveStatus.isNotEmpty) {
+            _currentBookingStatus = liveStatus;
+            _isBookingStatusLoaded = true;
+          }
         }
 
         // Use widget.bookingStatus if _booking is null
-        final currentStatus = _booking?.status ?? widget.bookingStatus ?? 'in_progress';
+        final currentStatus = (_booking?.status ?? _currentBookingStatus ?? widget.bookingStatus ?? 'in_progress').toLowerCase();
 
         final isLoading = state is ProviderBookingActionInProgress &&
             state.bookingId == widget.bookingId;

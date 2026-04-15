@@ -32,6 +32,7 @@ class _OutgoingCallScreenState extends State<OutgoingCallScreen>
     with SingleTickerProviderStateMixin {
   late AnimationController _animationController;
   Timer? _statusPollingTimer;
+  bool _navigatedToLiveSession = false;
 
   @override
   void initState() {
@@ -72,6 +73,21 @@ class _OutgoingCallScreenState extends State<OutgoingCallScreen>
 
       final call = response['call'] as Map<String, dynamic>;
       final status = (call['status'] as String? ?? '').toLowerCase();
+
+      if (status == 'answered' && !_navigatedToLiveSession) {
+        _navigatedToLiveSession = true;
+        final route = widget.callType == AppConstants.callTypeVoice
+            ? AppRoutes.callVoice
+            : AppRoutes.callVideo;
+        if (!mounted) return;
+        context.go(route, extra: {
+          'callId': callId,
+          'otherUserName': widget.receiverName,
+          'otherUserRole': widget.receiverRole,
+          'otherUserProfileImageUrl': widget.receiverProfileImageUrl,
+        });
+        return;
+      }
 
         if (status == AppConstants.callStatusRejected ||
           status == AppConstants.callStatusMissed ||

@@ -141,6 +141,15 @@ class CallBloc extends Bloc<CallEvent, CallState> {
           agoraConfig: agoraConfig,
         ));
 
+        emit(CallConnecting(
+          callId: call['id'],
+          callType: event.callType,
+          isCaller: true,
+          otherUserName: _otherUserName,
+          otherUserRole: _otherUserRole,
+          otherUserProfileImageUrl: _otherUserProfileImageUrl,
+        ));
+
         // Initialize Agora engine with app ID
         await _agoraService.initialize(agoraConfig['appId']);
 
@@ -158,15 +167,6 @@ class CallBloc extends Bloc<CallEvent, CallState> {
             token: agoraConfig['token'],
           );
         }
-
-        emit(CallConnecting(
-          callId: call['id'],
-          callType: event.callType,
-          isCaller: true,
-          otherUserName: _otherUserName,
-          otherUserRole: _otherUserRole,
-          otherUserProfileImageUrl: _otherUserProfileImageUrl,
-        ));
       } else {
         emit(CallError(message: response['message'] ?? 'Failed to initiate call'));
       }
@@ -183,22 +183,37 @@ class CallBloc extends Bloc<CallEvent, CallState> {
       _currentCallId = event.callId;
       _currentCallType = event.agoraConfig['callType'] ?? AppConstants.callTypeVoice;
 
+      final user = _auth.currentUser;
+      if (user == null) {
+        emit(const CallError(message: 'User not authenticated'));
+        return;
+      }
+
       // Update call status to answered
       await _apiService.post(ApiEndpoints.callUpdateStatus, {
         'callId': event.callId,
         'status': 'answered',
+        'userId': user.uid,
       });
+
+      // Stop ringing immediately once accepted.
+      await NotificationService().cancelCallNotification(event.callId);
+
+      // Transition incoming -> accepted/connecting before Agora join finishes.
+      final callType = event.agoraConfig['callType'] ?? AppConstants.callTypeVoice;
+      emit(CallConnecting(
+        callId: event.callId,
+        callType: callType,
+        isCaller: false,
+        otherUserName: _otherUserName,
+        otherUserRole: _otherUserRole,
+        otherUserProfileImageUrl: _otherUserProfileImageUrl,
+      ));
 
       // Initialize Agora engine with app ID
       final appId = event.agoraConfig['appId'];
       if (appId != null) {
         await _agoraService.initialize(appId);
-      }
-
-      final user = _auth.currentUser;
-      if (user == null) {
-        emit(const CallError(message: 'User not authenticated'));
-        return;
       }
 
       final channel = event.agoraConfig['channel']?.toString() ?? '';
@@ -210,7 +225,6 @@ class CallBloc extends Bloc<CallEvent, CallState> {
       final uid = _parseAgoraUid(event.agoraConfig['uid'], user.uid);
 
       // Join Agora channel
-      final callType = event.agoraConfig['callType'] ?? 'voice';
       if (callType == 'voice') {
         await _agoraService.joinVoiceCall(
           channel: channel,
@@ -224,15 +238,6 @@ class CallBloc extends Bloc<CallEvent, CallState> {
           token: event.agoraConfig['token'],
         );
       }
-
-      emit(CallConnecting(
-        callId: event.callId,
-        callType: callType,
-        isCaller: false,
-        otherUserName: _otherUserName,
-        otherUserRole: _otherUserRole,
-        otherUserProfileImageUrl: _otherUserProfileImageUrl,
-      ));
     } catch (e) {
       emit(CallError(message: 'Failed to answer call: $e'));
     }
@@ -250,10 +255,12 @@ class CallBloc extends Bloc<CallEvent, CallState> {
       await NotificationService().cancelCallNotification(event.callId);
 
       // Update call status
+      final user = _auth.currentUser;
       await _apiService.post(ApiEndpoints.callUpdateStatus, {
         'callId': event.callId,
         'status': 'ended',
         'duration': event.duration,
+        if (user != null) 'userId': user.uid,
       });
 
       emit(CallEnded(
@@ -283,6 +290,7 @@ class CallBloc extends Bloc<CallEvent, CallState> {
       await _apiService.post(ApiEndpoints.callUpdateStatus, {
         'callId': event.callId,
         'status': 'rejected',
+        if (_auth.currentUser != null) 'userId': _auth.currentUser!.uid,
       });
 
       emit(CallEnded(
@@ -303,6 +311,7 @@ class CallBloc extends Bloc<CallEvent, CallState> {
       await _apiService.post(ApiEndpoints.callUpdateStatus, {
         'callId': event.callId,
         'status': 'missed',
+        if (_auth.currentUser != null) 'userId': _auth.currentUser!.uid,
       });
 
       emit(CallEnded(
@@ -413,7 +422,9 @@ class CallBloc extends Bloc<CallEvent, CallState> {
     }
 
     if (event.state == CallConnectionState.error) {
-      emit(const CallError(message: 'Call connection timed out. Please try again.'));
+      if (state is! CallConnected) {
+        emit(const CallError(message: 'Call connection timed out. Please try again.'));
+      }
       return;
     } else if (event.state == CallConnectionState.disconnected) {
       if (_currentCallId != null && _callStartTime != null) {
@@ -424,6 +435,7 @@ class CallBloc extends Bloc<CallEvent, CallState> {
           'callId': _currentCallId,
           'status': 'ended',
           'duration': duration,
+          if (_auth.currentUser != null) 'userId': _auth.currentUser!.uid,
         });
 
         emit(CallEnded(

@@ -134,6 +134,24 @@ void _setupNotificationHandling() {
         'callType': callType,
         'agoraConfig': agoraConfig,
       });
+    } else if (type == 'call_status') {
+      final callId = data['callId']?.toString() ?? '';
+      final status = data['status']?.toString().toLowerCase() ?? '';
+      if (callId.isEmpty) return;
+
+      if (status == 'answered') {
+        final callType = data['callType']?.toString().toLowerCase() ?? AppConstants.callTypeVoice;
+        final route = callType == AppConstants.callTypeVideo
+            ? AppRoutes.callVideo
+            : AppRoutes.callVoice;
+
+        _router.go(route, extra: {
+          'callId': callId,
+          'otherUserName': data['otherUserName']?.toString() ?? 'User',
+          'otherUserRole': data['otherUserRole']?.toString() ?? AppConstants.roleUser,
+          'otherUserProfileImageUrl': data['otherUserProfileImageUrl']?.toString(),
+        });
+      }
     } else if (tapped) {
       // Handle notification tap navigation for other types
       if (type == NotificationService.notificationTypeChat) {
