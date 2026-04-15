@@ -132,10 +132,10 @@ class CallBloc extends Bloc<CallEvent, CallState> {
 
       if (response['success'] == true) {
         final call = response['call'];
-        final agoraConfig = response['agoraConfig'] as Map<String, dynamic>?;
+        final agoraConfig = response['agoraConfig'] as Map<String, dynamic>;
         
         // Extract and log debug info from backend
-        if (agoraConfig != null && agoraConfig.containsKey('_debug')) {
+        if (agoraConfig.containsKey('_debug')) {
           final debug = agoraConfig['_debug'] as Map<String, dynamic>?;
           if (debug != null) {
             print('[CallBloc] BACKEND_DEBUG: token_required=${debug['token_required']}, '
