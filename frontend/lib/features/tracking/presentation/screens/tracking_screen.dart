@@ -72,6 +72,8 @@ class _TrackingScreenState extends State<TrackingScreen> {
   bool _isBookingStatusLoaded = false;
   bool _hasInitializedTracking = false;
   String? _currentBookingStatus;
+  String? _cachedProviderName; // Cache provider name to use throughout the session
+  String? _cachedProviderId; // Cache provider ID
 
   Timer? _markerAnimationTimer;
   Timer? _clockTimer;
@@ -87,6 +89,16 @@ class _TrackingScreenState extends State<TrackingScreen> {
   bool get _isCompletedServiceStatus {
     final status = (_currentBookingStatus ?? widget.bookingStatus ?? '').toLowerCase();
     return status == AppConstants.statusCompleted;
+  }
+
+  /// Get provider name, using cached value or falling back to widget parameter
+  String _getProviderName() {
+    return _cachedProviderName ?? widget.providerName ?? 'Provider';
+  }
+
+  /// Get provider ID, using cached value or falling back to widget parameter
+  String _getProviderId() {
+    return _cachedProviderId ?? widget.providerId;
   }
 
   @override
@@ -141,7 +153,7 @@ class _TrackingScreenState extends State<TrackingScreen> {
       context.go(AppRoutes.feedbackSeeker, extra: {
         'bookingId': widget.bookingId,
         'providerId': widget.providerId,
-        'providerName': widget.providerName ?? 'Provider',
+        'providerName': _getProviderName(),
       });
     } catch (_) {
       // If check fails, keep fallback unavailable UI and avoid breaking flow.
@@ -175,6 +187,12 @@ class _TrackingScreenState extends State<TrackingScreen> {
       final booking = response['booking'] as Map<String, dynamic>;
       final status = (booking['status'] as String? ?? '').toLowerCase();
 
+      // Cache provider information from booking
+      _cachedProviderName = 
+          (booking['providerName'] ?? booking['provider_name'])?.toString() ?? widget.providerName ?? 'Provider';
+      _cachedProviderId = 
+          (booking['providerId'] ?? booking['provider_id'])?.toString() ?? widget.providerId;
+
       _currentBookingStatus = status;
       _isBookingStatusLoaded = true;
       _ensureTrackingStarted();
@@ -183,11 +201,8 @@ class _TrackingScreenState extends State<TrackingScreen> {
       }
 
       if (status == AppConstants.statusCompleted) {
-        final providerId =
-            (booking['providerId'] ?? booking['provider_id'] ?? widget.providerId)?.toString() ?? '';
-        final providerName =
-            (booking['providerName'] ?? booking['provider_name'] ?? widget.providerName)?.toString() ??
-                'Provider';
+        final providerId = _cachedProviderId;
+        final providerName = _cachedProviderName;
 
         if (providerId.isEmpty) return;
 
@@ -504,7 +519,7 @@ class _TrackingScreenState extends State<TrackingScreen> {
   }
 
   void _startCall(String callType) {
-    if (!_isActiveServiceStatus || widget.providerId.isEmpty) {
+    if (!_isActiveServiceStatus || _getProviderId().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Communication is available only during active service.'),
@@ -514,12 +529,15 @@ class _TrackingScreenState extends State<TrackingScreen> {
       return;
     }
 
-    if (widget.providerId.isEmpty) return;
+    final providerId = _getProviderId();
+    final providerName = _getProviderName();
+
+    if (providerId.isEmpty) return;
 
     context.read<CallBloc>().add(
           InitiateCallRequested(
-            receiverId: widget.providerId,
-            receiverName: widget.providerName ?? 'Provider',
+            receiverId: providerId,
+            receiverName: providerName,
             receiverRole: AppConstants.roleProvider,
             bookingId: widget.bookingId,
             callType: callType,
@@ -528,14 +546,14 @@ class _TrackingScreenState extends State<TrackingScreen> {
 
     context.push(AppRoutes.callOutgoing, extra: {
       'callId': 'pending',
-      'receiverName': widget.providerName ?? 'Provider',
+      'receiverName': providerName,
       'receiverRole': AppConstants.roleProvider,
       'callType': callType,
     });
   }
 
   void _messageProvider() {
-    if (!_isActiveServiceStatus || widget.providerId.isEmpty) {
+    if (!_isActiveServiceStatus || _getProviderId().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Communication is available only during active service.'),
@@ -546,8 +564,8 @@ class _TrackingScreenState extends State<TrackingScreen> {
     }
 
     context.push(AppRoutes.chat(widget.bookingId), extra: {
-      'otherUserId': widget.providerId,
-      'otherUserName': widget.providerName ?? 'Provider',
+      'otherUserId': _getProviderId(),
+      'otherUserName': _getProviderName(),
       'otherUserRole': AppConstants.roleProvider,
       'bookingId': widget.bookingId,
     });
@@ -826,7 +844,7 @@ class _TrackingScreenState extends State<TrackingScreen> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                widget.providerName ?? 'Provider',
+                                _getProviderName(),
                                 style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
                               ),
                               Text(
