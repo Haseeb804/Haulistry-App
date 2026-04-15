@@ -201,8 +201,8 @@ class _TrackingScreenState extends State<TrackingScreen> {
       }
 
       if (status == AppConstants.statusCompleted) {
-        final providerId = _cachedProviderId;
-        final providerName = _cachedProviderName;
+        final providerId = _cachedProviderId ?? '';
+        final providerName = _cachedProviderName ?? 'Provider';
 
         if (providerId.isEmpty) return;
 
