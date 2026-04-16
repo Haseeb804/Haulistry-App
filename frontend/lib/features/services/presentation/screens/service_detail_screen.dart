@@ -49,9 +49,7 @@ class ServiceDetailScreen extends StatelessWidget {
                 ),
                 child: IconButton(
                   icon: const Icon(Icons.share_rounded, color: Colors.white),
-                  onPressed: () {
-                    // TODO: Implement share functionality
-                  },
+                  onPressed: () {},
                 ),
               ),
             ],

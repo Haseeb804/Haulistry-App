@@ -54,12 +54,6 @@
 -dontwarn com.razorpay.**
 -keep class org.json.** { *; }
 
-## Agora
--keep class io.agora.**{*;}
--keep class io.agora.rtc.** { *; }
--keep class io.agora.rtc2.** { *; }
--dontwarn io.agora.**
-
 ## GraphQL & Apollo
 -keep class com.apollographql.apollo.** { *; }
 -keep class com.apollographql.apollo3.** { *; }

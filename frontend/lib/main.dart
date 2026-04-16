@@ -121,41 +121,19 @@ void _setupNotificationHandling() {
       final callerProfileImageUrl = data['callerProfileImageUrl']?.toString();
       final callType = data['callType']?.toString() ?? AppConstants.callTypeVoice;
 
-      final nestedAgoraConfig =
-        (data['agoraConfig'] is Map<String, dynamic>)
-          ? data['agoraConfig'] as Map<String, dynamic>
+      final nestedSignalData =
+        (data['signalData'] is Map<String, dynamic>)
+          ? data['signalData'] as Map<String, dynamic>
           : <String, dynamic>{};
 
-      final appIdRaw =
-        nestedAgoraConfig['appId'] ?? data['agoraAppId'] ?? '';
-      final channelRaw =
-        nestedAgoraConfig['channel'] ?? data['agoraChannel'] ?? '';
-      final tokenRaw =
-        nestedAgoraConfig['token'] ?? data['agoraToken'] ?? '';
-      final uidRaw =
-        nestedAgoraConfig['uid'] ?? data['agoraUid'] ?? '0';
-      final callerUidRaw =
-        nestedAgoraConfig['callerUid'] ?? data['agoraCallerUid'] ?? '0';
-      final receiverUidRaw =
-        nestedAgoraConfig['receiverUid'] ?? data['agoraReceiverUid'] ?? '0';
-      final tokenExpiresAtRaw =
-        nestedAgoraConfig['tokenExpiresAt'] ?? data['agoraTokenExpiresAt'] ?? '0';
-      final tokenExpiresInRaw =
-        nestedAgoraConfig['tokenExpiresIn'] ?? data['agoraTokenExpiresIn'];
-      
-      // Reconstruct agoraConfig from notification data with ALL required fields for proper joining
-      final agoraConfig = {
-      'appId': appIdRaw.toString(),
-      'channel': channelRaw.toString(),
-      'token': tokenRaw.toString(),
-      'uid': int.tryParse(uidRaw.toString()) ?? 0,
-      'callerUid': int.tryParse(callerUidRaw.toString()) ?? 0,
-      'receiverUid': int.tryParse(receiverUidRaw.toString()) ?? 0,
-      'tokenExpiresAt': int.tryParse(tokenExpiresAtRaw.toString()) ?? 0,
-      'tokenExpiresIn': tokenExpiresInRaw == null
-        ? null
-        : int.tryParse(tokenExpiresInRaw.toString()),
-        'callType': callType,
+      final signalData = {
+        'callId': nestedSignalData['callId']?.toString() ?? callId,
+        'bookingId': nestedSignalData['bookingId']?.toString() ?? data['bookingId']?.toString() ?? '',
+        'callType': nestedSignalData['callType']?.toString() ?? callType,
+        'signalingChannel': nestedSignalData['signalingChannel']?.toString() ?? data['signalingChannel']?.toString() ?? '',
+        'sessionId': nestedSignalData['sessionId']?.toString() ?? data['sessionId']?.toString() ?? '',
+        'callerId': nestedSignalData['callerId']?.toString() ?? callerId,
+        'receiverId': nestedSignalData['receiverId']?.toString() ?? data['receiverId']?.toString() ?? '',
       };
 
       // Navigate to incoming call screen
@@ -166,7 +144,7 @@ void _setupNotificationHandling() {
         'callerRole': callerRole,
         'callerProfileImageUrl': callerProfileImageUrl,
         'callType': callType,
-        'agoraConfig': agoraConfig,
+        'signalData': signalData,
       });
     } else if (type == 'call_status') {
       final callId = data['callId']?.toString() ?? '';
@@ -606,7 +584,7 @@ final _router = GoRouter(
             callerRole: extra['callerRole'] as String? ?? AppConstants.roleUser,
             callerProfileImageUrl: extra['callerProfileImageUrl'] as String?,
             callType: extra['callType'] as String,
-            agoraConfig: extra['agoraConfig'] as Map<String, dynamic>,
+            signalData: extra['signalData'] as Map<String, dynamic>,
           ),
         );
       },

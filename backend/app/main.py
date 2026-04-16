@@ -11,6 +11,7 @@ from .database import neo4j_driver
 from .graphql.schema import schema
 from .controllers import api_router
 from .controllers.otp import router as otp_router
+from .realtime.websocket_gateway import router as realtime_router
 
 # Configure logging with cleaner format
 logging.basicConfig(
@@ -64,6 +65,7 @@ app.add_middleware(
 # Include REST API routers
 app.include_router(api_router)
 app.include_router(otp_router)
+app.include_router(realtime_router)
 
 
 # Health check endpoint

@@ -32,8 +32,8 @@ class Settings(BaseSettings):
     # Neo4j Configuration
     NEO4J_URI: str = os.getenv("NEO4J_URI") or os.getenv("NEO4J_URL") or "bolt://localhost:7687"
     NEO4J_USERNAME: str = os.getenv("NEO4J_USERNAME") or os.getenv("NEO4J_USER") or "neo4j"
-    NEO4J_PASSWORD: str = "password"
-    NEO4J_DATABASE: str = "neo4j"
+    NEO4J_PASSWORD: str = os.getenv("NEO4J_PASSWORD") or "password"
+    NEO4J_DATABASE: str = os.getenv("NEO4J_DATABASE") or "neo4j"
     
     # Firebase Configuration
     FIREBASE_CREDENTIALS_PATH: str = "./serviceAccountKey.json"

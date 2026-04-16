@@ -3,10 +3,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 
 import '../../../../core/constants/app_constants.dart';
-import '../../../../core/services/api_service.dart';
 import '../../../../core/utils/call_identity_resolver.dart';
 import '../bloc/call_bloc.dart';
 import '../bloc/call_event.dart';
@@ -37,8 +35,6 @@ class OutgoingCallScreen extends StatefulWidget {
 class _OutgoingCallScreenState extends State<OutgoingCallScreen>
     with SingleTickerProviderStateMixin {
   late final AnimationController _animationController;
-  Timer? _statusPollingTimer;
-  bool _navigatedToLiveSession = false;
   CallParticipantIdentity? _resolvedReceiver;
 
   @override
@@ -48,10 +44,6 @@ class _OutgoingCallScreenState extends State<OutgoingCallScreen>
       vsync: this,
       duration: const Duration(seconds: 2),
     )..repeat();
-
-    _statusPollingTimer = Timer.periodic(const Duration(seconds: 2), (_) {
-      _pollCallStatus();
-    });
 
     _resolveReceiverIdentity();
   }
@@ -143,73 +135,8 @@ class _OutgoingCallScreenState extends State<OutgoingCallScreen>
     });
   }
 
-  Future<void> _pollCallStatus() async {
-    if (!mounted) return;
-
-    final state = context.read<CallBloc>().state;
-    if (state is CallConnected || state is CallEnded || state is CallError) {
-      return;
-    }
-
-    final callId = _resolveActiveCallId(state);
-    if (callId.isEmpty || callId == 'pending') return;
-
-    try {
-      final user = FirebaseAuth.instance.currentUser;
-      final userId = user?.uid ?? '';
-      
-      // Include userId so backend can return caller/receiver specific config
-      final endpoint = userId.isNotEmpty 
-        ? '${ApiEndpoints.callById(callId)}?user_id=$userId'
-        : ApiEndpoints.callById(callId);
-        
-      final response = await ApiService.instance.get(endpoint);
-      if (response['success'] != true || response['call'] == null) return;
-
-      final call = response['call'] as Map<String, dynamic>;
-      final status = (call['status'] as String? ?? '').toLowerCase();
-      
-      // Extract Agora config from response if available
-      final agoraConfig = (response['agoraConfig'] is Map<String, dynamic>)
-        ? response['agoraConfig'] as Map<String, dynamic>
-        : <String, dynamic>{};
-
-      if (status == 'answered' && !_navigatedToLiveSession) {
-        _navigatedToLiveSession = true;
-
-        if (!mounted) return;
-        context.read<CallBloc>().add(
-              CallAnswerAcceptedByReceiver(
-                callId: callId,
-                callType: widget.callType,
-                agoraConfig: agoraConfig,  // Pass actual config from backend
-              ),
-            );
-
-        if (!mounted) return;
-        _navigateToLiveCall(context, callId, context.read<CallBloc>().state);
-        return;
-      }
-
-      if (status == AppConstants.callStatusRejected ||
-          status == AppConstants.callStatusMissed ||
-          status == AppConstants.callStatusEnded) {
-        if (!mounted) return;
-        context.read<CallBloc>().add(
-              EndCallRequested(
-                callId: callId,
-                duration: 0,
-              ),
-            );
-      }
-    } catch (_) {
-      // Keep outgoing screen alive during transient network failures.
-    }
-  }
-
   @override
   void dispose() {
-    _statusPollingTimer?.cancel();
     _animationController.dispose();
     super.dispose();
   }

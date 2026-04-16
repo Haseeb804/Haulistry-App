@@ -20,8 +20,8 @@ class Call:
         started_at: Optional[datetime] = None,
         ended_at: Optional[datetime] = None,
         duration: int = 0,  # in seconds
-        agora_channel: Optional[str] = None,
-        agora_token: Optional[str] = None
+        signaling_channel: Optional[str] = None,
+        signaling_session_id: Optional[str] = None
     ):
         self.call_id = call_id
         self.caller_id = caller_id
@@ -32,8 +32,8 @@ class Call:
         self.started_at = started_at or datetime.now()
         self.ended_at = ended_at
         self.duration = duration
-        self.agora_channel = agora_channel
-        self.agora_token = agora_token
+        self.signaling_channel = signaling_channel
+        self.signaling_session_id = signaling_session_id
 
     @staticmethod
     def create_call(
@@ -41,8 +41,8 @@ class Call:
         receiver_id: str,
         booking_id: str,
         call_type: str,
-        agora_channel: str,
-        agora_token: Optional[str] = None
+        signaling_channel: str,
+        signaling_session_id: Optional[str] = None
     ) -> Optional[Dict[str, Any]]:
         """Create a new call record"""
         query = """
@@ -64,8 +64,8 @@ class Call:
             callType: $callType,
             status: 'initiated',
             startedAt: datetime(),
-            agoraChannel: $agoraChannel,
-            agoraToken: $agoraToken
+            signalingChannel: $signalingChannel,
+            signalingSessionId: $signalingSessionId
         })
         
         CREATE (c)-[:CALL_FROM]->(caller)
@@ -84,8 +84,8 @@ class Call:
             "receiverId": receiver_id,
             "bookingId": booking_id,
             "callType": call_type,
-            "agoraChannel": agora_channel,
-            "agoraToken": agora_token,
+            "signalingChannel": signaling_channel,
+            "signalingSessionId": signaling_session_id,
             "activeStatuses": list(LIVE_COMMUNICATION_STATUSES),
         }
         

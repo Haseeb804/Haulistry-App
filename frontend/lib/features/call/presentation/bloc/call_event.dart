@@ -31,15 +31,15 @@ class InitiateCallRequested extends CallEvent {
 
 class AnswerCallRequested extends CallEvent {
   final String callId;
-  final Map<String, dynamic> agoraConfig;
+  final Map<String, dynamic> signalData;
 
   const AnswerCallRequested({
     required this.callId,
-    required this.agoraConfig,
+    required this.signalData,
   });
 
   @override
-  List<Object?> get props => [callId, agoraConfig];
+  List<Object?> get props => [callId, signalData];
 }
 
 class EndCallRequested extends CallEvent {
@@ -123,7 +123,7 @@ class IncomingCallReceived extends CallEvent {
   final String callerRole;
   final String? callerProfileImageUrl;
   final String callType;
-  final Map<String, dynamic> agoraConfig;
+  final Map<String, dynamic> signalData;
 
   const IncomingCallReceived({
     required this.callId,
@@ -132,11 +132,11 @@ class IncomingCallReceived extends CallEvent {
     this.callerRole = AppConstants.roleUser,
     this.callerProfileImageUrl,
     required this.callType,
-    required this.agoraConfig,
+    required this.signalData,
   });
 
   @override
-  List<Object?> get props => [callId, callerId, callerName, callerRole, callerProfileImageUrl, callType, agoraConfig];
+  List<Object?> get props => [callId, callerId, callerName, callerRole, callerProfileImageUrl, callType, signalData];
 }
 
 class LoadCallHistoryRequested extends CallEvent {
@@ -151,16 +151,31 @@ class LoadCallHistoryRequested extends CallEvent {
 class CallAnswerAcceptedByReceiver extends CallEvent {
   final String callId;
   final String callType;
-  final Map<String, dynamic> agoraConfig;
+  final Map<String, dynamic> signalData;
 
   const CallAnswerAcceptedByReceiver({
     required this.callId,
     required this.callType,
-    required this.agoraConfig,
+    required this.signalData,
   });
 
   @override
-  List<Object?> get props => [callId, callType, agoraConfig];
+  List<Object?> get props => [callId, callType, signalData];
+}
+
+class RemoteCallStatusUpdated extends CallEvent {
+  final String callId;
+  final String status;
+  final int duration;
+
+  const RemoteCallStatusUpdated({
+    required this.callId,
+    required this.status,
+    required this.duration,
+  });
+
+  @override
+  List<Object?> get props => [callId, status, duration];
 }
 
 enum CallConnectionState {

@@ -304,7 +304,7 @@ class NotificationService {
     required String callerId,
     required String callerName,
     required String callType,
-    required Map<String, dynamic> agoraConfig,
+    required Map<String, dynamic> signalData,
   }) async {
     // For Android, show full-screen intent notification
     final androidDetails = AndroidNotificationDetails(
@@ -364,14 +364,7 @@ class NotificationService {
         'callerId': callerId,
         'callerName': callerName,
         'callType': callType,
-        'agoraAppId': agoraConfig['appId'] ?? '',
-        'agoraChannel': agoraConfig['channel'] ?? '',
-        'agoraToken': agoraConfig['token'] ?? '',
-        'agoraUid': agoraConfig['uid']?.toString() ?? '0',
-        'agoraCallerUid': agoraConfig['callerUid']?.toString() ?? '0',
-        'agoraReceiverUid': agoraConfig['receiverUid']?.toString() ?? '0',
-        'agoraTokenExpiresAt': agoraConfig['tokenExpiresAt']?.toString() ?? '0',
-        'agoraTokenExpiresIn': agoraConfig['tokenExpiresIn']?.toString(),
+        'signalData': signalData,
       }),
     );
 
@@ -382,15 +375,7 @@ class NotificationService {
       'callerId': callerId,
       'callerName': callerName,
       'callType': callType,
-      'agoraAppId': agoraConfig['appId'] ?? '',
-      'agoraChannel': agoraConfig['channel'] ?? '',
-      'agoraToken': agoraConfig['token'] ?? '',
-      'agoraUid': agoraConfig['uid']?.toString() ?? '0',
-      'agoraCallerUid': agoraConfig['callerUid']?.toString() ?? '0',
-      'agoraReceiverUid': agoraConfig['receiverUid']?.toString() ?? '0',
-      'agoraTokenExpiresAt': agoraConfig['tokenExpiresAt']?.toString() ?? '0',
-      'agoraTokenExpiresIn': agoraConfig['tokenExpiresIn']?.toString(),
-      'agoraConfig': agoraConfig,
+      'signalData': signalData,
       'tapped': false,
     });
   }

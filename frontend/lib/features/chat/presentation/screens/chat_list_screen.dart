@@ -290,8 +290,10 @@ class _ConversationTile extends StatelessWidget {
             context.push(
               AppRoutes.chat(conversation.id),
               extra: {
+                'otherUserId': conversation.otherUserId,
                 'otherUserName': conversation.otherUserName,
                 'otherUserImage': conversation.otherUserImage,
+                'bookingId': conversation.id.contains(':') ? conversation.id.split(':').first : null,
               },
             );
           },

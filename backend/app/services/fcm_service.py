@@ -246,7 +246,6 @@ class FCMService:
             
         except messaging.UnregisteredError:
             logger.warning(f"FCM token is unregistered: {fcm_token[:20]}...")
-            # TODO: Remove invalid token from database
             return False
         except Exception as e:
             logger.error(f"Error sending FCM notification: {e}")

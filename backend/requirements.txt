@@ -29,7 +29,6 @@ python-dateutil==2.9.0
 pydantic==2.10.4
 pydantic-settings==2.7.0
 email-validator==2.1.0
-agora-token-builder==1.0.0
 
 # Image Processing (for base64 conversion)
 pillow==11.0.0

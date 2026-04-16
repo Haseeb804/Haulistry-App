@@ -13,7 +13,7 @@ class IncomingCallScreen extends StatelessWidget {
   final String callerRole;
   final String? callerProfileImageUrl;
   final String callType;
-  final Map<String, dynamic> agoraConfig;
+  final Map<String, dynamic> signalData;
 
   const IncomingCallScreen({
     super.key,
@@ -23,7 +23,7 @@ class IncomingCallScreen extends StatelessWidget {
     this.callerRole = AppConstants.roleUser,
     this.callerProfileImageUrl,
     required this.callType,
-    required this.agoraConfig,
+    required this.signalData,
   });
 
   @override
@@ -163,7 +163,7 @@ class IncomingCallScreen extends StatelessWidget {
                           context.read<CallBloc>().add(
                                 AnswerCallRequested(
                                   callId: callId,
-                                  agoraConfig: agoraConfig,
+                                  signalData: signalData,
                                 ),
                               );
                         },

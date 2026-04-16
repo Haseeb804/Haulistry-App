@@ -23,7 +23,7 @@ class CallInitiated extends CallState {
   final String receiverRole;
   final String? receiverProfileImageUrl;
   final String callType;
-  final Map<String, dynamic> agoraConfig;
+  final Map<String, dynamic> signalData;
 
   const CallInitiated({
     required this.callId,
@@ -32,11 +32,11 @@ class CallInitiated extends CallState {
     this.receiverRole = AppConstants.roleUser,
     this.receiverProfileImageUrl,
     required this.callType,
-    required this.agoraConfig,
+    required this.signalData,
   });
 
   @override
-  List<Object?> get props => [callId, receiverId, receiverName, receiverRole, receiverProfileImageUrl, callType, agoraConfig];
+  List<Object?> get props => [callId, receiverId, receiverName, receiverRole, receiverProfileImageUrl, callType, signalData];
 }
 
 class CallRinging extends CallState {
@@ -46,7 +46,7 @@ class CallRinging extends CallState {
   final String callerRole;
   final String? callerProfileImageUrl;
   final String callType;
-  final Map<String, dynamic> agoraConfig;
+  final Map<String, dynamic> signalData;
 
   const CallRinging({
     required this.callId,
@@ -55,11 +55,11 @@ class CallRinging extends CallState {
     this.callerRole = AppConstants.roleUser,
     this.callerProfileImageUrl,
     required this.callType,
-    required this.agoraConfig,
+    required this.signalData,
   });
 
   @override
-  List<Object?> get props => [callId, callerId, callerName, callerRole, callerProfileImageUrl, callType, agoraConfig];
+  List<Object?> get props => [callId, callerId, callerName, callerRole, callerProfileImageUrl, callType, signalData];
 }
 
 class CallConnecting extends CallState {

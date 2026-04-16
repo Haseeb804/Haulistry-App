@@ -7,6 +7,13 @@ class AppConstants {
   // API Configuration
   static const String apiUrl = 'https://haulistry-app.vercel.app';
   static const String graphqlEndpoint = 'https://haulistry-app.vercel.app/graphql';
+  static const String realtimeWebSocketPath = '/ws/realtime';
+
+  static String get realtimeWsUrl {
+    final uri = Uri.parse(apiUrl);
+    final scheme = uri.scheme == 'https' ? 'wss' : 'ws';
+    return uri.replace(scheme: scheme, path: realtimeWebSocketPath).toString();
+  }
   
   // Firebase Collections
   static const String usersCollection = 'users';
@@ -225,12 +232,8 @@ class ApiEndpoints {
 
   static const String callInitiate = '/api/calls/initiate';
   static const String callUpdateStatus = '/api/calls/update-status';
-  static const String callRefreshToken = '/api/calls/token';
   static String callById(String callId) => '/api/calls/$callId';
 
-  static const String messageSend = '/api/messages/send';
-  static const String messageUploadImage = '/api/messages/upload-image';
-  static const String messageUploadVoice = '/api/messages/upload-voice';
   static String conversationMessages(String user1Id, String user2Id, String bookingId) =>
       '/api/messages/conversation/$user1Id/$user2Id/$bookingId';
 

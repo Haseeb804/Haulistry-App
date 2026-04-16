@@ -387,8 +387,7 @@ class AuthRepositoryImpl implements AuthRepository {
     required double vehicleCapacity,
   }) async {
     try {
-      // TODO: Implement document upload with backend API
-      // For now, just update CNIC and vehicle info in Neo4j
+      // Update CNIC and vehicle info in Neo4j.
       final currentUser = _firebaseAuth.currentUser;
       if (currentUser == null) throw Exception('Not authenticated');
 

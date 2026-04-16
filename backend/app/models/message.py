@@ -1,6 +1,6 @@
 """
 Message Model
-Manages text messages between users using Agora RTM
+Manages persisted chat messages between users
 """
 from typing import Optional, Dict, Any, List
 from datetime import datetime
@@ -149,6 +149,69 @@ class Message:
                     messages.append(msg)
         
         return messages
+
+    @staticmethod
+    def get_user_conversations(user_id: str, limit: int = 50) -> List[Dict[str, Any]]:
+        """Get latest conversation summaries for a user across bookings."""
+        query = """
+        MATCH (m:Message)
+        WHERE m.senderId = $userId OR m.receiverId = $userId
+        WITH m,
+             CASE WHEN m.senderId = $userId THEN m.receiverId ELSE m.senderId END AS otherUserId
+        ORDER BY m.createdAt DESC
+        WITH otherUserId, collect(m)[0] AS lastMessage
+        OPTIONAL MATCH (u) WHERE (u:Seeker OR u:Provider OR u:User) AND u.id = otherUserId
+        OPTIONAL MATCH (unread:Message {receiverId: $userId, isRead: false})
+        WHERE unread.senderId = otherUserId
+        WITH otherUserId, lastMessage, u, count(unread) AS unreadCount
+        RETURN
+            otherUserId,
+            coalesce(u.name, 'User') as otherUserName,
+            coalesce(u.profileImageUrl, u.profile_image_url, '') as otherUserImage,
+            lastMessage,
+            unreadCount
+        ORDER BY lastMessage.createdAt DESC
+        LIMIT $limit
+        """
+
+        result = neo4j_driver.execute_read(query, {"userId": user_id, "limit": limit})
+        conversations: List[Dict[str, Any]] = []
+
+        if not result:
+            return conversations
+
+        for row in result:
+            last = Message._serialize_neo4j_data(row.get("lastMessage") or {})
+            booking_id = str(last.get("bookingId") or "")
+            other_user_id = str(row.get("otherUserId") or "")
+            if not booking_id or not other_user_id:
+                continue
+
+            conversations.append(
+                {
+                    "id": f"{booking_id}:{other_user_id}",
+                    "bookingId": booking_id,
+                    "otherUserId": other_user_id,
+                    "otherUserName": row.get("otherUserName") or "User",
+                    "otherUserImage": (row.get("otherUserImage") or "") or None,
+                    "lastMessage": {
+                        "id": str(last.get("id") or ""),
+                        "senderId": str(last.get("senderId") or ""),
+                        "senderName": str(last.get("senderName") or "User"),
+                        "message": str(last.get("messageText") or ""),
+                        "messageType": str(last.get("messageType") or "text"),
+                        "imageUrl": str(last.get("messageText") or "") if str(last.get("messageType") or "") == "image" else None,
+                        "voiceUrl": str(last.get("messageText") or "") if str(last.get("messageType") or "") == "voice" else None,
+                        "voiceDuration": last.get("mediaDuration"),
+                        "timestamp": last.get("createdAt"),
+                        "isRead": bool(last.get("isRead") is True),
+                    },
+                    "unreadCount": int(row.get("unreadCount") or 0),
+                    "updatedAt": last.get("createdAt"),
+                }
+            )
+
+        return conversations
 
     @staticmethod
     def get_conversation_messages(

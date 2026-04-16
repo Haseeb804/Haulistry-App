@@ -1,4 +1,5 @@
 import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
@@ -6,7 +7,6 @@ import '../bloc/call_bloc.dart';
 import '../bloc/call_event.dart';
 import '../bloc/call_state.dart';
 import '../../../../core/constants/app_constants.dart';
-import '../../../../core/services/api_service.dart';
 import '../../../../core/utils/call_identity_resolver.dart';
 
 class VoiceCallScreen extends StatefulWidget {
@@ -30,8 +30,6 @@ class VoiceCallScreen extends StatefulWidget {
 }
 
 class _VoiceCallScreenState extends State<VoiceCallScreen> {
-  Timer? _durationTimer;
-  Timer? _statusPollingTimer;
   Duration _callDuration = Duration.zero;
   CallParticipantIdentity? _resolvedOtherUser;
 
@@ -39,10 +37,6 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> {
   void initState() {
     super.initState();
     _startDurationTimer();
-    _statusPollingTimer = Timer.periodic(
-      const Duration(seconds: 3),
-      (_) => _pollCallStatus(),
-    );
     _resolveOtherUserIdentity();
   }
 
@@ -61,34 +55,12 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> {
     }
   }
 
-  Future<void> _pollCallStatus() async {
-    if (!mounted) return;
-
-    try {
-      final response = await ApiService.instance.get(ApiEndpoints.callById(widget.callId));
-      if (response['success'] != true || response['call'] == null) return;
-
-      final call = response['call'] as Map<String, dynamic>;
-      final status = (call['status'] as String? ?? '').toLowerCase();
-
-      if (status == AppConstants.callStatusRejected ||
-          status == AppConstants.callStatusMissed ||
-          status == AppConstants.callStatusEnded) {
-        if (!mounted) return;
-        context.read<CallBloc>().add(
-              EndCallRequested(
-                callId: widget.callId,
-                duration: _callDuration.inSeconds,
-              ),
-            );
-      }
-    } catch (_) {
-      // Keep call UI running during transient API errors.
-    }
-  }
-
   void _startDurationTimer() {
-    _durationTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+    Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
       setState(() {
         _callDuration = Duration(seconds: _callDuration.inSeconds + 1);
       });
@@ -97,8 +69,6 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> {
 
   @override
   void dispose() {
-    _durationTimer?.cancel();
-    _statusPollingTimer?.cancel();
     super.dispose();
   }
 

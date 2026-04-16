@@ -8,7 +8,7 @@ allprojects {
     }
 
     // Force all subprojects (including Flutter plugins) to use the installed NDK version.
-    // This overrides any hardcoded ndkVersion inside plugin build.gradle files (e.g. agora_rtc_engine).
+    // This overrides any hardcoded ndkVersion inside plugin build.gradle files.
     afterEvaluate {
         extensions.findByName("android")?.let { androidExt ->
             val androidBase = androidExt as? com.android.build.gradle.BaseExtension ?: return@afterEvaluate

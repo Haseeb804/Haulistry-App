@@ -2,13 +2,12 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
-import 'package:agora_rtc_engine/agora_rtc_engine.dart';
+import 'package:flutter_webrtc/flutter_webrtc.dart';
 import '../bloc/call_bloc.dart';
 import '../bloc/call_event.dart';
 import '../bloc/call_state.dart';
-import '../../../../core/services/agora_call_service.dart' as agora;
+import '../../../../core/services/webrtc_call_service.dart';
 import '../../../../core/constants/app_constants.dart';
-import '../../../../core/services/api_service.dart';
 import '../../../../core/utils/call_identity_resolver.dart';
 
 class VideoCallScreen extends StatefulWidget {
@@ -32,8 +31,8 @@ class VideoCallScreen extends StatefulWidget {
 }
 
 class _VideoCallScreenState extends State<VideoCallScreen> {
+  final WebRTCCallService _callService = WebRTCCallService();
   Timer? _durationTimer;
-  Timer? _statusPollingTimer;
   Duration _callDuration = Duration.zero;
   bool _showControls = true;
   Timer? _controlsTimer;
@@ -44,10 +43,6 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
     super.initState();
     _startDurationTimer();
     _startControlsTimer();
-    _statusPollingTimer = Timer.periodic(
-      const Duration(seconds: 3),
-      (_) => _pollCallStatus(),
-    );
     _resolveOtherUserIdentity();
   }
 
@@ -63,32 +58,6 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
       setState(() {
         _resolvedOtherUser = resolved;
       });
-    }
-  }
-
-  Future<void> _pollCallStatus() async {
-    if (!mounted) return;
-
-    try {
-      final response = await ApiService.instance.get(ApiEndpoints.callById(widget.callId));
-      if (response['success'] != true || response['call'] == null) return;
-
-      final call = response['call'] as Map<String, dynamic>;
-      final status = (call['status'] as String? ?? '').toLowerCase();
-
-      if (status == AppConstants.callStatusRejected ||
-          status == AppConstants.callStatusMissed ||
-          status == AppConstants.callStatusEnded) {
-        if (!mounted) return;
-        context.read<CallBloc>().add(
-              EndCallRequested(
-                callId: widget.callId,
-                duration: _callDuration.inSeconds,
-              ),
-            );
-      }
-    } catch (_) {
-      // Keep call UI running during transient API errors.
     }
   }
 
@@ -122,7 +91,6 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
   void dispose() {
     _durationTimer?.cancel();
     _controlsTimer?.cancel();
-    _statusPollingTimer?.cancel();
     super.dispose();
   }
 
@@ -285,13 +253,7 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
                 children: [
                   // Remote Video View
                   if (state.remoteUid != null)
-                    AgoraVideoView(
-                      controller: VideoViewController.remote(
-                        rtcEngine: agora.AgoraCallService().engine,
-                        canvas: VideoCanvas(uid: state.remoteUid),
-                        connection: const RtcConnection(),
-                      ),
-                    )
+                    RTCVideoView(_callService.remoteRenderer, objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover)
                   else
                     Container(
                       color: Colors.black87,
@@ -397,12 +359,7 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
                         width: 120,
                         height: 160,
                         child: state.isVideoOn
-                            ? AgoraVideoView(
-                                controller: VideoViewController(
-                                  rtcEngine: agora.AgoraCallService().engine,
-                                  canvas: const VideoCanvas(uid: 0),
-                                ),
-                              )
+                            ? RTCVideoView(_callService.localRenderer, mirror: true)
                             : Container(
                                 color: Colors.black87,
                                 child: const Icon(

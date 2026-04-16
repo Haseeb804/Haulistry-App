@@ -13,6 +13,7 @@ import '../../../../core/utils/image_helper.dart';
 import '../../../../core/utils/cross_platform_image_picker.dart';
 import '../../../../core/utils/call_identity_resolver.dart';
 import '../../../../core/services/api_service.dart';
+import '../../../../core/services/realtime_socket_service.dart';
 import '../bloc/chat_bloc.dart';
 import '../bloc/chat_event.dart';
 import '../bloc/chat_state.dart';
@@ -44,13 +45,18 @@ class ChatScreen extends StatefulWidget {
 }
 
 class _ChatScreenState extends State<ChatScreen> {
+  final RealtimeSocketService _socketService = RealtimeSocketService();
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   Timer? _communicationStatusTimer;
-  Timer? _backendMessagesPollingTimer;
+  StreamSubscription<Map<String, dynamic>>? _socketSubscription;
+  Timer? _typingDebounceTimer;
   bool _isSending = false;
   bool _isCommunicationAllowed = false;
   bool _isCheckingCommunication = true;
+  bool _isOtherUserTyping = false;
+  bool _isOtherUserOnline = false;
+  bool _typingSentActive = false;
   CallParticipantIdentity? _resolvedOtherUser;
   bool _isBackendMessagesLoading = false;
   String? _backendMessagesError;
@@ -105,6 +111,9 @@ class _ChatScreenState extends State<ChatScreen> {
     // Listen for text changes to toggle between send and voice button
     _messageController.addListener(() {
       setState(() {});
+      if (_useBackendMessaging) {
+        unawaited(_emitTyping());
+      }
     });
 
     _checkCommunicationPermission();
@@ -115,10 +124,86 @@ class _ChatScreenState extends State<ChatScreen> {
       );
 
       _loadBackendMessages();
-      _backendMessagesPollingTimer = Timer.periodic(
-        const Duration(seconds: 3),
-        (_) => _loadBackendMessages(),
-      );
+      unawaited(_setupRealtimeChat());
+    }
+  }
+
+  Future<void> _setupRealtimeChat() async {
+    await _socketService.connect();
+    _socketSubscription = _socketService.events.listen((event) {
+      final type = event['type']?.toString() ?? '';
+      final data = (event['data'] is Map<String, dynamic>)
+          ? event['data'] as Map<String, dynamic>
+          : <String, dynamic>{};
+
+      if (!_useBackendMessaging || !mounted) return;
+
+      if (type == 'chat_message' || type == 'chat_sent' || type == 'message_status') {
+        unawaited(_loadBackendMessages());
+      }
+
+      if (type == 'typing') {
+        final fromUserId = data['fromUserId']?.toString() ?? '';
+        final bookingId = data['bookingId']?.toString() ?? '';
+        if (fromUserId == widget.otherUserId && bookingId == (widget.bookingId ?? '')) {
+          if (!mounted) return;
+          setState(() {
+            _isOtherUserTyping = data['isTyping'] == true;
+          });
+        }
+      }
+
+      if (type == 'presence_state' || type == 'presence_update') {
+        final targetUserId = data['userId']?.toString() ?? '';
+        if (targetUserId == widget.otherUserId) {
+          if (!mounted) return;
+          setState(() {
+            _isOtherUserOnline = data['online'] == true;
+          });
+        }
+      }
+
+      if (type == 'call_incoming') {
+        final bookingId = data['bookingId']?.toString() ?? '';
+        if (bookingId.isNotEmpty && bookingId == (widget.bookingId ?? '')) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Incoming call...')),
+          );
+        }
+      }
+    });
+
+    await _socketService.send('presence_query', {
+      'targetUserId': widget.otherUserId,
+    });
+  }
+
+  Future<void> _emitTyping() async {
+    if (!_useBackendMessaging || !_socketService.isConnected) return;
+
+    final text = _messageController.text.trim();
+    final shouldBeTyping = text.isNotEmpty;
+
+    if (shouldBeTyping != _typingSentActive) {
+      _typingSentActive = shouldBeTyping;
+      await _socketService.send('typing', {
+        'receiverId': widget.otherUserId,
+        'bookingId': widget.bookingId,
+        'isTyping': shouldBeTyping,
+      });
+    }
+
+    _typingDebounceTimer?.cancel();
+    if (shouldBeTyping) {
+      _typingDebounceTimer = Timer(const Duration(seconds: 2), () async {
+        if (!_typingSentActive) return;
+        _typingSentActive = false;
+        await _socketService.send('typing', {
+          'receiverId': widget.otherUserId,
+          'bookingId': widget.bookingId,
+          'isTyping': false,
+        });
+      });
     }
   }
 
@@ -245,7 +330,8 @@ class _ChatScreenState extends State<ChatScreen> {
   @override
   void dispose() {
     _communicationStatusTimer?.cancel();
-    _backendMessagesPollingTimer?.cancel();
+    _typingDebounceTimer?.cancel();
+    _socketSubscription?.cancel();
     _messageController.dispose();
     _scrollController.dispose();
     super.dispose();
@@ -267,26 +353,17 @@ class _ChatScreenState extends State<ChatScreen> {
       }
 
       final audioBytes = await audioFile.readAsBytes();
-      final fileName = audioFile.path.split(RegExp(r'[\\/]')).last;
+      final encoded = base64Encode(audioBytes);
+      final voiceDataUrl = 'data:audio/m4a;base64,$encoded';
 
-      final response = await ApiService.instance.postMultipart(
-        ApiEndpoints.messageUploadVoice,
-        fields: {
-          'senderId': user.uid,
-          'receiverId': widget.otherUserId,
-          'bookingId': widget.bookingId!,
-          'duration': duration.toString(),
-        },
-        fileField: 'audio',
-        fileBytes: audioBytes,
-        fileName: fileName.isNotEmpty
-            ? fileName
-            : '${DateTime.now().millisecondsSinceEpoch}.m4a',
-      );
-
-      if (response['success'] != true) {
-        throw Exception(response['message'] ?? 'Failed to send voice message');
-      }
+      await _socketService.send('chat_send', {
+        'receiverId': widget.otherUserId,
+        'bookingId': widget.bookingId,
+        'messageText': voiceDataUrl,
+        'messageType': 'voice',
+        'mediaDuration': duration,
+        'clientMessageId': '${user.uid}_${DateTime.now().millisecondsSinceEpoch}',
+      });
 
       await _loadBackendMessages();
       _scrollToBottom();
@@ -324,9 +401,6 @@ class _ChatScreenState extends State<ChatScreen> {
     }
 
     final bookingId = widget.bookingId!;
-
-    // Determine the receiver's role for display
-    final receiverRole = widget.otherUserRole ?? AppConstants.roleUser;
 
     context.read<CallBloc>().add(
           InitiateCallRequested(
@@ -395,22 +469,26 @@ class _ChatScreenState extends State<ChatScreen> {
       }
 
       if (_useBackendMessaging) {
-        final filename = _generateImageFilename(image);
-        final response = await ApiService.instance.postMultipart(
-          ApiEndpoints.messageUploadImage,
-          fields: {
-            'senderId': user.uid,
-            'receiverId': widget.otherUserId,
-            'bookingId': widget.bookingId!,
-          },
-          fileField: 'image',
-          fileBytes: image.bytes,
-          fileName: filename,
-        );
+        final ext = _detectImageFormat(image.bytes).replaceFirst('.', '').toLowerCase();
+        final mime = ext == 'png'
+            ? 'image/png'
+            : ext == 'gif'
+                ? 'image/gif'
+                : ext == 'webp'
+                    ? 'image/webp'
+                    : ext == 'bmp'
+                        ? 'image/bmp'
+                        : 'image/jpeg';
+        final encoded = base64Encode(image.bytes);
+        final imageDataUrl = 'data:$mime;base64,$encoded';
 
-        if (response['success'] != true) {
-          throw Exception(response['message'] ?? 'Failed to send image');
-        }
+        await _socketService.send('chat_send', {
+          'receiverId': widget.otherUserId,
+          'bookingId': widget.bookingId,
+          'messageText': imageDataUrl,
+          'messageType': 'image',
+          'clientMessageId': '${user.uid}_${DateTime.now().millisecondsSinceEpoch}',
+        });
         await _loadBackendMessages();
         _scrollToBottom();
       } else {
@@ -479,17 +557,13 @@ class _ChatScreenState extends State<ChatScreen> {
         throw Exception('User not authenticated');
       }
 
-      final response = await ApiService.instance.post(ApiEndpoints.messageSend, {
-        'senderId': currentUser.uid,
+      await _socketService.send('chat_send', {
         'receiverId': widget.otherUserId,
         'bookingId': widget.bookingId,
         'messageText': message,
         'messageType': 'text',
+        'clientMessageId': '${currentUser.uid}_${DateTime.now().millisecondsSinceEpoch}',
       });
-
-      if (response['success'] != true) {
-        throw Exception(response['message'] ?? 'Failed to send message');
-      }
 
       _messageController.clear();
       await _loadBackendMessages();
@@ -582,9 +656,11 @@ class _ChatScreenState extends State<ChatScreen> {
                     overflow: TextOverflow.ellipsis,
                   ),
                   Text(
-                    _displayOtherUserRole.isNotEmpty && _displayOtherUserRole != AppConstants.roleUser
-                        ? _displayOtherUserRole[0].toUpperCase() + _displayOtherUserRole.substring(1)
-                        : 'Online',
+                    _isOtherUserTyping
+                        ? 'Typing...'
+                        : (_displayOtherUserRole.isNotEmpty && _displayOtherUserRole != AppConstants.roleUser
+                            ? _displayOtherUserRole[0].toUpperCase() + _displayOtherUserRole.substring(1)
+                            : (_isOtherUserOnline ? 'Online' : 'Offline')),
                     style: const TextStyle(
                       fontSize: 12,
                       color: AppTheme.successColor,
@@ -626,9 +702,7 @@ class _ChatScreenState extends State<ChatScreen> {
             ),
             child: IconButton(
               icon: const Icon(Icons.more_vert_rounded, color: AppTheme.textSecondary, size: 22),
-              onPressed: () {
-                // TODO: Show chat options
-              },
+              onPressed: () {},
             ),
           ),
         ],

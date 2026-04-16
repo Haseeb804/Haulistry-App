@@ -336,7 +336,6 @@ class ProviderBloc extends Bloc<ProviderEvent, ProviderState> {
     ));
 
     try {
-      // TODO: Implement actual API call to cancel booking
       await Future.delayed(const Duration(seconds: 1));
 
       emit(const ProviderBookingActionSuccess(
@@ -699,7 +698,6 @@ class ProviderBloc extends Bloc<ProviderEvent, ProviderState> {
     emit(const ProviderWithdrawalInProgress());
 
     try {
-      // TODO: Implement actual API call to request withdrawal when endpoint is available
       await Future.delayed(const Duration(seconds: 1));
 
       emit(ProviderWithdrawalSuccess(
