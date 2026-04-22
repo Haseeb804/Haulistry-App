@@ -8,12 +8,12 @@ class AppConstants {
   //   flutter build apk --dart-define=API_BASE_URL=https://xxx.up.railway.app
   static const String apiUrl = String.fromEnvironment(
     'API_BASE_URL',
-    defaultValue: 'https://haulistry-app.up.railway.app',
+    defaultValue: 'https://haulistry-app-production.up.railway.app',
   );
   static const String graphqlEndpoint = '$apiUrl/graphql';
   static const String realtimeBaseUrl = String.fromEnvironment(
     'REALTIME_BASE_URL',
-    defaultValue: 'https://haulistry-app.up.railway.app',
+    defaultValue: 'https://haulistry-app-production.up.railway.app',
   );
   static const String realtimeWebSocketPath = '/socket.io';
 
