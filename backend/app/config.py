@@ -3,7 +3,7 @@ import json
 from typing import List
 from pathlib import Path
 from pydantic_settings import BaseSettings
-from pydantic import field_validator
+from pydantic import field_validator, model_validator
 from dotenv import load_dotenv
 
 # Load .env from multiple possible locations
@@ -63,6 +63,21 @@ class Settings(BaseSettings):
     # Optional static fallback ICE servers as JSON array
     TURN_FALLBACK_ICE_SERVERS: str = os.getenv("TURN_FALLBACK_ICE_SERVERS", "")
     
+    @model_validator(mode='before')
+    @classmethod
+    def strip_bad_prefixes(cls, values: dict) -> dict:
+        """Strip accidental leading tab/space/= from ALL env var values (Railway copy-paste artifact)."""
+        cleaned = {}
+        for k, v in values.items():
+            if isinstance(v, str):
+                s = v.strip()
+                if s.startswith('='):
+                    s = s.lstrip('=').strip()
+                cleaned[k] = s
+            else:
+                cleaned[k] = v
+        return cleaned
+
     @field_validator('REDIS_ENABLED', 'DEBUG', 'OTP_EXPOSE_IN_RESPONSE', mode='before')
     @classmethod
     def parse_bool_env(cls, v):
