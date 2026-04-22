@@ -78,13 +78,23 @@ async def update_booking_location(location: LocationUpdateRequest):
             sender_name = user_data.get('name', 'Provider') if user_data else 'Provider'
 
         if target_user_id:
-            await fcm_service.notify_location_update(
-                target_user_id=target_user_id,
-                booking_id=location.bookingId,
-                latitude=location.latitude,
-                longitude=location.longitude,
-                sender_name=sender_name
-            )
+            from ..realtime.socketio_gateway import emit_to_user_event
+            from ..database.redis_client import cache_location
+
+            loc_payload = {
+                "bookingId": location.bookingId,
+                "userId": location.userId,
+                "latitude": location.latitude,
+                "longitude": location.longitude,
+                "heading": location.heading,
+                "speed": location.speed,
+                "accuracy": location.accuracy,
+            }
+            await cache_location(location.bookingId, location.userId, loc_payload)
+            is_online = await emit_to_user_event(target_user_id, "location_update", loc_payload)
+            if not is_online:
+                # Partner offline — FCM for location updates is too high-frequency; skip
+                pass
         
         return LocationResponse(
             success=True,

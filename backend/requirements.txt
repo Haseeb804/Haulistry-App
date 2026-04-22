@@ -39,6 +39,10 @@ geopy==2.4.1
 # CORS
 fastapi-cors==0.0.6
 
+# Realtime / Signaling
+python-socketio==5.11.4
+redis[hiredis]==5.2.1
+
 # Development
 pytest==8.3.4
 pytest-asyncio==0.24.0

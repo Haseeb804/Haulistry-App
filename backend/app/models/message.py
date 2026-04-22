@@ -159,18 +159,15 @@ class Message:
         WITH m,
              CASE WHEN m.senderId = $userId THEN m.receiverId ELSE m.senderId END AS otherUserId
         ORDER BY m.createdAt DESC
-        WITH otherUserId, collect(m)[0] AS lastMessage
+        WITH otherUserId, collect(m)[0] AS lastMsg, collect(m) AS allMsgs
         OPTIONAL MATCH (u) WHERE (u:Seeker OR u:Provider OR u:User) AND u.id = otherUserId
-        OPTIONAL MATCH (unread:Message {receiverId: $userId, isRead: false})
-        WHERE unread.senderId = otherUserId
-        WITH otherUserId, lastMessage, u, count(unread) AS unreadCount
         RETURN
             otherUserId,
-            coalesce(u.name, 'User') as otherUserName,
-            coalesce(u.profileImageUrl, u.profile_image_url, '') as otherUserImage,
-            lastMessage,
-            unreadCount
-        ORDER BY lastMessage.createdAt DESC
+            coalesce(u.name, 'User') AS otherUserName,
+            coalesce(u.profileImageUrl, u.profile_image_url, '') AS otherUserImage,
+            lastMsg,
+            size([msg IN allMsgs WHERE msg.receiverId = $userId AND NOT msg.isRead]) AS unreadCount
+        ORDER BY lastMsg.createdAt DESC
         LIMIT $limit
         """
 
@@ -181,7 +178,7 @@ class Message:
             return conversations
 
         for row in result:
-            last = Message._serialize_neo4j_data(row.get("lastMessage") or {})
+            last = Message._serialize_neo4j_data(row.get("lastMsg") or {})
             booking_id = str(last.get("bookingId") or "")
             other_user_id = str(row.get("otherUserId") or "")
             if not booking_id or not other_user_id:

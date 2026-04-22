@@ -1,8 +1,7 @@
 """
-Vercel entry point for Haulistry FastAPI backend.
-Vercel Python runtime detects the `app` ASGI object automatically.
+ASGI entry point for Haulistry backend.
 
-Push notifications are handled via Firebase Cloud Messaging (FCM).
+For Railway/Render, this serves FastAPI + Socket.IO using a single ASGI app.
 """
 
-from app.main import app  # noqa: F401  — re-exported as the ASGI handler
+from app.main import combined_app as app  # noqa: F401  — re-exported ASGI handler

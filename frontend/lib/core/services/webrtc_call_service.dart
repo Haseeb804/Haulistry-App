@@ -2,6 +2,8 @@ import 'dart:async';
 
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 
+import '../constants/app_constants.dart';
+import 'api_service.dart';
 import 'realtime_socket_service.dart';
 
 class WebRTCCallService {
@@ -28,10 +30,14 @@ class WebRTCCallService {
   String? _callId;
   String? _peerUserId;
   bool _isCaller = false;
+  bool _remoteDescriptionSet = false;
+  bool _isRestartingIce = false; // prevents double-restart from two failure callbacks
 
   RTCPeerConnection? _peerConnection;
   MediaStream? _localStream;
   StreamSubscription<Map<String, dynamic>>? _socketSubscription;
+  Timer? _connectionTimeoutTimer;
+  final List<RTCIceCandidate> _pendingIceCandidates = [];
 
   Future<void> initialize() async {
     if (_initialized) return;
@@ -72,7 +78,18 @@ class WebRTCCallService {
       throw Exception('Call session is not configured');
     }
 
+    // Close any stale peer connection from a previous call before creating a new one.
+    if (_peerConnection != null) {
+      try {
+        await _peerConnection!.close();
+      } catch (_) {}
+      _peerConnection = null;
+    }
+
     _videoEnabled = videoEnabled;
+    _remoteDescriptionSet = false;
+    _isRestartingIce = false;
+    _pendingIceCandidates.clear();
     _callStateController.add(CallMediaState.connecting);
 
     final mediaConstraints = {
@@ -90,11 +107,10 @@ class WebRTCCallService {
     _localStream = await navigator.mediaDevices.getUserMedia(mediaConstraints);
     localRenderer.srcObject = _localStream;
 
-    const configuration = {
-      'iceServers': [
-        {'urls': 'stun:stun.l.google.com:19302'},
-        {'urls': 'stun:stun1.l.google.com:19302'},
-      ],
+    final iceServers = await _resolveIceServers();
+
+    final configuration = {
+      'iceServers': iceServers,
       'sdpSemantics': 'unified-plan',
     };
 
@@ -125,13 +141,36 @@ class WebRTCCallService {
 
     _peerConnection!.onConnectionState = (RTCPeerConnectionState state) {
       if (state == RTCPeerConnectionState.RTCPeerConnectionStateConnected) {
+        _connectionTimeoutTimer?.cancel();
+        _isRestartingIce = false;
         _callStateController.add(CallMediaState.connected);
-      } else if (state == RTCPeerConnectionState.RTCPeerConnectionStateFailed ||
-          state == RTCPeerConnectionState.RTCPeerConnectionStateClosed ||
+      } else if (state == RTCPeerConnectionState.RTCPeerConnectionStateFailed) {
+        // onIceConnectionState(failed) fires first; only one restart is needed.
+        if (!_isRestartingIce) {
+          unawaited(_attemptIceRestart());
+        }
+        _callStateController.add(CallMediaState.disconnected);
+      } else if (state == RTCPeerConnectionState.RTCPeerConnectionStateClosed ||
           state == RTCPeerConnectionState.RTCPeerConnectionStateDisconnected) {
         _callStateController.add(CallMediaState.disconnected);
       }
     };
+
+    _peerConnection!.onIceConnectionState = (RTCIceConnectionState state) {
+      if (state == RTCIceConnectionState.RTCIceConnectionStateFailed) {
+        if (!_isRestartingIce) {
+          unawaited(_attemptIceRestart());
+        }
+      }
+    };
+
+    _connectionTimeoutTimer?.cancel();
+    _connectionTimeoutTimer = Timer(const Duration(seconds: 30), () {
+      final state = _peerConnection?.connectionState;
+      if (state != RTCPeerConnectionState.RTCPeerConnectionStateConnected) {
+        _callStateController.add(CallMediaState.error);
+      }
+    });
 
     if (_isCaller) {
       final offer = await _peerConnection!.createOffer({
@@ -164,9 +203,7 @@ class WebRTCCallService {
       final sdp = data['sdp']?.toString();
       if (sdp == null || sdp.isEmpty) return;
 
-      await _peerConnection!.setRemoteDescription(
-        RTCSessionDescription(sdp, 'offer'),
-      );
+      await _setRemoteDescription(RTCSessionDescription(sdp, 'offer'));
 
       final answer = await _peerConnection!.createAnswer({
         'offerToReceiveAudio': true,
@@ -188,9 +225,7 @@ class WebRTCCallService {
       final sdp = data['sdp']?.toString();
       if (sdp == null || sdp.isEmpty) return;
 
-      await _peerConnection!.setRemoteDescription(
-        RTCSessionDescription(sdp, 'answer'),
-      );
+      await _setRemoteDescription(RTCSessionDescription(sdp, 'answer'));
       return;
     }
 
@@ -199,13 +234,107 @@ class WebRTCCallService {
       final candidate = data['candidate']?.toString();
       if (candidate == null || candidate.isEmpty) return;
 
-      await _peerConnection!.addCandidate(
-        RTCIceCandidate(
-          candidate,
-          data['sdpMid']?.toString(),
-          data['sdpMLineIndex'] is int ? data['sdpMLineIndex'] as int : int.tryParse(data['sdpMLineIndex']?.toString() ?? ''),
-        ),
+      final incoming = RTCIceCandidate(
+        candidate,
+        data['sdpMid']?.toString(),
+        data['sdpMLineIndex'] is int
+            ? data['sdpMLineIndex'] as int
+            : int.tryParse(data['sdpMLineIndex']?.toString() ?? ''),
       );
+
+      if (_remoteDescriptionSet) {
+        await _peerConnection!.addCandidate(incoming);
+      } else {
+        _pendingIceCandidates.add(incoming);
+      }
+    }
+  }
+
+  Future<void> _setRemoteDescription(RTCSessionDescription description) async {
+    if (_peerConnection == null) return;
+
+    await _peerConnection!.setRemoteDescription(description);
+    _remoteDescriptionSet = true;
+
+    if (_pendingIceCandidates.isNotEmpty) {
+      final pending = List<RTCIceCandidate>.from(_pendingIceCandidates);
+      _pendingIceCandidates.clear();
+      for (final candidate in pending) {
+        await _peerConnection!.addCandidate(candidate);
+      }
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> _resolveIceServers() async {
+    try {
+      final response = await ApiService.instance.get(ApiEndpoints.turnCredentials);
+      final rows = (response['iceServers'] as List<dynamic>? ?? const []);
+      final servers = rows
+          .whereType<Map>()
+          .map((row) => row.map((key, value) => MapEntry(key.toString(), value)))
+          .where((server) => server.containsKey('urls'))
+          .toList();
+
+      if (servers.isNotEmpty) {
+        return servers;
+      }
+    } catch (_) {
+      // fallback below
+    }
+
+    // Hardcoded Metered TURN servers — TURN is required on symmetric NAT (mobile carriers).
+    // STUN-only will silently fail on most Pakistani mobile networks.
+    return const [
+      {'urls': 'stun:stun.relay.metered.ca:80'},
+      {
+        'urls': 'turn:global.relay.metered.ca:80',
+        'username': '55ebcd964c2936d0dc1db8d2',
+        'credential': 'WIir6zhTPXOiW156',
+      },
+      {
+        'urls': 'turn:global.relay.metered.ca:80?transport=tcp',
+        'username': '55ebcd964c2936d0dc1db8d2',
+        'credential': 'WIir6zhTPXOiW156',
+      },
+      {
+        'urls': 'turn:global.relay.metered.ca:443',
+        'username': '55ebcd964c2936d0dc1db8d2',
+        'credential': 'WIir6zhTPXOiW156',
+      },
+      {
+        'urls': 'turns:global.relay.metered.ca:443?transport=tcp',
+        'username': '55ebcd964c2936d0dc1db8d2',
+        'credential': 'WIir6zhTPXOiW156',
+      },
+    ];
+  }
+
+  Future<void> _attemptIceRestart() async {
+    if (_peerConnection == null || _peerUserId == null || _callId == null) return;
+    if (_isRestartingIce) return;
+
+    _isRestartingIce = true;
+    // Reset so incoming ICE candidates from the new negotiation are queued
+    // until the new answer's remote description is set.
+    _remoteDescriptionSet = false;
+    _pendingIceCandidates.clear();
+
+    try {
+      final offer = await _peerConnection!.createOffer({
+        'iceRestart': true,
+        'offerToReceiveAudio': true,
+        'offerToReceiveVideo': _videoEnabled,
+      });
+      await _peerConnection!.setLocalDescription(offer);
+
+      await _socket.send('webrtc_offer', {
+        'callId': _callId,
+        'targetUserId': _peerUserId,
+        'type': offer.type,
+        'sdp': offer.sdp,
+      });
+    } catch (_) {
+      _isRestartingIce = false;
     }
   }
 
@@ -239,19 +368,27 @@ class WebRTCCallService {
   }
 
   Future<void> leaveChannel() async {
+    _connectionTimeoutTimer?.cancel();
+
     try {
       await _peerConnection?.close();
     } catch (_) {}
-
     _peerConnection = null;
 
     try {
       await _localStream?.dispose();
     } catch (_) {}
-
     _localStream = null;
+
     localRenderer.srcObject = null;
     remoteRenderer.srcObject = null;
+
+    // Clear session so late-arriving events from the ended call are ignored.
+    _callId = null;
+    _peerUserId = null;
+    _remoteDescriptionSet = false;
+    _isRestartingIce = false;
+    _pendingIceCandidates.clear();
 
     _callStateController.add(CallMediaState.disconnected);
   }

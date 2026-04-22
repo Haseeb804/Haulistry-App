@@ -1,17 +1,22 @@
+import asyncio
+
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette_graphene3 import GraphQLApp, make_graphiql_handler
+import socketio
 import uvicorn
 import logging
 
 from .config import settings
 from .database import neo4j_driver
+from .database.redis_client import close_redis
 from .graphql.schema import schema
 from .controllers import api_router
 from .controllers.otp import router as otp_router
 from .realtime.websocket_gateway import router as realtime_router
+from .realtime.socketio_gateway import sio
 
 # Configure logging with cleaner format
 logging.basicConfig(
@@ -52,8 +57,8 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
 # Use allow_origin_regex to allow all origins (works better with credentials)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_origin_regex=".*",  # Allow all origins via regex
+    allow_origins=settings.ALLOWED_ORIGINS,
+    allow_origin_regex=".*" if settings.ALLOWED_ORIGINS == ["*"] else None,
     allow_credentials=True,
     allow_methods=["*"],  # Allow all methods (GET, POST, PUT, DELETE, OPTIONS, etc.)
     allow_headers=["*"],  # Allow all headers
@@ -110,18 +115,32 @@ app.add_route("/graphql/", graphql_app)  # Also handle trailing slash
 @app.on_event("startup")
 async def startup_event():
     """Initialize connections on startup"""
-    # Verify Neo4j connection
     neo4j_driver.verify_connectivity()
+    try:
+        await asyncio.to_thread(neo4j_driver.ensure_indexes)
+    except Exception:
+        logger.exception("Failed to create Neo4j indexes — continuing startup")
 
 # Shutdown event
 @app.on_event("shutdown")
 async def shutdown_event():
     """Cleanup on shutdown"""
+    await close_redis()
     neo4j_driver.close()
+
+
+# Combined ASGI app (FastAPI + Socket.IO)
+combined_app = socketio.ASGIApp(
+    sio,
+    other_asgi_app=app,
+    socketio_path=settings.SOCKETIO_PATH,
+)
+
+
 def main():
     """Run the application"""
     uvicorn.run(
-        "app.main:app",
+        "app.main:combined_app",
         host=settings.HOST,
         port=settings.PORT,
         reload=settings.DEBUG,

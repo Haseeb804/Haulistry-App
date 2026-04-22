@@ -4,15 +4,22 @@ class AppConstants {
   static const String appName = 'Haulistry';
   static const String appVersion = '1.0.0';
   
-  // API Configuration
-  static const String apiUrl = 'https://haulistry-app.vercel.app';
-  static const String graphqlEndpoint = 'https://haulistry-app.vercel.app/graphql';
-  static const String realtimeWebSocketPath = '/ws/realtime';
+  // API Configuration — override at build time:
+  //   flutter build apk --dart-define=API_BASE_URL=https://xxx.up.railway.app
+  static const String apiUrl = String.fromEnvironment(
+    'API_BASE_URL',
+    defaultValue: 'https://haulistry-app.up.railway.app',
+  );
+  static const String graphqlEndpoint = '$apiUrl/graphql';
+  static const String realtimeBaseUrl = String.fromEnvironment(
+    'REALTIME_BASE_URL',
+    defaultValue: 'https://haulistry-app.up.railway.app',
+  );
+  static const String realtimeWebSocketPath = '/socket.io';
 
   static String get realtimeWsUrl {
-    final uri = Uri.parse(apiUrl);
-    final scheme = uri.scheme == 'https' ? 'wss' : 'ws';
-    return uri.replace(scheme: scheme, path: realtimeWebSocketPath).toString();
+    final uri = Uri.parse(realtimeBaseUrl);
+    return uri.toString();
   }
   
   // Firebase Collections
@@ -232,6 +239,7 @@ class ApiEndpoints {
 
   static const String callInitiate = '/api/calls/initiate';
   static const String callUpdateStatus = '/api/calls/update-status';
+  static const String turnCredentials = '/api/calls/turn-credentials';
   static String callById(String callId) => '/api/calls/$callId';
 
   static String conversationMessages(String user1Id, String user2Id, String bookingId) =>

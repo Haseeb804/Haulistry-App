@@ -1,9 +1,25 @@
+import time
 from neo4j import GraphDatabase
+from neo4j.exceptions import ServiceUnavailable, SessionExpired
 from typing import Optional
 from ..config import settings
 import logging
 
 logger = logging.getLogger(__name__)
+
+_INDEX_QUERIES = [
+    "CREATE INDEX msg_sender IF NOT EXISTS FOR (m:Message) ON (m.senderId)",
+    "CREATE INDEX msg_receiver IF NOT EXISTS FOR (m:Message) ON (m.receiverId)",
+    "CREATE INDEX msg_booking IF NOT EXISTS FOR (m:Message) ON (m.bookingId)",
+    "CREATE INDEX call_caller IF NOT EXISTS FOR (c:Call) ON (c.callerId)",
+    "CREATE INDEX call_receiver IF NOT EXISTS FOR (c:Call) ON (c.receiverId)",
+    "CREATE INDEX seeker_id IF NOT EXISTS FOR (s:Seeker) ON (s.id)",
+    "CREATE INDEX provider_id IF NOT EXISTS FOR (p:Provider) ON (p.id)",
+    "CREATE INDEX booking_seeker IF NOT EXISTS FOR (b:Booking) ON (b.seekerId)",
+    "CREATE INDEX booking_provider IF NOT EXISTS FOR (b:Booking) ON (b.providerId)",
+    "CREATE INDEX booking_status IF NOT EXISTS FOR (b:Booking) ON (b.status)",
+    "CREATE INDEX location_composite IF NOT EXISTS FOR (l:Location) ON (l.userId, l.bookingId)",
+]
 
 
 class Neo4jDriver:
@@ -59,6 +75,15 @@ class Neo4jDriver:
             return self._driver.session()
         return self._driver.session(database=settings.NEO4J_DATABASE)
     
+    def ensure_indexes(self) -> None:
+        """Create all required indexes if they don't exist. Called once at startup."""
+        with self.get_session() as session:
+            for query in _INDEX_QUERIES:
+                try:
+                    session.run(query)
+                except Exception as exc:
+                    logger.warning("Index creation skipped: %s — %s", query, exc)
+
     def close(self):
         """Close Neo4j driver"""
         if self._driver:
@@ -96,22 +121,36 @@ class Neo4jDriver:
             return [record.data() for record in result]
     
     def execute_write(self, query: str, parameters: dict = None):
-        """Execute a write transaction"""
-        with self.get_session() as session:
-            def transaction_function(tx):
-                result = tx.run(query, parameters or {})
-                return [record.data() for record in result]
-            
-            return session.execute_write(transaction_function)
-    
+        """Execute a write transaction with exponential-backoff retry on transient errors."""
+        last_exc: Exception | None = None
+        for attempt in range(3):
+            try:
+                with self.get_session() as session:
+                    def transaction_function(tx):
+                        result = tx.run(query, parameters or {})
+                        return [record.data() for record in result]
+                    return session.execute_write(transaction_function)
+            except (ServiceUnavailable, SessionExpired) as exc:
+                last_exc = exc
+                if attempt < 2:
+                    time.sleep(0.25 * (2 ** attempt))
+        raise last_exc
+
     def execute_read(self, query: str, parameters: dict = None):
-        """Execute a read transaction"""
-        with self.get_session() as session:
-            def transaction_function(tx):
-                result = tx.run(query, parameters or {})
-                return [record.data() for record in result]
-            
-            return session.execute_read(transaction_function)
+        """Execute a read transaction with exponential-backoff retry on transient errors."""
+        last_exc: Exception | None = None
+        for attempt in range(3):
+            try:
+                with self.get_session() as session:
+                    def transaction_function(tx):
+                        result = tx.run(query, parameters or {})
+                        return [record.data() for record in result]
+                    return session.execute_read(transaction_function)
+            except (ServiceUnavailable, SessionExpired) as exc:
+                last_exc = exc
+                if attempt < 2:
+                    time.sleep(0.25 * (2 ** attempt))
+        raise last_exc
 
 
 # Create singleton instance

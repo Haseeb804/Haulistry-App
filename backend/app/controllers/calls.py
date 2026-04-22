@@ -2,7 +2,8 @@
 Call Controller
 WebRTC call lifecycle endpoints.
 
-WebSocket (/ws/realtime) is used for signaling events (offer/answer/ICE + call events).
+Socket.IO is used for signaling events (offer/answer/ICE + call events),
+with legacy WebSocket fallback kept for compatibility.
 REST persists call history and call state.
 """
 from __future__ import annotations
@@ -11,14 +12,15 @@ import logging
 import uuid
 from typing import Optional, List, Dict, Any
 
-from fastapi import APIRouter, HTTPException, status, UploadFile, File, Form
+from fastapi import APIRouter, HTTPException, status, UploadFile, File, Form, Header
 from pydantic import BaseModel
-from firebase_admin import messaging
+from firebase_admin import messaging, auth
 
 from ..constants import LIVE_COMMUNICATION_STATUSES
 from ..models.call import Call
-from ..models.voice_message import VoiceMessage
 from ..realtime.websocket_gateway import manager, _event
+from ..realtime.socketio_gateway import emit_to_user_event
+from ..services.turn_credentials import fetch_turn_credentials
 
 router = APIRouter(prefix="/calls", tags=["calls"])
 logger = logging.getLogger(__name__)
@@ -67,30 +69,6 @@ class CallHistoryResponse(BaseModel):
     calls: List[dict]
 
 
-def _to_data_url(content_type: str, content: bytes) -> str:
-    import base64
-
-    encoded = base64.b64encode(content).decode("ascii")
-    return f"data:{content_type};base64,{encoded}"
-
-
-def _normalize_audio_content_type(uploaded: UploadFile, content: bytes) -> str:
-    mime_type = (uploaded.content_type or "").lower().strip()
-    if mime_type.startswith("audio/"):
-        return mime_type
-
-    if content.startswith(b"RIFF") and len(content) > 8 and content[8:12] == b"WAVE":
-        return "audio/wav"
-    if content.startswith(b"ID3") or content.startswith((b"\xff\xfb", b"\xff\xfa", b"\xff\xf3")):
-        return "audio/mpeg"
-    if b"ftyp" in content[:32]:
-        return "audio/m4a"
-    if content.startswith(b"OggS"):
-        return "audio/ogg"
-
-    return "audio/m4a"
-
-
 async def _send_call_push(receiver_fcm_token: str, payload: Dict[str, Any]) -> bool:
     try:
         message = messaging.Message(
@@ -126,7 +104,7 @@ async def _send_call_push(receiver_fcm_token: str, payload: Dict[str, Any]) -> b
 
 @router.post("/initiate", response_model=CallResponse)
 async def initiate_call(request: InitiateCallRequest):
-    """Create call record + emit real-time incoming call event via WebSocket."""
+    """Create call record + emit real-time incoming call event via Socket.IO."""
     try:
         from ..models.user import User
 
@@ -181,6 +159,10 @@ async def initiate_call(request: InitiateCallRequest):
             "receiverId": request.receiverId,
         }
 
+        ice_servers, turn_source = await fetch_turn_credentials()
+        signal_data["iceServers"] = ice_servers
+        signal_data["turnSource"] = turn_source
+
         incoming_event_payload = {
             "callId": call_data["id"],
             "bookingId": request.bookingId,
@@ -193,7 +175,9 @@ async def initiate_call(request: InitiateCallRequest):
             "signalData": signal_data,
         }
 
-        delivered = await manager.send_to_user(request.receiverId, _event("call_incoming", incoming_event_payload))
+        delivered = 1 if await emit_to_user_event(request.receiverId, "call_incoming", incoming_event_payload) else 0
+        if delivered == 0:
+            delivered = await manager.send_to_user(request.receiverId, _event("call_incoming", incoming_event_payload))
 
         if delivered == 0:
             receiver_fcm_token = receiver_data.get("fcmToken") or receiver_data.get("fcm_token")
@@ -240,19 +224,25 @@ async def update_call_status(request: UpdateCallStatusRequest):
         receiver_id = call_after.get("receiverId")
 
         for target_user_id in [uid for uid in [caller_id, receiver_id] if uid]:
+            payload = {
+                "callId": request.callId,
+                "status": request.status,
+                "duration": request.duration or 0,
+                "callType": call_after.get("callType") or "voice",
+                "otherUserName": call_after.get("receiverName") if target_user_id == caller_id else call_after.get("callerName"),
+                "otherUserRole": call_after.get("receiverRole") if target_user_id == caller_id else call_after.get("callerRole"),
+                "otherUserProfileImageUrl": call_after.get("receiverProfileImageUrl") if target_user_id == caller_id else call_after.get("callerProfileImageUrl"),
+            }
+
+            delivered_socketio = await emit_to_user_event(str(target_user_id), "call_status", payload)
+            if delivered_socketio:
+                continue
+
             await manager.send_to_user(
                 str(target_user_id),
                 _event(
                     "call_status",
-                    {
-                        "callId": request.callId,
-                        "status": request.status,
-                        "duration": request.duration or 0,
-                        "callType": call_after.get("callType") or "voice",
-                        "otherUserName": call_after.get("receiverName") if target_user_id == caller_id else call_after.get("callerName"),
-                        "otherUserRole": call_after.get("receiverRole") if target_user_id == caller_id else call_after.get("callerRole"),
-                        "otherUserProfileImageUrl": call_after.get("receiverProfileImageUrl") if target_user_id == caller_id else call_after.get("callerProfileImageUrl"),
-                    },
+                    payload,
                 ),
             )
 
@@ -266,6 +256,40 @@ async def update_call_status(request: UpdateCallStatusRequest):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to update call status: {str(e)}",
         )
+
+
+@router.get("/turn-credentials")
+async def get_turn_credentials(
+    region: Optional[str] = None,
+    authorization: Optional[str] = Header(None),
+):
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing or invalid authorization header",
+        )
+
+    token = authorization.split("Bearer ", 1)[1].strip()
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing Firebase ID token",
+        )
+
+    try:
+        auth.verify_id_token(token)
+    except Exception:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid Firebase token",
+        )
+
+    ice_servers, source = await fetch_turn_credentials(region=region)
+    return {
+        "success": True,
+        "iceServers": ice_servers,
+        "source": source,
+    }
 
 
 @router.get("/history/{user_id}", response_model=CallHistoryResponse)
@@ -325,120 +349,32 @@ async def upload_voice_message(
     bookingId: str = Form(...),
     duration: int = Form(...),
 ):
-    """Upload a voice message and store as base64 data URL in Neo4j."""
-    try:
-        from ..models.booking import Booking
-
-        if senderId == receiverId:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Sender and receiver must be different users",
-            )
-
-        booking = Booking.get_by_id(bookingId)
-        if not booking:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Booking not found",
-            )
-
-        status_value = str(booking.get("status") or "").lower()
-        if status_value not in ACTIVE_COMMUNICATION_STATUSES:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Voice messaging is only available during active service",
-            )
-
-        seeker_id = booking.get("seekerId")
-        provider_id = booking.get("providerId")
-        participants_match = (
-            (senderId == seeker_id and receiverId == provider_id)
-            or (senderId == provider_id and receiverId == seeker_id)
-        )
-        if not participants_match:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Users are not valid participants for this booking",
-            )
-
-        content = await audio.read()
-
-        if len(content) > 10 * 1024 * 1024:
-            raise HTTPException(
-                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-                detail="Voice file too large (max 10MB)",
-            )
-
-        content_type = _normalize_audio_content_type(audio, content)
-        audio_url = _to_data_url(content_type, content)
-
-        voice_message = VoiceMessage.create_voice_message(
-            sender_id=senderId,
-            receiver_id=receiverId,
-            booking_id=bookingId,
-            audio_url=audio_url,
-            duration=duration,
-        )
-
-        if not voice_message:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Failed to create voice message",
-            )
-
-        return VoiceMessageResponse(
-            success=True,
-            message="Voice message uploaded successfully",
-            voiceMessage=voice_message,
-        )
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to upload voice message: {str(e)}",
-        )
+    """Voice recording uploads are intentionally disabled (metadata-only policy)."""
+    raise HTTPException(
+        status_code=status.HTTP_410_GONE,
+        detail="Voice recordings are disabled. Only call/chat metadata is stored in Aura.",
+    )
 
 
 @router.get("/voice-messages/{booking_id}")
 async def get_voice_messages(booking_id: str, limit: int = 50):
-    try:
-        messages = VoiceMessage.get_voice_messages_for_booking(booking_id, limit)
-        return {"success": True, "voiceMessages": messages}
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to fetch voice messages: {str(e)}",
-        )
+    raise HTTPException(
+        status_code=status.HTTP_410_GONE,
+        detail="Voice recordings are disabled. No voice message payloads are stored.",
+    )
 
 
 @router.post("/voice-messages/{message_id}/read")
 async def mark_voice_message_read(message_id: str):
-    try:
-        success = VoiceMessage.mark_as_read(message_id)
-        if not success:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Voice message not found",
-            )
-        return {"success": True, "message": "Voice message marked as read"}
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to mark voice message as read: {str(e)}",
-        )
+    raise HTTPException(
+        status_code=status.HTTP_410_GONE,
+        detail="Voice recordings are disabled. Read state is not tracked for recording payloads.",
+    )
 
 
 @router.get("/voice-messages/unread/{user_id}")
 async def get_unread_count(user_id: str):
-    try:
-        count = VoiceMessage.get_unread_count(user_id)
-        return {"success": True, "unreadCount": count}
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to fetch unread count: {str(e)}",
-        )
+    raise HTTPException(
+        status_code=status.HTTP_410_GONE,
+        detail="Voice recordings are disabled. Unread counts for recording payloads are unavailable.",
+    )

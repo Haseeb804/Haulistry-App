@@ -59,6 +59,7 @@ import 'features/call/presentation/screens/incoming_call_screen.dart';
 import 'features/call/presentation/screens/outgoing_call_screen.dart';
 import 'features/call/presentation/screens/voice_call_screen.dart';
 import 'features/call/presentation/screens/video_call_screen.dart';
+import 'core/services/app_lifecycle_service.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'firebase_options.dart';
@@ -66,7 +67,9 @@ import 'package:latlong2/latlong.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  
+
+  AppLifecycleService().initialize();
+
   // Initialize Firebase with platform-specific options
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,

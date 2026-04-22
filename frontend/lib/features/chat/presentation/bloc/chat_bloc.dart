@@ -157,13 +157,31 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
 
       final bookingId = parts[0];
       final receiverId = parts[1];
+      final clientMessageId = '${DateTime.now().microsecondsSinceEpoch}_${receiverId.hashCode}';
 
-      await _socketService.send('chat_send', {
+      final ack = await _socketService.sendWithAck('chat_send', {
         'receiverId': receiverId,
         'bookingId': bookingId,
         'messageText': event.imageUrl ?? event.message,
         'messageType': event.imageUrl != null ? 'image' : 'text',
+        'clientMessageId': clientMessageId,
       });
+
+      if (ack != null && ack['ok'] == true) {
+        final data = (ack['data'] is Map<String, dynamic>)
+            ? ack['data'] as Map<String, dynamic>
+            : <String, dynamic>{};
+        final messageMap = (data['message'] is Map<String, dynamic>)
+            ? data['message'] as Map<String, dynamic>
+            : <String, dynamic>{};
+
+        if (messageMap.isNotEmpty) {
+          emit(MessageSent(
+            conversationId: event.conversationId,
+            message: _toChatMessage(messageMap),
+          ));
+        }
+      }
     } catch (e) {
       emit(ChatError(message: 'Failed to send message: $e'));
     }

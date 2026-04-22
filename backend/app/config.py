@@ -1,4 +1,5 @@
 import os
+import json
 from typing import List
 from pathlib import Path
 from pydantic_settings import BaseSettings
@@ -40,6 +41,27 @@ class Settings(BaseSettings):
     
     # CORS Configuration
     ALLOWED_ORIGINS: str = "*"
+
+    # Socket.IO / Realtime Configuration
+    SOCKETIO_PATH: str = "socket.io"
+    SOCKETIO_CORS_ORIGINS: str = "*"
+    SOCKETIO_PING_INTERVAL: int = 25
+    SOCKETIO_PING_TIMEOUT: int = 60
+
+    # Redis Configuration
+    REDIS_URL: str = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+    REDIS_ENABLED: bool = os.getenv("REDIS_ENABLED", "true").lower() == "true"
+
+    # Upstash (optional fallback hints)
+    UPSTASH_REDIS_REST_URL: str = os.getenv("UPSTASH_REDIS_REST_URL", "")
+    UPSTASH_REDIS_REST_TOKEN: str = os.getenv("UPSTASH_REDIS_REST_TOKEN", "")
+
+    # Metered TURN Configuration
+    METERED_TURN_DOMAIN: str = os.getenv("METERED_TURN_DOMAIN", "haulistry.metered.live")
+    METERED_API_KEY: str = os.getenv("METERED_API_KEY", "")
+    TURN_REGION: str = os.getenv("TURN_REGION", "global")
+    # Optional static fallback ICE servers as JSON array
+    TURN_FALLBACK_ICE_SERVERS: str = os.getenv("TURN_FALLBACK_ICE_SERVERS", "")
     
     @field_validator('ALLOWED_ORIGINS')
     @classmethod
@@ -47,6 +69,28 @@ class Settings(BaseSettings):
         if isinstance(v, str):
             return [origin.strip() for origin in v.split(",")]
         return v
+
+    @field_validator('SOCKETIO_CORS_ORIGINS')
+    @classmethod
+    def parse_socketio_cors(cls, v):
+        if isinstance(v, str):
+            if v.strip() == "*":
+                return "*"
+            return [origin.strip() for origin in v.split(",") if origin.strip()]
+        return v
+
+    @field_validator('TURN_FALLBACK_ICE_SERVERS')
+    @classmethod
+    def parse_turn_fallback_servers(cls, v):
+        if not isinstance(v, str) or not v.strip():
+            return []
+        try:
+            data = json.loads(v)
+            if isinstance(data, list):
+                return data
+        except Exception:
+            return []
+        return []
     
     # Pricing Configuration
     BASE_RATE_MULTIPLIER: float = float(os.getenv("BASE_RATE_MULTIPLIER", "1.0"))
