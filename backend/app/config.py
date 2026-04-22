@@ -63,6 +63,15 @@ class Settings(BaseSettings):
     # Optional static fallback ICE servers as JSON array
     TURN_FALLBACK_ICE_SERVERS: str = os.getenv("TURN_FALLBACK_ICE_SERVERS", "")
     
+    @field_validator('REDIS_ENABLED', 'DEBUG', 'OTP_EXPOSE_IN_RESPONSE', mode='before')
+    @classmethod
+    def parse_bool_env(cls, v):
+        if isinstance(v, bool):
+            return v
+        # Strip whitespace, leading/trailing '=' (common copy-paste mistake)
+        cleaned = str(v).strip().strip('=').strip().lower()
+        return cleaned in ('true', '1', 'yes')
+
     @field_validator('ALLOWED_ORIGINS')
     @classmethod
     def parse_cors(cls, v):
