@@ -229,31 +229,34 @@ class FareOffer:
     
     @staticmethod
     def accept_offer(offer_id: str) -> Optional[Dict[str, Any]]:
-        """Accept an offer - updates both offer and booking"""
+        """Accept an offer - updates both offer and booking.
+        Booking auto-starts (in_progress) — removes the need for a separate
+        'Start Service' click on the provider side."""
         query = """
         MATCH (b:Booking)-[:HAS_OFFER]->(o:FareOffer {id: $offerId})
         // Reject all other pending offers for this booking
         OPTIONAL MATCH (b)-[:HAS_OFFER]->(other:FareOffer)
         WHERE other.id <> $offerId AND other.status = $pendingStatus
         SET other.status = $rejectedStatus, other.updatedAt = datetime()
-        
+
         WITH b, o
         SET o.status = $acceptedOfferStatus,
             o.updatedAt = datetime(),
-            b.status = $acceptedBookingStatus,
+            b.status = $inProgressBookingStatus,
             b.providerId = o.providerId,
             b.vehicleId = o.vehicleId,
             b.finalPrice = COALESCE(o.counterPrice, o.offeredPrice),
+            b.startedAt = datetime(),
             b.updatedAt = datetime()
         RETURN o, b
         """
-        
+
         result = neo4j_driver.execute_write(query, {
             'offerId': offer_id,
             'pendingStatus': OfferStatus.PENDING.value,
             'rejectedStatus': OfferStatus.REJECTED.value,
             'acceptedOfferStatus': OfferStatus.ACCEPTED.value,
-            'acceptedBookingStatus': BookingStatus.ACCEPTED,
+            'inProgressBookingStatus': BookingStatus.IN_PROGRESS,
         })
         if result and result[0]['o']:
             offer = FareOffer._serialize_neo4j_data(result[0]['o'])

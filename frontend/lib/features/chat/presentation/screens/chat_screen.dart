@@ -138,7 +138,29 @@ class _ChatScreenState extends State<ChatScreen> {
 
       if (!_useBackendMessaging || !mounted) return;
 
-      if (type == 'chat_message' || type == 'chat_sent' || type == 'message_status') {
+      // Real-time fast path: parse the message from the socket payload directly
+      // and insert into the list without a round-trip to the API. Falls back to
+      // a full reload only on message_status (seen/delivered) or if payload is malformed.
+      if (type == 'chat_message' || type == 'chat_sent') {
+        final messageMap = (data['message'] is Map<String, dynamic>)
+            ? data['message'] as Map<String, dynamic>
+            : <String, dynamic>{};
+        if (messageMap.isNotEmpty) {
+          final msg = _parseBackendMessage(messageMap);
+          if (!mounted) return;
+
+          // Deduplicate: skip if we already have this id.
+          final alreadyPresent = _backendMessages.any((m) => m.id.isNotEmpty && m.id == msg.id);
+          if (!alreadyPresent) {
+            setState(() {
+              _backendMessages = [msg, ..._backendMessages];
+            });
+            _scrollToBottom();
+          }
+        } else {
+          unawaited(_loadBackendMessages());
+        }
+      } else if (type == 'message_status') {
         unawaited(_loadBackendMessages());
       }
 
@@ -291,7 +313,7 @@ class _ChatScreenState extends State<ChatScreen> {
     return null;
   }
 
-  Future<void> _loadBackendMessages() async {
+  Future<void> _loadBackendMessages({int retryAttempt = 0}) async {
     if (!_useBackendMessaging || !mounted) return;
 
     final currentUser = FirebaseAuth.instance.currentUser;
@@ -305,23 +327,33 @@ class _ChatScreenState extends State<ChatScreen> {
         ApiEndpoints.conversationMessages(currentUser.uid, widget.otherUserId, widget.bookingId!),
       );
 
-      if (response['success'] == true) {
-        final rows = (response['messages'] as List<dynamic>? ?? const [])
-            .cast<Map<String, dynamic>>();
+      final rows = (response['messages'] as List<dynamic>? ?? const [])
+          .cast<Map<String, dynamic>>();
+      final parsed = rows.map(_parseBackendMessage).toList();
 
-        final parsed = rows.map(_parseBackendMessage).toList();
-
-        if (!mounted) return;
-        setState(() {
-          _backendMessages = parsed;
-          _backendMessagesError = null;
-        });
-      }
-    } catch (e) {
       if (!mounted) return;
+
+      // Merge incoming with any socket-pushed messages that aren't in the
+      // server response yet, so the fast-path messages aren't wiped.
+      final existingUnsaved = _backendMessages
+          .where((m) => m.id.isNotEmpty && !parsed.any((p) => p.id == m.id))
+          .toList();
+      final merged = [...existingUnsaved, ...parsed];
+
       setState(() {
-        _backendMessagesError = e.toString();
+        _backendMessages = merged;
+        _backendMessagesError = null;
       });
+    } catch (e) {
+      // Silent retry with backoff: transient network errors shouldn't scare the user.
+      if (retryAttempt < 2) {
+        _isBackendMessagesLoading = false;
+        await Future<void>.delayed(Duration(milliseconds: 400 * (retryAttempt + 1)));
+        return _loadBackendMessages(retryAttempt: retryAttempt + 1);
+      }
+      if (!mounted) return;
+      // Keep existing messages visible; just record the error without wiping the list.
+      _backendMessagesError = e.toString();
     } finally {
       _isBackendMessagesLoading = false;
     }
@@ -551,33 +583,49 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<void> _sendMessageViaBackend(String message) async {
-    try {
-      final currentUser = FirebaseAuth.instance.currentUser;
-      if (currentUser == null) {
-        throw Exception('User not authenticated');
-      }
+    final currentUser = FirebaseAuth.instance.currentUser;
+    if (currentUser == null) return;
 
-      await _socketService.send('chat_send', {
+    // Clear input immediately for snappy UX.
+    _messageController.clear();
+    final clientMessageId = '${currentUser.uid}_${DateTime.now().millisecondsSinceEpoch}';
+
+    try {
+      final ack = await _socketService.sendWithAck('chat_send', {
         'receiverId': widget.otherUserId,
         'bookingId': widget.bookingId,
         'messageText': message,
         'messageType': 'text',
-        'clientMessageId': '${currentUser.uid}_${DateTime.now().millisecondsSinceEpoch}',
+        'clientMessageId': clientMessageId,
       });
 
-      _messageController.clear();
+      if (ack != null && ack['ok'] == true) {
+        final data = (ack['data'] is Map) ? Map<String, dynamic>.from(ack['data'] as Map) : <String, dynamic>{};
+        final messageMap = (data['message'] is Map)
+            ? Map<String, dynamic>.from(data['message'] as Map)
+            : <String, dynamic>{};
+        if (messageMap.isNotEmpty) {
+          final parsed = _parseBackendMessage(messageMap);
+          if (!mounted) return;
+          final alreadyPresent = _backendMessages.any((m) => m.id.isNotEmpty && m.id == parsed.id);
+          if (!alreadyPresent) {
+            setState(() {
+              _backendMessages = [parsed, ..._backendMessages];
+            });
+          }
+          _scrollToBottom();
+          return;
+        }
+      }
+
+      // Fallback: reload from backend if ACK was missing/unexpected.
       await _loadBackendMessages();
       _scrollToBottom();
-    } catch (e) {
+    } catch (_) {
+      // Suppress noisy error snackbar; message will retry via socket queue.
+      // Restore the input so user can retry manually.
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Failed to send message: $e'),
-          backgroundColor: AppTheme.errorColor,
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        ),
-      );
+      _messageController.text = message;
     }
   }
 

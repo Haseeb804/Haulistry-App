@@ -254,13 +254,16 @@ class Booking:
     
     @staticmethod
     def accept(booking_id: str, provider_id: str, vehicle_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
-        """Provider accepts a booking - creates ACCEPTED_BY relationship"""
+        """Provider accepts a booking - creates ACCEPTED_BY relationship.
+        Auto-starts the service (status = in_progress) so the provider doesn't
+        need to click a separate 'Start Service' button."""
         query = """
         MATCH (b:Booking {id: $bookingId})
         MATCH (provider) WHERE provider.id = $providerId
-        SET b.status = $activeStatus,
+        SET b.status = $inProgressStatus,
             b.providerId = $providerId,
             b.vehicleId = $vehicleId,
+            b.startedAt = datetime(),
             b.updatedAt = datetime()
         MERGE (b)-[:ACCEPTED_BY]->(provider)
         WITH b, provider
@@ -273,12 +276,12 @@ class Booking:
         WHERE (seeker:Seeker OR seeker:Provider OR seeker:User) AND seeker.id = b.seekerId
         RETURN b, seeker.name as seekerName, provider.name as providerName
         """
-        
+
         params = {
             "bookingId": booking_id,
             "providerId": provider_id,
             "vehicleId": vehicle_id,
-            "activeStatus": BookingStatus.ACTIVE,
+            "inProgressStatus": BookingStatus.IN_PROGRESS,
         }
         
         result = neo4j_driver.execute_write(query, params)

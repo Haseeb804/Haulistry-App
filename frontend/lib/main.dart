@@ -55,11 +55,13 @@ import 'features/feedback/presentation/screens/provider_feedback_screen.dart';
 import 'features/feedback/data/datasources/feedback_remote_datasource.dart';
 import 'features/feedback/data/repositories/feedback_repository_impl.dart';
 import 'features/call/presentation/bloc/call_bloc.dart';
+import 'features/call/presentation/bloc/call_state.dart';
 import 'features/call/presentation/screens/incoming_call_screen.dart';
 import 'features/call/presentation/screens/outgoing_call_screen.dart';
 import 'features/call/presentation/screens/voice_call_screen.dart';
 import 'features/call/presentation/screens/video_call_screen.dart';
 import 'core/services/app_lifecycle_service.dart';
+import 'core/services/realtime_socket_service.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'firebase_options.dart';
@@ -83,7 +85,17 @@ void main() async {
   
   // Setup notification handling
   _setupNotificationHandling();
-  
+
+  // Pre-warm the realtime socket as soon as the user signs in so incoming
+  // calls and chat events arrive instantly instead of after lazy init.
+  FirebaseAuth.instance.authStateChanges().listen((user) {
+    if (user != null) {
+      unawaited(RealtimeSocketService().connect());
+    } else {
+      unawaited(RealtimeSocketService().disconnect());
+    }
+  });
+
   runApp(const HaulistryApp());
 }
 
@@ -110,15 +122,6 @@ void _setupNotificationHandling() {
       // Handle incoming call notification
       final callId = data['callId']?.toString() ?? '';
       final callerId = data['callerId']?.toString() ?? '';
-      if (callId.isEmpty || callerId.isEmpty) {
-      // Ignore malformed payloads instead of throwing and killing the stream listener.
-      return;
-      }
-      final currentUserId = FirebaseAuth.instance.currentUser?.uid;
-      if (currentUserId != null && callerId == currentUserId) {
-        // Defensive guard: ignore call notifications that loop back to sender.
-        return;
-      }
       final callerName = data['callerName']?.toString() ?? 'User';
       final callerRole = data['callerRole']?.toString() ?? AppConstants.roleUser;
       final callerProfileImageUrl = data['callerProfileImageUrl']?.toString();
@@ -139,16 +142,15 @@ void _setupNotificationHandling() {
         'receiverId': nestedSignalData['receiverId']?.toString() ?? data['receiverId']?.toString() ?? '',
       };
 
-      // Navigate to incoming call screen
-      _router.push(AppRoutes.callIncoming, extra: {
-        'callId': callId,
-        'callerId': callerId,
-        'callerName': callerName,
-        'callerRole': callerRole,
-        'callerProfileImageUrl': callerProfileImageUrl,
-        'callType': callType,
-        'signalData': signalData,
-      });
+      _navigateToIncomingCall(
+        callId: callId,
+        callerId: callerId,
+        callerName: callerName,
+        callerRole: callerRole,
+        callerProfileImageUrl: callerProfileImageUrl,
+        callType: callType,
+        signalData: signalData,
+      );
     } else if (type == 'call_status') {
       final callId = data['callId']?.toString() ?? '';
       final status = data['status']?.toString().toLowerCase() ?? '';
@@ -175,6 +177,40 @@ void _setupNotificationHandling() {
         // Navigate to tracking screen
       }
     }
+  });
+}
+
+final Set<String> _shownIncomingCallIds = <String>{};
+
+void _navigateToIncomingCall({
+  required String callId,
+  required String callerId,
+  required String callerName,
+  required String callerRole,
+  required String? callerProfileImageUrl,
+  required String callType,
+  required Map<String, dynamic> signalData,
+}) {
+  // Ignore malformed payloads and duplicate navigation for the same call.
+  if (callId.isEmpty || callerId.isEmpty || _shownIncomingCallIds.contains(callId)) {
+    return;
+  }
+
+  final currentUserId = FirebaseAuth.instance.currentUser?.uid;
+  if (currentUserId != null && callerId == currentUserId) {
+    return;
+  }
+
+  _shownIncomingCallIds.add(callId);
+
+  _router.push(AppRoutes.callIncoming, extra: {
+    'callId': callId,
+    'callerId': callerId,
+    'callerName': callerName,
+    'callerRole': callerRole,
+    'callerProfileImageUrl': callerProfileImageUrl,
+    'callType': callType,
+    'signalData': signalData,
   });
 }
 
@@ -271,6 +307,24 @@ class HaulistryApp extends StatelessWidget {
         ),
       ],
       child: MaterialApp.router(
+        builder: (context, child) {
+          return BlocListener<CallBloc, CallState>(
+            listenWhen: (previous, current) => current is CallRinging,
+            listener: (context, state) {
+              if (state is! CallRinging) return;
+              _navigateToIncomingCall(
+                callId: state.callId,
+                callerId: state.callerId,
+                callerName: state.callerName,
+                callerRole: state.callerRole,
+                callerProfileImageUrl: state.callerProfileImageUrl,
+                callType: state.callType,
+                signalData: state.signalData,
+              );
+            },
+            child: child ?? const SizedBox.shrink(),
+          );
+        },
         title: AppConstants.appName,
         theme: AppTheme.lightTheme,
         darkTheme: AppTheme.darkTheme,

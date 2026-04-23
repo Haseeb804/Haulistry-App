@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:go_router/go_router.dart';
+import '../../../../core/constants/app_constants.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../bloc/feedback_bloc.dart';
 import '../bloc/feedback_event.dart';
@@ -26,11 +27,21 @@ class SeekerFeedbackScreen extends StatefulWidget {
 class _SeekerFeedbackScreenState extends State<SeekerFeedbackScreen> {
   double _rating = 0;
   final TextEditingController _commentController = TextEditingController();
+  bool _hasNavigatedAfterSubmit = false;
 
   @override
   void dispose() {
     _commentController.dispose();
     super.dispose();
+  }
+
+  void _goToDashboard() {
+    if (_hasNavigatedAfterSubmit) return;
+    _hasNavigatedAfterSubmit = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      context.go(AppRoutes.seekerHome);
+    });
   }
 
   void _submitFeedback() {
@@ -88,13 +99,14 @@ class _SeekerFeedbackScreenState extends State<SeekerFeedbackScreen> {
           foregroundColor: Colors.white,
         ),
         body: BlocConsumer<FeedbackBloc, FeedbackState>(
+        listenWhen: (previous, current) =>
+            current is FeedbackSubmitSuccess || current is FeedbackError,
         listener: (context, state) {
           if (state is FeedbackSubmitSuccess) {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(content: Text('Feedback submitted successfully!')),
             );
-            // Navigate back to seeker home screen
-            context.go('/seeker/home');
+            _goToDashboard();
           } else if (state is FeedbackError) {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(content: Text(state.message)),

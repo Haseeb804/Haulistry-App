@@ -534,6 +534,28 @@ class _ProviderTrackingScreenState extends State<ProviderTrackingScreen> {
       );
     }
 
+    // If booking just completed, show a transition/loading screen instead of the
+    // "unavailable" error — navigation to feedback is already in flight.
+    final currentStatusLower = (_currentBookingStatus ?? widget.bookingStatus ?? '').toLowerCase();
+    if (currentStatusLower == AppConstants.statusCompleted || _hasRedirectedToFeedback) {
+      return Scaffold(
+        backgroundColor: AppTheme.backgroundColor,
+        body: const Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              CircularProgressIndicator(),
+              SizedBox(height: 16),
+              Text(
+                'Finalising service...',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
     if (!_isActiveServiceStatus) {
       return Scaffold(
         backgroundColor: AppTheme.backgroundColor,
