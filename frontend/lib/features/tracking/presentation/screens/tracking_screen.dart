@@ -11,6 +11,7 @@ import 'package:intl/intl.dart';
 import 'package:latlong2/latlong.dart';
 import '../../../../core/constants/app_constants.dart';
 import '../../../../core/services/api_service.dart';
+import '../../../../core/services/realtime_socket_service.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/utils/call_identity_resolver.dart';
 import '../../../feedback/data/datasources/feedback_remote_datasource.dart';
@@ -80,6 +81,7 @@ class _TrackingScreenState extends State<TrackingScreen> {
   Timer? _markerAnimationTimer;
   Timer? _clockTimer;
   Timer? _bookingStatusTimer;
+  StreamSubscription<Map<String, dynamic>>? _socketSubscription;
   DateTime _now = DateTime.now();
 
   bool get _isActiveServiceStatus {
@@ -125,8 +127,63 @@ class _TrackingScreenState extends State<TrackingScreen> {
         _now = DateTime.now();
       });
     });
+    _subscribeToSocketEvents();
     // Load booking status immediately to avoid false "unavailable" state
     _loadInitialBookingStatus();
+  }
+
+  void _subscribeToSocketEvents() {
+    final socket = RealtimeSocketService();
+    // connect() is idempotent; ensures we receive server-pushed events.
+    unawaited(socket.connect());
+    _socketSubscription = socket.events.listen((event) {
+      final type = event['type']?.toString() ?? '';
+      if (type != 'booking_completed') return;
+
+      final data = (event['data'] is Map<String, dynamic>)
+          ? event['data'] as Map<String, dynamic>
+          : <String, dynamic>{};
+      final eventBookingId = data['bookingId']?.toString() ?? '';
+      if (eventBookingId.isEmpty || eventBookingId != widget.bookingId) return;
+
+      // Update local status immediately so guards allow navigation
+      _currentBookingStatus = AppConstants.statusCompleted;
+      _isBookingStatusLoaded = true;
+
+      final providerId = (data['providerId']?.toString() ?? '').isNotEmpty
+          ? data['providerId'].toString()
+          : (_cachedProviderId ?? widget.providerId);
+      final providerName = (data['providerName']?.toString() ?? '').isNotEmpty
+          ? data['providerName'].toString()
+          : _getProviderName();
+
+      unawaited(_redirectSeekerToFeedback(providerId: providerId, providerName: providerName));
+    });
+  }
+
+  Future<void> _redirectSeekerToFeedback({
+    required String providerId,
+    required String providerName,
+  }) async {
+    if (!mounted || _feedbackRedirectChecked) return;
+    if (providerId.isEmpty) return;
+
+    try {
+      final exists = await _feedbackRepository.checkFeedbackExists(
+        widget.bookingId,
+        AppConstants.roleSeeker,
+      );
+      if (!mounted || exists) return;
+
+      _feedbackRedirectChecked = true;
+      context.go(AppRoutes.feedbackSeeker, extra: {
+        'bookingId': widget.bookingId,
+        'providerId': providerId,
+        'providerName': providerName,
+      });
+    } catch (_) {
+      // If feedback-exists check fails, keep fallback polling path functional.
+    }
   }
   
   Future<void> _loadInitialBookingStatus() async {
@@ -178,6 +235,7 @@ class _TrackingScreenState extends State<TrackingScreen> {
     _markerAnimationTimer?.cancel();
     _clockTimer?.cancel();
     _bookingStatusTimer?.cancel();
+    _socketSubscription?.cancel();
     context.read<LocationTrackingBloc>().add(const StopLocationTracking());
     super.dispose();
   }

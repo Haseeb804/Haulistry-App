@@ -398,21 +398,41 @@ async def complete_booking(
         )
 
         booking_data = Booking.complete(booking_id, resolved_final_price)
-        
+
         if not booking_data:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Booking not found"
             )
-        
-        # Notify seeker via FCM
+
+        # Notify seeker via FCM (for offline delivery)
         await fcm_service.notify_booking_status(
             target_user_id=booking_data['seekerId'],
             booking_id=booking_id,
             status=BookingStatus.COMPLETED,
             message="Service completed! Please rate your experience."
         )
-        
+
+        # Emit real-time booking_completed Socket.IO event to BOTH parties.
+        # This drives mandatory review navigation on both seeker and provider tracking screens.
+        from ..realtime.socketio_gateway import emit_to_user_event
+        completion_payload = {
+            "bookingId": booking_id,
+            "status": BookingStatus.COMPLETED,
+            "seekerId": booking_data.get('seekerId'),
+            "seekerName": booking_data.get('seekerName') or 'Customer',
+            "providerId": booking_data.get('providerId'),
+            "providerName": booking_data.get('providerName') or 'Provider',
+            "finalPrice": booking_data.get('finalPrice'),
+            "serviceType": booking_data.get('serviceType'),
+        }
+        seeker_id = booking_data.get('seekerId')
+        provider_id = booking_data.get('providerId')
+        if seeker_id:
+            await emit_to_user_event(seeker_id, "booking_completed", completion_payload)
+        if provider_id:
+            await emit_to_user_event(provider_id, "booking_completed", completion_payload)
+
         # Clean up location data
         LocationUpdate.delete_booking_locations(booking_id)
         

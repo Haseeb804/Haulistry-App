@@ -402,33 +402,50 @@ class CallBloc extends Bloc<CallEvent, CallState> {
     EndCallRequested event,
     Emitter<CallState> emit,
   ) async {
+    // Snapshot context BEFORE reset — cleanup runs fire-and-forget after.
+    final otherUserId = _otherUserId;
+    final userId = _auth.currentUser?.uid;
+
+    // Emit terminal state FIRST so the UI pops immediately.
+    // Any failure in async cleanup below must not block or revert this.
+    emit(CallEnded(callId: event.callId, duration: event.duration, reason: 'normal'));
+    _resetCallSession();
+
+    unawaited(_cleanupAfterEnd(event, otherUserId, userId));
+  }
+
+  Future<void> _cleanupAfterEnd(
+    EndCallRequested event,
+    String otherUserId,
+    String? userId,
+  ) async {
     try {
       await _callService.leaveChannel();
+    } catch (_) {}
+    try {
       await NotificationService().cancelCallNotification(event.callId);
+    } catch (_) {}
 
-      final canUpdateBackend = event.callId.isNotEmpty && event.callId != 'pending';
-      final user = _auth.currentUser;
-      if (canUpdateBackend) {
-        await _apiService.post(ApiEndpoints.callUpdateStatus, {
+    final canUpdateBackend = event.callId.isNotEmpty && event.callId != 'pending';
+    if (!canUpdateBackend) return;
+
+    try {
+      await _apiService.post(ApiEndpoints.callUpdateStatus, {
+        'callId': event.callId,
+        'status': 'ended',
+        'duration': event.duration,
+        if (userId != null) 'userId': userId,
+      });
+    } catch (_) {}
+
+    if (otherUserId.isNotEmpty) {
+      try {
+        await _socketService.send('call_end', {
           'callId': event.callId,
-          'status': 'ended',
+          'targetUserId': otherUserId,
           'duration': event.duration,
-          if (user != null) 'userId': user.uid,
         });
-
-        if (_otherUserId.isNotEmpty) {
-          await _socketService.send('call_end', {
-            'callId': event.callId,
-            'targetUserId': _otherUserId,
-            'duration': event.duration,
-          });
-        }
-      }
-
-      emit(CallEnded(callId: event.callId, duration: event.duration, reason: 'normal'));
-      _resetCallSession();
-    } catch (e) {
-      emit(CallError(message: 'Failed to end call: $e'));
+      } catch (_) {}
     }
   }
 

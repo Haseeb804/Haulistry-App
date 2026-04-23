@@ -30,6 +30,7 @@ ACTIVE_BOOKING_STATUSES = {
 }
 
 LIVE_COMMUNICATION_STATUSES = {
+    BookingStatus.CONFIRMED,
     BookingStatus.ACCEPTED,
     BookingStatus.ACTIVE,
     BookingStatus.PROVIDER_ARRIVING,

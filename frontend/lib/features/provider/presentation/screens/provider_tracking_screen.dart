@@ -12,6 +12,7 @@ import 'package:intl/intl.dart';
 import '../../../../core/constants/app_constants.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/services/api_service.dart';
+import '../../../../core/services/realtime_socket_service.dart';
 import '../../../../core/domain/entities/booking_entity.dart';
 import '../../../call/presentation/bloc/call_bloc.dart';
 import '../../../call/presentation/bloc/call_event.dart';
@@ -66,6 +67,8 @@ class _ProviderTrackingScreenState extends State<ProviderTrackingScreen> {
   static const double _completionRadiusMeters = 100;
   final ApiService _apiService = ApiService.instance;
   Timer? _bookingStatusTimer;
+  StreamSubscription<Map<String, dynamic>>? _socketSubscription;
+  bool _hasRedirectedToFeedback = false;
   bool _isBookingStatusLoaded = false;
   String? _currentBookingStatus;
 
@@ -86,7 +89,40 @@ class _ProviderTrackingScreenState extends State<ProviderTrackingScreen> {
         _now = DateTime.now();
       });
     });
+    _subscribeToSocketEvents();
     _loadInitialBookingStatus();
+  }
+
+  void _subscribeToSocketEvents() {
+    final socket = RealtimeSocketService();
+    unawaited(socket.connect());
+    _socketSubscription = socket.events.listen((event) {
+      final type = event['type']?.toString() ?? '';
+      if (type != 'booking_completed') return;
+
+      final data = (event['data'] is Map<String, dynamic>)
+          ? event['data'] as Map<String, dynamic>
+          : <String, dynamic>{};
+      final eventBookingId = data['bookingId']?.toString() ?? '';
+      if (eventBookingId.isEmpty || eventBookingId != widget.bookingId) return;
+      if (_hasRedirectedToFeedback) return;
+
+      final seekerId = (data['seekerId']?.toString() ?? '').isNotEmpty
+          ? data['seekerId'].toString()
+          : (_booking?.seekerId ?? '');
+      final seekerName = (data['seekerName']?.toString() ?? '').isNotEmpty
+          ? data['seekerName'].toString()
+          : (_booking?.seekerName ?? 'Customer');
+
+      if (seekerId.isEmpty || !mounted) return;
+
+      _hasRedirectedToFeedback = true;
+      context.go(AppRoutes.feedbackProvider, extra: {
+        'bookingId': widget.bookingId,
+        'seekerId': seekerId,
+        'seekerName': seekerName,
+      });
+    });
   }
 
   Future<void> _loadInitialBookingStatus() async {
@@ -146,6 +182,7 @@ class _ProviderTrackingScreenState extends State<ProviderTrackingScreen> {
     _seekerAnimationTimer?.cancel();
     _clockTimer?.cancel();
     _bookingStatusTimer?.cancel();
+    _socketSubscription?.cancel();
     context.read<LocationTrackingBloc>().add(const StopLocationTracking());
     super.dispose();
   }
@@ -614,7 +651,8 @@ class _ProviderTrackingScreenState extends State<ProviderTrackingScreen> {
 
               final didComplete = state.action == 'complete' ||
                   (state.updatedBooking?.status.toLowerCase() == AppConstants.statusCompleted);
-              if (didComplete && _booking != null) {
+              if (didComplete && _booking != null && !_hasRedirectedToFeedback) {
+                _hasRedirectedToFeedback = true;
                 context.go(AppRoutes.feedbackProvider, extra: {
                   'bookingId': widget.bookingId,
                   'seekerId': _booking!.seekerId,

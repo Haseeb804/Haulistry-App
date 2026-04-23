@@ -202,6 +202,8 @@ class RealtimeSocketService {
       'webrtc_offer',
       'webrtc_answer',
       'webrtc_ice_candidate',
+      'location_update',
+      'booking_completed',
       'pong',
       'error',
     ];
