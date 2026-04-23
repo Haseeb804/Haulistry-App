@@ -1006,8 +1006,17 @@ class ProviderBloc extends Bloc<ProviderEvent, ProviderState> {
       );
 
       if (response['success'] == true && state is ProviderLoaded) {
-        final bookings = (response['bookings'] as List<dynamic>? ?? [])
-            .map((json) => BookingEntity.fromJson(json as Map<String, dynamic>))
+        final list = response['bookings'] as List<dynamic>? ?? [];
+        final bookings = list
+            .whereType<Map<String, dynamic>>()
+            .map((json) {
+              try {
+                return BookingEntity.fromJson(json);
+              } catch (_) {
+                return null;
+              }
+            })
+            .whereType<BookingEntity>()
             .toList();
 
         emit((state as ProviderLoaded).copyWith(availableBookings: bookings));
