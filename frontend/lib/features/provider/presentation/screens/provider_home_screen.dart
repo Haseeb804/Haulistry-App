@@ -805,7 +805,12 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen> {
                   text: 'Review Request',
                   icon: Icons.visibility_rounded,
                   height: 48,
-                  onPressed: () => context.push(AppRoutes.providerRequest(booking.id)),
+                  onPressed: () => context.push(
+                    AppRoutes.providerRequest(booking.id),
+                    extra: {
+                      'booking': booking.toJson(),
+                    },
+                  ),
                 ),
               ],
             ),

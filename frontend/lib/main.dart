@@ -541,7 +541,12 @@ final _router = GoRouter(
       path: AppRoutes.providerRequestPattern,
       builder: (context, state) {
         final bookingId = state.pathParameters['id'] ?? '';
-        return ProviderRequestReviewScreen(bookingId: bookingId);
+        final extra = state.extra as Map<String, dynamic>?;
+        final bookingData = extra?['booking'] as Map<String, dynamic>?;
+        return ProviderRequestReviewScreen(
+          bookingId: bookingId,
+          initialBookingData: bookingData,
+        );
       },
     ),
     GoRoute(

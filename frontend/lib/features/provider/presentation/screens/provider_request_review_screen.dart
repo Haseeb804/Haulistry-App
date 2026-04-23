@@ -11,8 +11,13 @@ import '../bloc/provider_state.dart';
 
 class ProviderRequestReviewScreen extends StatefulWidget {
   final String bookingId;
+  final Map<String, dynamic>? initialBookingData;
 
-  const ProviderRequestReviewScreen({super.key, required this.bookingId});
+  const ProviderRequestReviewScreen({
+    super.key,
+    required this.bookingId,
+    this.initialBookingData,
+  });
 
   @override
   State<ProviderRequestReviewScreen> createState() => _ProviderRequestReviewScreenState();
@@ -28,6 +33,14 @@ class _ProviderRequestReviewScreenState extends State<ProviderRequestReviewScree
   @override
   void initState() {
     super.initState();
+    if (widget.initialBookingData != null) {
+      try {
+        _booking = BookingEntity.fromJson(widget.initialBookingData!);
+        _isLoadingBooking = false;
+      } catch (_) {
+        _booking = null;
+      }
+    }
     _loadBookingDetails();
   }
 
@@ -38,6 +51,8 @@ class _ProviderRequestReviewScreenState extends State<ProviderRequestReviewScree
   }
 
   Future<void> _loadBookingDetails() async {
+    if (_booking != null) return;
+
     try {
       if (mounted) {
         setState(() {
