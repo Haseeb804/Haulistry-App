@@ -7,6 +7,8 @@ class BookingEntity extends Equatable {
   final String? seekerName;
   final String? providerId;
   final String? providerName;
+  final String? serviceId;
+  final String? serviceName;
   final String? vehicleId;
   final String serviceType;
   final String status; // pending, accepted, in_progress, completed, cancelled
@@ -38,6 +40,8 @@ class BookingEntity extends Equatable {
     this.seekerName,
     this.providerId,
     this.providerName,
+    this.serviceId,
+    this.serviceName,
     this.vehicleId,
     required this.serviceType,
     required this.status,
@@ -71,6 +75,8 @@ class BookingEntity extends Equatable {
         seekerName,
         providerId,
         providerName,
+        serviceId,
+        serviceName,
         vehicleId,
         serviceType,
         status,
@@ -103,6 +109,8 @@ class BookingEntity extends Equatable {
     String? seekerName,
     String? providerId,
     String? providerName,
+    String? serviceId,
+    String? serviceName,
     String? vehicleId,
     String? serviceType,
     String? status,
@@ -134,6 +142,8 @@ class BookingEntity extends Equatable {
       seekerName: seekerName ?? this.seekerName,
       providerId: providerId ?? this.providerId,
       providerName: providerName ?? this.providerName,
+      serviceId: serviceId ?? this.serviceId,
+      serviceName: serviceName ?? this.serviceName,
       vehicleId: vehicleId ?? this.vehicleId,
       serviceType: serviceType ?? this.serviceType,
       status: status ?? this.status,
@@ -168,6 +178,8 @@ class BookingEntity extends Equatable {
       'seekerName': seekerName,
       'providerId': providerId,
       'providerName': providerName,
+      'serviceId': serviceId,
+      'serviceName': serviceName,
       'vehicleId': vehicleId,
       'serviceType': serviceType,
       'status': status,
@@ -202,6 +214,8 @@ class BookingEntity extends Equatable {
       seekerName: (json['seekerName'] ?? json['seeker_name']) as String?,
       providerId: (json['providerId'] ?? json['provider_id']) as String?,
       providerName: (json['providerName'] ?? json['provider_name']) as String?,
+      serviceId: (json['serviceId'] ?? json['service_id']) as String?,
+      serviceName: (json['serviceName'] ?? json['service_name']) as String?,
       vehicleId: (json['vehicleId'] ?? json['vehicle_id']) as String?,
       serviceType: (json['serviceType'] ?? json['service_type']) as String,
       status: json['status'] as String,
