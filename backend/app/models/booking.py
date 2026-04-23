@@ -175,26 +175,35 @@ class Booking:
     
     @staticmethod
     def create(booking_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-        """Create a new booking in the database with serviceType as label and relationships"""
-        # Sanitize serviceType for use as label (remove spaces, special chars)
+        """Create a new booking with proper seeker→request→provider binding
+        
+        When seeker books a service:
+        - providerId MUST be set (the provider who owns the service)
+        - serviceId MUST be set (the specific service being booked)
+        - vehicleId should be set (vehicle providing the service)
+        
+        Relationships created:
+        - (Seeker)-[:CREATED]->(Booking)
+        - (Booking)-[:ASSIGNED_TO]->(Provider)
+        - (Booking)-[:USES_SERVICE]->(Service)
+        """
         service_type = booking_data.get('serviceType', 'General')
         service_label = service_type.replace(' ', '').replace('-', '').replace('_', '') if service_type else 'General'
         
-        # All new bookings start unassigned so every provider can see them via
-        # get_available_bookings (WHERE providerId IS NULL).  providerId and
-        # vehicleId are set only when a provider accepts the booking.
-        #
-        # OPTIONAL MATCH for seeker so the booking is always created even when
-        # the seeker node hasn't been synced to Neo4j yet.  The REQUESTED_BY
-        # relationship is created only when the seeker node exists.
         query = f"""
         OPTIONAL MATCH (seeker)
         WHERE (seeker:Provider OR seeker:User OR seeker:Seeker) AND seeker.id = $seekerId
+        OPTIONAL MATCH (provider)
+        WHERE (provider:Provider OR provider:User OR provider:Seeker) AND provider.id = $providerId
+        OPTIONAL MATCH (service:Service)
+        WHERE service.id = $serviceId
         CREATE (b:Booking:{service_label} {{
             id: randomUUID(),
             seekerId: $seekerId,
-            serviceType: $serviceType,
+            providerId: $providerId,
+            vehicleId: $vehicleId,
             serviceId: $serviceId,
+            serviceType: $serviceType,
             status: $pendingStatus,
             pickupLatitude: $pickupLatitude,
             pickupLongitude: $pickupLongitude,
@@ -212,13 +221,20 @@ class Booking:
             updatedAt: datetime()
         }})
         FOREACH (_ IN CASE WHEN seeker IS NOT NULL THEN [1] ELSE [] END |
-            CREATE (b)-[:REQUESTED_BY]->(seeker)
+            CREATE (b)-[:CREATED_BY]->(seeker)
+        )
+        FOREACH (_ IN CASE WHEN provider IS NOT NULL THEN [1] ELSE [] END |
+            CREATE (b)-[:ASSIGNED_TO]->(provider)
+        )
+        FOREACH (_ IN CASE WHEN service IS NOT NULL THEN [1] ELSE [] END |
+            CREATE (b)-[:USES_SERVICE]->(service)
         )
         RETURN b
         """
 
-        # Ensure serviceId is in the params
         booking_data.setdefault('serviceId', None)
+        booking_data.setdefault('providerId', None)
+        booking_data.setdefault('vehicleId', None)
         booking_data['pendingStatus'] = BookingStatus.PENDING
 
         result = neo4j_driver.execute_write(query, booking_data)
@@ -371,8 +387,7 @@ class Booking:
     
     @staticmethod
     def get_by_id(booking_id: str) -> Optional[Dict[str, Any]]:
-        """Get booking by ID - matches both Booking and Booking:ServiceType labels"""
-        # Match Booking node with any service type label (e.g., Booking:Truck, Booking:Pickup, etc.)
+        """Get booking by ID with complete seeker→request→provider→service details"""
         query = """
         MATCH (b)
         WHERE any(label IN labels(b) WHERE label STARTS WITH 'Booking') AND b.id = $bookingId
@@ -381,10 +396,14 @@ class Booking:
         OPTIONAL MATCH (provider)
         WHERE (provider:Seeker OR provider:Provider OR provider:User) AND provider.id = b.providerId
         OPTIONAL MATCH (vehicle:Vehicle {id: b.vehicleId})
-        RETURN b, seeker.name as seekerName, seeker.phone as seekerPhone,
+        OPTIONAL MATCH (service:Service {id: b.serviceId})
+        RETURN b, 
+               seeker.name as seekerName, seeker.phone as seekerPhone,
                provider.name as providerName, provider.phone as providerPhone,
                provider.rating as providerRating,
-               vehicle.vehicleType as vehicleType, vehicle.vehicleNumber as vehicleNumber
+               vehicle.vehicleType as vehicleType, vehicle.vehicleNumber as vehicleNumber,
+               service.name as serviceName, service.description as serviceDescription,
+               service.basePrice as serviceBasePrice
         """
         result = neo4j_driver.execute_read(query, {'bookingId': booking_id})
         if result and result[0]['b']:
@@ -396,6 +415,9 @@ class Booking:
             booking['providerRating'] = result[0]['providerRating']
             booking['vehicleType'] = result[0]['vehicleType']
             booking['vehicleNumber'] = result[0]['vehicleNumber']
+            booking['serviceName'] = result[0]['serviceName']
+            booking['serviceDescription'] = result[0]['serviceDescription']
+            booking['serviceBasePrice'] = result[0]['serviceBasePrice']
             return booking
         return None
     
