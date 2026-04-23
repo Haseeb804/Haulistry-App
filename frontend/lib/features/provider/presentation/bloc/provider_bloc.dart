@@ -83,50 +83,65 @@ class ProviderBloc extends Bloc<ProviderEvent, ProviderState> {
   }
 
   void _setupFcmListeners() {
-    // Listen for FCM notifications (booking requests, fare offer updates)
-    _fcmSubscription = _notificationService.notificationStream.listen((data) {
-      final type = data['type'] as String?;
-      
-      if (type == 'new_booking_request') {
-        // New booking request
-        add(ProviderNewBookingReceived(
-          booking: BookingEntity.fromJson(data),
-        ));
-      } else if (type == 'fare_offer_accepted') {
-        final offerId = data['offerId'] as String?;
-        if (offerId != null) {
-          add(ProviderOfferStatusReceived(
-            offerId: offerId,
-            status: 'accepted',
-          ));
+    _fcmSubscription = _notificationService.notificationStream.listen(
+      (data) {
+        final type = data['type'] as String?;
+
+        if (type == 'new_booking_request') {
+          // FCM payload only carries a summary — trigger a full dashboard
+          // refresh so the provider sees the complete booking data immediately.
+          add(ProviderLoadDashboardRequested());
+        } else if (type == 'fare_offer_accepted') {
+          final offerId = data['offerId'] as String?;
+          if (offerId != null) {
+            add(ProviderOfferStatusReceived(offerId: offerId, status: 'accepted'));
+          }
+        } else if (type == 'fare_offer_rejected') {
+          final offerId = data['offerId'] as String?;
+          if (offerId != null) {
+            add(ProviderOfferStatusReceived(offerId: offerId, status: 'rejected'));
+          }
+        } else if (type == 'counter_offer') {
+          final offerId = data['offerId'] as String?;
+          if (offerId != null) {
+            add(ProviderOfferStatusReceived(
+              offerId: offerId,
+              status: 'counter_offered',
+              counterPrice: double.tryParse(data['counterPrice']?.toString() ?? ''),
+            ));
+          }
         }
-      } else if (type == 'fare_offer_rejected') {
-        final offerId = data['offerId'] as String?;
-        if (offerId != null) {
-          add(ProviderOfferStatusReceived(
-            offerId: offerId,
-            status: 'rejected',
-          ));
-        }
-      } else if (type == 'counter_offer') {
-        final offerId = data['offerId'] as String?;
-        if (offerId != null) {
-          add(ProviderOfferStatusReceived(
-            offerId: offerId,
-            status: 'counter_offered',
-            counterPrice: double.tryParse(data['counterPrice']?.toString() ?? ''),
-          ));
-        }
-      }
-    });
+      },
+      onError: (_) {
+        // Keep subscription alive — do not rethrow.
+      },
+    );
   }
 
   void _setupSocketListeners() {
-    _socketSubscription = RealtimeSocketService().events.listen((event) {
-      if (event['type'] == 'new_booking_request') {
+    _socketSubscription = RealtimeSocketService().events.listen(
+      (event) {
+        if (event['type'] != 'new_booking_request') return;
+
+        // The enriched socket payload contains all BookingEntity fields.
+        // Parse it for an instant optimistic update; fall back to a full
+        // dashboard refresh if the payload is somehow incomplete.
+        final raw = event['data'];
+        if (raw is Map<String, dynamic>) {
+          try {
+            final booking = BookingEntity.fromJson(raw);
+            add(ProviderNewBookingReceived(booking: booking));
+            return;
+          } catch (_) {
+            // Payload was incomplete — fall through to refresh.
+          }
+        }
         add(ProviderLoadDashboardRequested());
-      }
-    });
+      },
+      onError: (_) {
+        // Keep subscription alive — do not rethrow.
+      },
+    );
   }
 
   Future<void> _onLoadDashboard(

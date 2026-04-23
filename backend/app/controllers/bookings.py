@@ -14,6 +14,7 @@ Booking Status Flow:
 """
 
 import asyncio
+from datetime import datetime
 
 from fastapi import APIRouter, HTTPException, status, Query
 from typing import Optional, List
@@ -24,6 +25,15 @@ from ..models.location import LocationUpdate
 from ..services.fcm_service import fcm_service
 from ..constants import BookingStatus, UserRole
 from ..realtime.socketio_gateway import sio
+
+
+def _to_iso(value) -> str:
+    """Safely convert a datetime (or string) to an ISO-8601 string."""
+    if isinstance(value, datetime):
+        return value.isoformat()
+    if isinstance(value, str) and value:
+        return value
+    return datetime.utcnow().isoformat()
 
 router = APIRouter()
 
@@ -87,13 +97,33 @@ async def create_booking(booking: BookingCreate):
             exclude_seeker_id=booking.seekerId
         )
 
-        # Broadcast via Socket.IO for real-time delivery to connected providers
+        # Broadcast via Socket.IO for real-time delivery to connected providers.
+        # The payload includes all fields required by BookingEntity.fromJson so
+        # the Flutter client can do an instant optimistic update without an
+        # additional API round-trip.
+        now_iso = _to_iso(booking_data.get('createdAt'))
         await sio.emit('new_booking_request', {
+            # Primary ID used by BookingEntity.fromJson
+            'id': booking_data['id'],
+            # Kept for backward-compatibility with any existing listeners
             'bookingId': booking_data['id'],
-            'seekerName': booking_data.get('seekerName', 'Customer'),
+            'seekerId': booking.seekerId,
+            'seekerName': booking_data.get('seekerName') or 'Customer',
             'serviceType': booking.serviceType,
+            'status': BookingStatus.PENDING,
             'pickupAddress': booking.pickupAddress,
-            'status': 'pending',
+            'pickupLatitude': booking.pickupLatitude,
+            'pickupLongitude': booking.pickupLongitude,
+            'dropAddress': booking.dropAddress,
+            'dropLatitude': booking.dropLatitude,
+            'dropLongitude': booking.dropLongitude,
+            'distanceInKm': booking.distanceInKm,
+            'estimatedPrice': booking.estimatedPrice,
+            'hours': booking.hours,
+            'isUrgent': booking.isUrgent,
+            'scheduledDateTime': _to_iso(booking_data.get('scheduledDateTime')) or booking.scheduledDateTime,
+            'createdAt': now_iso,
+            'updatedAt': now_iso,
         })
 
         return BookingResponse(

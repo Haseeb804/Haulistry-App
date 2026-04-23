@@ -142,12 +142,16 @@ class FCMService:
         from ..database import neo4j_driver
         
         try:
-            # Query all providers with FCM tokens
+            # Query all providers with FCM tokens.
+            # isActive IS NULL check is intentional: providers without the field set
+            # (legacy accounts) are treated as active so they still receive notifications.
             query = """
             MATCH (p:Provider)
-                WHERE (p.fcmToken IS NOT NULL AND p.fcmToken <> '')
-                    OR (p.fcm_token IS NOT NULL AND p.fcm_token <> '')
-            AND p.isActive = true
+            WHERE (p.isActive IS NULL OR p.isActive = true)
+              AND (
+                (p.fcmToken IS NOT NULL AND p.fcmToken <> '')
+                OR (p.fcm_token IS NOT NULL AND p.fcm_token <> '')
+              )
             """
             
             if exclude_user:
