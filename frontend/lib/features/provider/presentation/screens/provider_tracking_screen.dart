@@ -125,6 +125,21 @@ class _ProviderTrackingScreenState extends State<ProviderTrackingScreen> {
     });
   }
 
+  Future<void> _redirectProviderToFeedback({
+    required String seekerId,
+    required String seekerName,
+  }) async {
+    if (!mounted || _hasRedirectedToFeedback) return;
+    if (seekerId.isEmpty) return;
+
+    _hasRedirectedToFeedback = true;
+    context.go(AppRoutes.feedbackProvider, extra: {
+      'bookingId': widget.bookingId,
+      'seekerId': seekerId,
+      'seekerName': seekerName,
+    });
+  }
+
   Future<void> _loadInitialBookingStatus() async {
     if (!_isBookingStatusLoaded && widget.bookingId.isNotEmpty) {
       await _pollBookingStatus();
@@ -163,6 +178,8 @@ class _ProviderTrackingScreenState extends State<ProviderTrackingScreen> {
 
       final booking = response['booking'] as Map<String, dynamic>;
       final status = (booking['status'] as String? ?? '').toLowerCase();
+      final seekerId = (booking['seekerId'] ?? booking['seeker_id'])?.toString() ?? '';
+      final seekerName = (booking['seekerName'] ?? booking['seeker_name'])?.toString() ?? 'Customer';
 
       _currentBookingStatus = status;
       _isBookingStatusLoaded = true;
@@ -170,6 +187,13 @@ class _ProviderTrackingScreenState extends State<ProviderTrackingScreen> {
 
       if (mounted) {
         setState(() {});
+      }
+
+      if (status == AppConstants.statusCompleted && !_hasRedirectedToFeedback) {
+        await _redirectProviderToFeedback(
+          seekerId: seekerId.isNotEmpty ? seekerId : (_booking?.seekerId ?? ''),
+          seekerName: seekerName.isNotEmpty ? seekerName : (_booking?.seekerName ?? 'Customer'),
+        );
       }
     } catch (_) {
       // Keep existing UI during transient failures.

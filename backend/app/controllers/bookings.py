@@ -80,6 +80,13 @@ async def create_booking(booking: BookingCreate):
     This broadcasts to online providers who can make fare offers
     """
     try:
+        active_booking = Booking.get_active_booking(booking.seekerId, UserRole.SEEKER)
+        if active_booking:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="You already have an active booking. Please complete or cancel it before creating a new request."
+            )
+
         booking_data = Booking.create(booking.dict())
         
         if not booking_data:
@@ -597,6 +604,13 @@ async def accept_booking(
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail="provider_id (query) or providerId (body) is required"
+            )
+
+        active_booking = Booking.get_active_booking(resolved_provider_id, UserRole.PROVIDER)
+        if active_booking and active_booking.get('id') != booking_id:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="This provider already has an active service. Please complete or reject the current booking before accepting a new one."
             )
 
         booking_data = Booking.accept(booking_id, resolved_provider_id, resolved_vehicle_id)

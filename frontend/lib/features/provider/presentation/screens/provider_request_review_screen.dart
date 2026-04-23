@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import 'package:latlong2/latlong.dart';
+import '../../../../core/services/api_service.dart';
 import '../../../../core/domain/entities/booking_entity.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../bloc/provider_bloc.dart';
@@ -20,17 +21,55 @@ class ProviderRequestReviewScreen extends StatefulWidget {
 class _ProviderRequestReviewScreenState extends State<ProviderRequestReviewScreen> {
   BookingEntity? _booking;
   final TextEditingController _rejectReasonController = TextEditingController();
+  final ApiService _apiService = ApiService.instance;
+  bool _isLoadingBooking = true;
+  String? _loadError;
 
   @override
   void initState() {
     super.initState();
-    context.read<ProviderBloc>().add(const ProviderLoadBookingsRequested());
+    _loadBookingDetails();
   }
 
   @override
   void dispose() {
     _rejectReasonController.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadBookingDetails() async {
+    try {
+      if (mounted) {
+        setState(() {
+          _isLoadingBooking = true;
+          _loadError = null;
+        });
+      }
+
+      final response = await _apiService.getBooking(widget.bookingId);
+      if (response['success'] != true || response['booking'] == null) {
+        throw Exception(response['message'] ?? 'Booking not found');
+      }
+
+      final booking = BookingEntity.fromJson(
+        response['booking'] as Map<String, dynamic>,
+      );
+
+      if (!mounted) return;
+      setState(() {
+        _booking = booking;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loadError = e.toString();
+      });
+    } finally {
+      if (!mounted) return;
+      setState(() {
+        _isLoadingBooking = false;
+      });
+    }
   }
 
   void _accept() {
@@ -97,15 +136,55 @@ class _ProviderRequestReviewScreenState extends State<ProviderRequestReviewScree
           _booking = [...state.pendingBookings, ...state.activeBookings, ...state.completedBookings]
               .cast<BookingEntity?>()
               .firstWhere((b) => b?.id == widget.bookingId, orElse: () => null);
+        } else if (state is ProviderBookingActionSuccess && state.updatedBooking?.id == widget.bookingId) {
+          _booking = state.updatedBooking;
         }
 
         final isLoading = state is ProviderBookingActionInProgress &&
             state.bookingId == widget.bookingId;
 
         final booking = _booking;
-        if (booking == null) {
+        if (_isLoadingBooking) {
           return const Scaffold(
             body: Center(child: CircularProgressIndicator()),
+          );
+        }
+
+        if (booking == null) {
+          return Scaffold(
+            backgroundColor: AppTheme.backgroundColor,
+            appBar: AppBar(
+              title: const Text('Review Request'),
+              backgroundColor: AppTheme.primaryColor,
+              foregroundColor: Colors.white,
+            ),
+            body: Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.error_outline_rounded, size: 56, color: AppTheme.errorColor),
+                    const SizedBox(height: 16),
+                    Text(
+                      _loadError ?? 'Unable to load this request right now.',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(fontSize: 16),
+                    ),
+                    const SizedBox(height: 16),
+                    ElevatedButton.icon(
+                      onPressed: _loadBookingDetails,
+                      icon: const Icon(Icons.refresh_rounded),
+                      label: const Text('Retry'),
+                    ),
+                    TextButton(
+                      onPressed: () => context.go('/provider/home'),
+                      child: const Text('Back to Dashboard'),
+                    ),
+                  ],
+                ),
+              ),
+            ),
           );
         }
 
