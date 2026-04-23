@@ -23,6 +23,7 @@ from ..models.booking import Booking
 from ..models.location import LocationUpdate
 from ..services.fcm_service import fcm_service
 from ..constants import BookingStatus, UserRole
+from ..realtime.socketio_gateway import sio
 
 router = APIRouter()
 
@@ -85,7 +86,16 @@ async def create_booking(booking: BookingCreate):
             pickup_address=booking.pickupAddress,
             exclude_seeker_id=booking.seekerId
         )
-        
+
+        # Broadcast via Socket.IO for real-time delivery to connected providers
+        await sio.emit('new_booking_request', {
+            'bookingId': booking_data['id'],
+            'seekerName': booking_data.get('seekerName', 'Customer'),
+            'serviceType': booking.serviceType,
+            'pickupAddress': booking.pickupAddress,
+            'status': 'pending',
+        })
+
         return BookingResponse(
             success=True,
             message="Booking created successfully. Waiting for provider offers.",

@@ -10,6 +10,7 @@ import '../../../../core/domain/entities/fare_offer_entity.dart';
 import '../../../../core/domain/entities/service_entity.dart';
 import '../../../../core/services/api_service.dart';
 import '../../../../core/services/notification_service.dart';
+import '../../../../core/services/realtime_socket_service.dart';
 import '../../../../core/constants/app_constants.dart';
 
 class ProviderBloc extends Bloc<ProviderEvent, ProviderState> {
@@ -19,6 +20,7 @@ class ProviderBloc extends Bloc<ProviderEvent, ProviderState> {
   final NotificationService _notificationService;
 
   StreamSubscription<Map<String, dynamic>>? _fcmSubscription;
+  StreamSubscription<Map<String, dynamic>>? _socketSubscription;
   bool _isOnline = false;
 
   ProviderBloc({
@@ -76,6 +78,8 @@ class ProviderBloc extends Bloc<ProviderEvent, ProviderState> {
 
     // Setup FCM listeners
     _setupFcmListeners();
+    // Setup Socket.IO listeners for real-time events
+    _setupSocketListeners();
   }
 
   void _setupFcmListeners() {
@@ -113,6 +117,14 @@ class ProviderBloc extends Bloc<ProviderEvent, ProviderState> {
             counterPrice: double.tryParse(data['counterPrice']?.toString() ?? ''),
           ));
         }
+      }
+    });
+  }
+
+  void _setupSocketListeners() {
+    _socketSubscription = RealtimeSocketService().events.listen((event) {
+      if (event['type'] == 'new_booking_request') {
+        add(ProviderLoadDashboardRequested());
       }
     });
   }
@@ -992,6 +1004,7 @@ class ProviderBloc extends Bloc<ProviderEvent, ProviderState> {
   @override
   Future<void> close() {
     _fcmSubscription?.cancel();
+    _socketSubscription?.cancel();
     return super.close();
   }
 }
