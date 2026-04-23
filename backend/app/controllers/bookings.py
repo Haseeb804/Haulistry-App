@@ -35,6 +35,30 @@ def _to_iso(value) -> str:
         return value
     return datetime.utcnow().isoformat()
 
+
+def _snake_to_camel(snake_str: str) -> str:
+    """Convert snake_case string to camelCase"""
+    components = snake_str.split('_')
+    return components[0] + ''.join(x.title() for x in components[1:])
+
+
+def _to_camel_case(data: dict) -> dict:
+    """Convert dictionary keys from snake_case to camelCase"""
+    if not isinstance(data, dict):
+        return data
+    
+    camel_dict = {}
+    for key, value in data.items():
+        camel_key = _snake_to_camel(key)
+        if isinstance(value, dict):
+            camel_dict[camel_key] = _to_camel_case(value)
+        elif isinstance(value, list):
+            camel_dict[camel_key] = [_to_camel_case(item) if isinstance(item, dict) else item for item in value]
+        else:
+            camel_dict[camel_key] = value
+    return camel_dict
+
+
 router = APIRouter()
 
 
@@ -136,7 +160,7 @@ async def create_booking(booking: BookingCreate):
         return BookingResponse(
             success=True,
             message="Booking created successfully. Waiting for provider offers.",
-            booking=booking_data
+            booking=_to_camel_case(booking_data)
         )
         
     except Exception as e:
@@ -155,11 +179,14 @@ async def get_seeker_bookings(
     try:
         bookings = Booking.get_by_seeker(seeker_id, status_filter)
         
+        # Convert snake_case to camelCase for Flutter frontend
+        camel_bookings = [_to_camel_case(b) for b in bookings]
+        
         return BookingsListResponse(
             success=True,
             message="Bookings retrieved successfully",
-            bookings=bookings,
-            total=len(bookings)
+            bookings=camel_bookings,
+            total=len(camel_bookings)
         )
         
     except Exception as e:
@@ -175,10 +202,13 @@ async def get_seeker_active_booking(seeker_id: str):
     try:
         booking = Booking.get_active_booking(seeker_id, UserRole.SEEKER)
         
+        # Convert snake_case to camelCase for Flutter frontend
+        booking_camel = _to_camel_case(booking) if booking else None
+        
         return BookingResponse(
             success=True,
             message="Active booking retrieved" if booking else "No active booking",
-            booking=booking
+            booking=booking_camel
         )
         
     except Exception as e:
@@ -201,11 +231,14 @@ async def get_provider_bookings(
     try:
         bookings = Booking.get_by_provider(provider_id, status_filter)
         
+        # Convert snake_case to camelCase for Flutter frontend
+        camel_bookings = [_to_camel_case(b) for b in bookings]
+        
         return BookingsListResponse(
             success=True,
             message="Bookings retrieved successfully",
-            bookings=bookings,
-            total=len(bookings)
+            bookings=camel_bookings,
+            total=len(camel_bookings)
         )
         
     except Exception as e:
@@ -221,10 +254,13 @@ async def get_provider_active_booking(provider_id: str):
     try:
         booking = Booking.get_active_booking(provider_id, UserRole.PROVIDER)
         
+        # Convert snake_case to camelCase for Flutter frontend
+        booking_camel = _to_camel_case(booking) if booking else None
+        
         return BookingResponse(
             success=True,
             message="Active booking retrieved" if booking else "No active booking",
-            booking=booking
+            booking=booking_camel
         )
         
     except Exception as e:
@@ -250,11 +286,14 @@ async def get_available_bookings(
             radius_km=radius_km
         )
         
+        # Convert snake_case to camelCase for Flutter frontend
+        camel_bookings = [_to_camel_case(b) for b in bookings]
+        
         return BookingsListResponse(
             success=True,
             message="Available bookings retrieved successfully",
-            bookings=bookings,
-            total=len(bookings)
+            bookings=camel_bookings,
+            total=len(camel_bookings)
         )
         
     except Exception as e:
@@ -280,10 +319,13 @@ async def get_booking(booking_id: str):
                 detail="Booking not found"
             )
         
+        # Convert snake_case to camelCase for Flutter frontend
+        booking_camel = _to_camel_case(booking)
+        
         return BookingResponse(
             success=True,
             message="Booking retrieved successfully",
-            booking=booking
+            booking=booking_camel
         )
         
     except HTTPException:
@@ -311,7 +353,7 @@ async def update_booking(booking_id: str, booking_update: BookingUpdate):
         return BookingResponse(
             success=True,
             message="Booking updated successfully",
-            booking=booking_data
+            booking=_to_camel_case(booking_data)
         )
         
     except HTTPException:
@@ -350,7 +392,7 @@ async def provider_arriving(booking_id: str, payload: Optional[ProviderArrivingR
                 if payload and payload.estimatedMinutes is not None
                 else "Provider is arriving - seeker notified"
             ),
-            booking=booking_data
+            booking=_to_camel_case(booking_data)
         )
         
     except HTTPException:
@@ -385,7 +427,7 @@ async def provider_arrived(booking_id: str):
         return BookingResponse(
             success=True,
             message="Provider has arrived - seeker notified",
-            booking=booking_data
+            booking=_to_camel_case(booking_data)
         )
         
     except HTTPException:
@@ -420,7 +462,7 @@ async def start_booking(booking_id: str):
         return BookingResponse(
             success=True,
             message="Booking started - service in progress",
-            booking=booking_data
+            booking=_to_camel_case(booking_data)
         )
         
     except HTTPException:
@@ -488,7 +530,7 @@ async def complete_booking(
         return BookingResponse(
             success=True,
             message="Booking completed successfully",
-            booking=booking_data
+            booking=_to_camel_case(booking_data)
         )
         
     except HTTPException:
@@ -542,7 +584,7 @@ async def cancel_booking(
         return BookingResponse(
             success=True,
             message="Booking cancelled successfully",
-            booking=booking_data
+            booking=_to_camel_case(booking_data)
         )
         
     except HTTPException:
@@ -569,7 +611,7 @@ async def rate_booking(booking_id: str, rating_req: RatingRequest):
         return BookingResponse(
             success=True,
             message="Rating submitted successfully",
-            booking=booking_data
+            booking=_to_camel_case(booking_data)
         )
         
     except HTTPException:
@@ -632,7 +674,7 @@ async def accept_booking(
         return BookingResponse(
             success=True,
             message="Booking accepted successfully",
-            booking=booking_data
+            booking=_to_camel_case(booking_data)
         )
         
     except HTTPException:
@@ -669,7 +711,7 @@ async def reject_booking(booking_id: str, provider_id: str, reason: Optional[str
         return BookingResponse(
             success=True,
             message="Booking rejected successfully",
-            booking=booking_data
+            booking=_to_camel_case(booking_data)
         )
         
     except HTTPException:

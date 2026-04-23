@@ -228,7 +228,7 @@ class Booking:
     
     @staticmethod
     def update(booking_id: str, update_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-        """Update booking with dynamic fields"""
+        """Update booking with dynamic fields - matches both Booking and Booking:ServiceType labels"""
         # Build dynamic SET clause
         set_clauses = []
         params = {"bookingId": booking_id}
@@ -249,7 +249,8 @@ class Booking:
         set_clauses.append("b.updatedAt = datetime()")
         
         query = f"""
-        MATCH (b:Booking {{id: $bookingId}})
+        MATCH (b)
+        WHERE any(label IN labels(b) WHERE label STARTS WITH 'Booking') AND b.id = $bookingId
         SET {", ".join(set_clauses)}
         RETURN b
         """
@@ -263,9 +264,11 @@ class Booking:
     def accept(booking_id: str, provider_id: str, vehicle_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
         """Provider accepts a booking - creates ACCEPTED_BY relationship.
         Auto-starts the service (status = in_progress) so the provider doesn't
-        need to click a separate 'Start Service' button."""
+        need to click a separate 'Start Service' button.
+        Matches both Booking and Booking:ServiceType labels."""
         query = """
-        MATCH (b:Booking {id: $bookingId})
+        MATCH (b)
+        WHERE any(label IN labels(b) WHERE label STARTS WITH 'Booking') AND b.id = $bookingId
         MATCH (provider) WHERE provider.id = $providerId
         SET b.status = $inProgressStatus,
             b.providerId = $providerId,
@@ -301,9 +304,11 @@ class Booking:
     
     @staticmethod
     def complete(booking_id: str, final_price: Optional[float] = None) -> Optional[Dict[str, Any]]:
-        """Mark booking as completed - creates SERVED_BY and COMPLETED relationships"""
+        """Mark booking as completed - creates SERVED_BY and COMPLETED relationships.
+        Matches both Booking and Booking:ServiceType labels."""
         query = """
-        MATCH (b:Booking {id: $bookingId})
+        MATCH (b)
+        WHERE any(label IN labels(b) WHERE label STARTS WITH 'Booking') AND b.id = $bookingId
         OPTIONAL MATCH (provider) WHERE provider.id = b.providerId
         OPTIONAL MATCH (seeker) WHERE seeker.id = b.seekerId
         SET b.status = $completedStatus,
@@ -332,9 +337,11 @@ class Booking:
     
     @staticmethod
     def reject(booking_id: str, provider_id: str, reason: Optional[str] = None) -> Optional[Dict[str, Any]]:
-        """Provider rejects a booking - sets status to rejected and creates REJECTED_BY relationship"""
+        """Provider rejects a booking - sets status to rejected and creates REJECTED_BY relationship.
+        Matches both Booking and Booking:ServiceType labels."""
         query = """
-        MATCH (b:Booking {id: $bookingId})
+        MATCH (b)
+        WHERE any(label IN labels(b) WHERE label STARTS WITH 'Booking') AND b.id = $bookingId
         MATCH (provider)
         WHERE (provider:Provider OR provider:User OR provider:Seeker) AND provider.id = $providerId
         SET b.status = $rejectedStatus,
@@ -364,9 +371,11 @@ class Booking:
     
     @staticmethod
     def get_by_id(booking_id: str) -> Optional[Dict[str, Any]]:
-        """Get booking by ID"""
+        """Get booking by ID - matches both Booking and Booking:ServiceType labels"""
+        # Match Booking node with any service type label (e.g., Booking:Truck, Booking:Pickup, etc.)
         query = """
-        MATCH (b:Booking {id: $bookingId})
+        MATCH (b)
+        WHERE any(label IN labels(b) WHERE label STARTS WITH 'Booking') AND b.id = $bookingId
         OPTIONAL MATCH (seeker)
         WHERE (seeker:Seeker OR seeker:Provider OR seeker:User) AND seeker.id = b.seekerId
         OPTIONAL MATCH (provider)
@@ -392,14 +401,15 @@ class Booking:
     
     @staticmethod
     def get_by_seeker(seeker_id: str, status: Optional[str] = None) -> List[Dict[str, Any]]:
-        """Get all bookings for a seeker"""
+        """Get all bookings for a seeker - matches both Booking and Booking:ServiceType labels"""
         query = """
-        MATCH (b:Booking {seekerId: $seekerId})
+        MATCH (b)
+        WHERE any(label IN labels(b) WHERE label STARTS WITH 'Booking') AND b.seekerId = $seekerId
         """
         params = {'seekerId': seeker_id}
         
         if status:
-            query += " WHERE b.status = $status"
+            query += " AND b.status = $status"
             params['status'] = status
         
         query += """
@@ -426,14 +436,15 @@ class Booking:
     
     @staticmethod
     def get_by_provider(provider_id: str, status: Optional[str] = None) -> List[Dict[str, Any]]:
-        """Get all bookings assigned to a provider"""
+        """Get all bookings assigned to a provider - matches both Booking and Booking:ServiceType labels"""
         query = """
-        MATCH (b:Booking {providerId: $providerId})
+        MATCH (b)
+        WHERE any(label IN labels(b) WHERE label STARTS WITH 'Booking') AND b.providerId = $providerId
         """
         params = {'providerId': provider_id}
         
         if status:
-            query += " WHERE b.status = $status"
+            query += " AND b.status = $status"
             params['status'] = status
         
         query += """
@@ -460,11 +471,12 @@ class Booking:
     
     @staticmethod
     def get_active_booking(user_id: str, role: str) -> Optional[Dict[str, Any]]:
-        """Get active booking for a user (seeker or provider)"""
+        """Get active booking for a user (seeker or provider) - matches both Booking and Booking:ServiceType labels"""
         field = 'seekerId' if role == 'seeker' else 'providerId'
         query = f"""
-        MATCH (b:Booking {{{field}: $userId}})
-        WHERE b.status IN $activeStatuses
+        MATCH (b)
+        WHERE any(label IN labels(b) WHERE label STARTS WITH 'Booking') AND b.{field} = $userId
+        AND b.status IN $activeStatuses
         OPTIONAL MATCH (seeker)
         WHERE (seeker:Seeker OR seeker:Provider OR seeker:User) AND seeker.id = b.seekerId
         OPTIONAL MATCH (provider)
@@ -494,10 +506,11 @@ class Booking:
         longitude: Optional[float] = None,
         radius_km: float = 50.0
     ) -> List[Dict[str, Any]]:
-        """Get available bookings for providers to bid on"""
+        """Get available bookings for providers to bid on - matches both Booking and Booking:ServiceType labels"""
         query = """
-        MATCH (b:Booking)
-        WHERE b.status = $pendingStatus AND b.providerId IS NULL
+        MATCH (b)
+        WHERE any(label IN labels(b) WHERE label STARTS WITH 'Booking')
+        AND b.status = $pendingStatus AND b.providerId IS NULL
         """
         params = {}
         
@@ -528,9 +541,10 @@ class Booking:
     
     @staticmethod
     def update_status(booking_id: str, status: str) -> Optional[Dict[str, Any]]:
-        """Update booking status"""
+        """Update booking status - matches both Booking and Booking:ServiceType labels"""
         query = """
-        MATCH (b:Booking {id: $bookingId})
+        MATCH (b)
+        WHERE any(label IN labels(b) WHERE label STARTS WITH 'Booking') AND b.id = $bookingId
         SET b.status = $status,
             b.updatedAt = datetime()
         WITH b
@@ -550,9 +564,10 @@ class Booking:
     
     @staticmethod
     def start(booking_id: str) -> Optional[Dict[str, Any]]:
-        """Start the booking service"""
+        """Start the booking service - matches both Booking and Booking:ServiceType labels"""
         query = """
-        MATCH (b:Booking {id: $bookingId})
+        MATCH (b)
+        WHERE any(label IN labels(b) WHERE label STARTS WITH 'Booking') AND b.id = $bookingId
         SET b.status = $inProgressStatus,
             b.startedAt = datetime(),
             b.updatedAt = datetime()
@@ -576,9 +591,10 @@ class Booking:
     
     @staticmethod
     def cancel(booking_id: str, reason: Optional[str] = None) -> Optional[Dict[str, Any]]:
-        """Cancel a booking"""
+        """Cancel a booking - matches both Booking and Booking:ServiceType labels"""
         query = """
-        MATCH (b:Booking {id: $bookingId})
+        MATCH (b)
+        WHERE any(label IN labels(b) WHERE label STARTS WITH 'Booking') AND b.id = $bookingId
         SET b.status = $cancelledStatus,
             b.cancellationReason = $reason,
             b.cancelledAt = datetime(),
@@ -596,9 +612,10 @@ class Booking:
     
     @staticmethod
     def add_rating(booking_id: str, rating: float, review: Optional[str] = None) -> Optional[Dict[str, Any]]:
-        """Add rating to a completed booking and update provider's average rating"""
+        """Add rating to a completed booking and update provider's average rating - matches both Booking and Booking:ServiceType labels"""
         query = """
-        MATCH (b:Booking {id: $bookingId})
+        MATCH (b)
+        WHERE any(label IN labels(b) WHERE label STARTS WITH 'Booking') AND b.id = $bookingId
         SET b.rating = $rating,
             b.review = $review,
             b.updatedAt = datetime()
@@ -608,8 +625,10 @@ class Booking:
         WHERE (provider:Seeker OR provider:Provider OR provider:User) AND provider.id = b.providerId
         
         // Update provider's average rating
-        OPTIONAL MATCH (allBookings:Booking {providerId: provider.id})
-        WHERE allBookings.rating IS NOT NULL
+        OPTIONAL MATCH (allBookings)
+        WHERE any(label IN labels(allBookings) WHERE label STARTS WITH 'Booking') 
+        AND allBookings.providerId = provider.id
+        AND allBookings.rating IS NOT NULL
         WITH b, provider, avg(allBookings.rating) as avgRating, count(allBookings) as totalRated
         SET provider.rating = avgRating,
             provider.completedBookings = totalRated
