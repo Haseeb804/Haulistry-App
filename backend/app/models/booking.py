@@ -180,15 +180,19 @@ class Booking:
         service_type = booking_data.get('serviceType', 'General')
         service_label = service_type.replace(' ', '').replace('-', '').replace('_', '') if service_type else 'General'
         
-        # Query to create booking with REQUESTED_BY relationship to seeker
+        # All new bookings start unassigned so every provider can see them via
+        # get_available_bookings (WHERE providerId IS NULL).  providerId and
+        # vehicleId are set only when a provider accepts the booking.
+        #
+        # OPTIONAL MATCH for seeker so the booking is always created even when
+        # the seeker node hasn't been synced to Neo4j yet.  The REQUESTED_BY
+        # relationship is created only when the seeker node exists.
         query = f"""
-        MATCH (seeker)
+        OPTIONAL MATCH (seeker)
         WHERE (seeker:Provider OR seeker:User OR seeker:Seeker) AND seeker.id = $seekerId
         CREATE (b:Booking:{service_label} {{
             id: randomUUID(),
             seekerId: $seekerId,
-            providerId: $providerId,
-            vehicleId: $vehicleId,
             serviceType: $serviceType,
             serviceId: $serviceId,
             status: $pendingStatus,
@@ -207,14 +211,16 @@ class Booking:
             createdAt: datetime(),
             updatedAt: datetime()
         }})
-        CREATE (b)-[:REQUESTED_BY]->(seeker)
+        FOREACH (_ IN CASE WHEN seeker IS NOT NULL THEN [1] ELSE [] END |
+            CREATE (b)-[:REQUESTED_BY]->(seeker)
+        )
         RETURN b
         """
-        
+
         # Ensure serviceId is in the params
         booking_data.setdefault('serviceId', None)
         booking_data['pendingStatus'] = BookingStatus.PENDING
-        
+
         result = neo4j_driver.execute_write(query, booking_data)
         if result and result[0]['b']:
             return Booking._serialize_neo4j_data(result[0]['b'])

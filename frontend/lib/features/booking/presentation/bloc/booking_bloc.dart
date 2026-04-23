@@ -84,10 +84,7 @@ class BookingBloc extends Bloc<BookingEvent, BookingState> {
           location: LocationEntity.fromJson(data),
         ));
       } else if (type == 'new_booking_request') {
-        // New booking request (for providers)
-        add(NewBookingRequestReceived(
-          booking: BookingEntity.fromJson(data),
-        ));
+        // New booking request — ignore in BookingBloc (handled by ProviderBloc)
       }
     });
   }
