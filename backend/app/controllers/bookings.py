@@ -119,21 +119,38 @@ async def create_booking(booking: BookingCreate):
                 detail="Failed to create booking"
             )
         
-        # Broadcast new booking to all online providers via FCM
-        await fcm_service.notify_new_booking_request(
-            booking_id=booking_data['id'],
-            seeker_name=booking_data.get('seekerName', 'Customer'),
-            service_type=booking.serviceType,
-            pickup_address=booking.pickupAddress,
-            exclude_seeker_id=booking.seekerId
-        )
+        # Handle notifications based on booking type:
+        # If providerId is set (direct booking): notify only that provider
+        # If providerId is null (open request): broadcast to all providers
+        if booking_data.get('providerId'):
+            # Direct booking - notify only the assigned provider
+            await fcm_service.send_to_user(
+                user_id=booking_data['providerId'],
+                notification_type='new_booking_request',
+                title="🚚 New Booking Request",
+                body=f"{booking_data.get('seekerName', 'Customer')} needs {booking.serviceType} service",
+                data={
+                    "bookingId": booking_data['id'],
+                    "seekerName": booking_data.get('seekerName', 'Customer'),
+                    "serviceType": booking.serviceType,
+                    "pickupAddress": booking.pickupAddress,
+                },
+                booking_id=booking_data['id']
+            )
+        else:
+            # Open request - broadcast to all providers
+            await fcm_service.notify_new_booking_request(
+                booking_id=booking_data['id'],
+                seeker_name=booking_data.get('seekerName', 'Customer'),
+                service_type=booking.serviceType,
+                pickup_address=booking.pickupAddress,
+                exclude_seeker_id=booking.seekerId
+            )
 
         # Broadcast via Socket.IO for real-time delivery to connected providers.
-        # The payload includes all fields required by BookingEntity.fromJson so
-        # the Flutter client can do an instant optimistic update without an
-        # additional API round-trip.
+        # If providerId is set, only emit to that provider; otherwise broadcast to all
         now_iso = _to_iso(booking_data.get('createdAt'))
-        await sio.emit('new_booking_request', {
+        booking_payload = {
             # Primary ID used by BookingEntity.fromJson
             'id': booking_data['id'],
             # Kept for backward-compatibility with any existing listeners
@@ -158,11 +175,18 @@ async def create_booking(booking: BookingCreate):
             'scheduledDateTime': _to_iso(booking_data.get('scheduledDateTime')) or booking.scheduledDateTime,
             'createdAt': now_iso,
             'updatedAt': now_iso,
-        })
+        }
+        
+        if booking_data.get('providerId'):
+            # Direct booking - emit only to assigned provider's room
+            await sio.emit('new_booking_request', booking_payload, room=f"provider_{booking_data['providerId']}")
+        else:
+            # Open request - broadcast to all connected providers
+            await sio.emit('new_booking_request', booking_payload)
 
         return BookingResponse(
             success=True,
-            message="Booking created successfully. Waiting for provider offers.",
+            message="Booking created successfully." if not booking.providerId else f"Booking assigned to provider.",
             booking=_to_camel_case(booking_data)
         )
         
