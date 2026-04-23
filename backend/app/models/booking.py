@@ -158,14 +158,15 @@ class Booking:
     
     @staticmethod
     def _serialize_neo4j_data(data: Dict[str, Any]) -> Dict[str, Any]:
-        """Convert Neo4j data types to Python types for GraphQL"""
+        """Convert Neo4j data types to JSON-safe Python types."""
         from neo4j.time import DateTime as Neo4jDateTime
-        
+
         serialized = {}
         for key, value in data.items():
             if isinstance(value, Neo4jDateTime):
-                # Convert Neo4j DateTime to Python datetime for GraphQL
-                serialized[key] = value.to_native()
+                serialized[key] = value.to_native().isoformat()
+            elif isinstance(value, datetime):
+                serialized[key] = value.isoformat()
             elif value is None:
                 serialized[key] = None
             else:
@@ -506,7 +507,10 @@ class Booking:
         """
         
         params['pendingStatus'] = BookingStatus.PENDING
-        result = neo4j_driver.execute_read(query, params)
+        # Use execute_query (session.run) so the query always hits the leader on
+        # Neo4j Aura — execute_read routes to read replicas which can lag behind
+        # the leader by several seconds after a fresh write.
+        result = neo4j_driver.execute_query(query, params)
         bookings = []
         if result:
             for record in result:
