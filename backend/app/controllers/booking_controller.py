@@ -270,7 +270,13 @@ class BookingController:
         result = self.db.execute_write(query, {
             'booking_id': booking_id,
             'cancellation_reason': cancellation_reason,
-            'cancellableStatuses': [BookingStatus.PENDING, BookingStatus.ACCEPTED],
+            # Includes IN_PROGRESS because Booking.accept() now jumps directly
+            # to in_progress (auto-start), skipping the legacy ACCEPTED state.
+            'cancellableStatuses': [
+                BookingStatus.PENDING,
+                BookingStatus.ACCEPTED,
+                BookingStatus.IN_PROGRESS,
+            ],
             'cancelledStatus': BookingStatus.CANCELLED,
         })
         

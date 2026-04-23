@@ -13,6 +13,8 @@ Booking Status Flow:
 8. cancelled - Booking was cancelled
 """
 
+import asyncio
+
 from fastapi import APIRouter, HTTPException, status, Query
 from typing import Optional, List
 from pydantic import BaseModel, Field
@@ -405,16 +407,8 @@ async def complete_booking(
                 detail="Booking not found"
             )
 
-        # Notify seeker via FCM (for offline delivery)
-        await fcm_service.notify_booking_status(
-            target_user_id=booking_data['seekerId'],
-            booking_id=booking_id,
-            status=BookingStatus.COMPLETED,
-            message="Service completed! Please rate your experience."
-        )
-
-        # Emit real-time booking_completed Socket.IO event to BOTH parties.
-        # This drives mandatory review navigation on both seeker and provider tracking screens.
+        # Emit real-time booking_completed Socket.IO event to BOTH parties FIRST.
+        # This is what drives the dual-review redirect, so it must fire before we return.
         from ..realtime.socketio_gateway import emit_to_user_event
         completion_payload = {
             "bookingId": booking_id,
@@ -433,8 +427,16 @@ async def complete_booking(
         if provider_id:
             await emit_to_user_event(provider_id, "booking_completed", completion_payload)
 
-        # Clean up location data
-        LocationUpdate.delete_booking_locations(booking_id)
+        # Non-critical side effects: fire-and-forget so the HTTP response returns
+        # immediately. FCM is for offline delivery (slow); location cleanup is housekeeping.
+        if seeker_id:
+            asyncio.create_task(fcm_service.notify_booking_status(
+                target_user_id=seeker_id,
+                booking_id=booking_id,
+                status=BookingStatus.COMPLETED,
+                message="Service completed! Please rate your experience."
+            ))
+        asyncio.create_task(asyncio.to_thread(LocationUpdate.delete_booking_locations, booking_id))
         
         return BookingResponse(
             success=True,
