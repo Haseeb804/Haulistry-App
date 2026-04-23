@@ -219,10 +219,30 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen> {
                     child: _buildQuickActions(context),
                   ),
 
+                  // Assigned Requests — bookings directly assigned to this provider (status='pending', providerId set)
+                  if (state.pendingBookings.isNotEmpty) ...[
+                    SliverToBoxAdapter(
+                      child: _buildSectionHeader(
+                        context,
+                        'Assigned Requests',
+                        state.pendingBookings.length,
+                        Icons.assignment_rounded,
+                        AppTheme.infoColor,
+                      ),
+                    ),
+                    SliverList(
+                      delegate: SliverChildBuilderDelegate(
+                        (context, index) => _buildPendingBookingCard(
+                          context,
+                          state.pendingBookings[index],
+                        ),
+                        childCount: state.pendingBookings.length,
+                      ),
+                    ),
+                  ],
+
                   // Incoming Requests — open seeker requests (not assigned to anyone yet).
-                  // Sourced from availableBookings (GET /api/bookings/available),
-                  // NOT from pendingBookings (which is provider's OWN bookings filtered to "pending"
-                  // and is always empty because pending bookings have no providerId yet).
+                  // Sourced from availableBookings (GET /api/bookings/available).
                   if (state.availableBookings.isNotEmpty) ...[
                     SliverToBoxAdapter(
                       child: _buildSectionHeader(
@@ -289,7 +309,8 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen> {
                   ],
 
                   // Empty State
-                  if (state.availableBookings.isEmpty &&
+                  if (state.pendingBookings.isEmpty &&
+                      state.availableBookings.isEmpty &&
                       state.activeBookings.isEmpty &&
                       state.completedBookings.isEmpty)
                     SliverFillRemaining(
@@ -459,7 +480,7 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen> {
               gradient: const LinearGradient(
                 colors: [Color(0xFFFDAA4F), Color(0xFFFFB347)],
               ),
-              trend: '${state.availableBookings.length} jobs',
+              trend: '${state.pendingBookings.length + state.availableBookings.length} jobs',
               trendUp: false,
             ),
           ),
