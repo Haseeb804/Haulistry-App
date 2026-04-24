@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/widgets.dart';
 
 import 'realtime_socket_service.dart';
@@ -7,7 +8,10 @@ class AppLifecycleService with WidgetsBindingObserver {
   AppLifecycleService._();
   factory AppLifecycleService() => _instance;
 
-  void initialize() {
+  Future<void> Function()? _onResumed;
+
+  void initialize({Future<void> Function()? onResumed}) {
+    _onResumed = onResumed;
     WidgetsBinding.instance.addObserver(this);
   }
 
@@ -21,6 +25,10 @@ class AppLifecycleService with WidgetsBindingObserver {
       // Reconnect socket after app returns from background.
       // connect() is idempotent — safe to call when already connected.
       RealtimeSocketService().connect();
+      final callback = _onResumed;
+      if (callback != null) {
+        unawaited(callback());
+      }
     }
   }
 }

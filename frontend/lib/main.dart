@@ -67,10 +67,12 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'firebase_options.dart';
 import 'package:latlong2/latlong.dart';
 
+final GlobalKey<NavigatorState> _rootNavigatorKey = GlobalKey<NavigatorState>();
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  AppLifecycleService().initialize();
+  AppLifecycleService().initialize(onResumed: _handleAppResume);
 
   // Initialize Firebase with platform-specific options
   await Firebase.initializeApp(
@@ -178,6 +180,114 @@ void _setupNotificationHandling() {
       }
     }
   });
+}
+
+Future<void> _handleAppResume() async {
+  try {
+    final context = _rootNavigatorKey.currentContext;
+    if (context == null || !context.mounted) return;
+
+    final authState = context.read<AuthBloc>().state;
+    if (authState is! AuthAuthenticated) return;
+
+    final user = authState.user;
+    final bookingRepository = BookingRepositoryImpl(
+      remoteDataSource: BookingRemoteDataSource(
+        graphQLClient: GraphQLClientService.instance,
+      ),
+    );
+    final feedbackRepository = FeedbackRepositoryImpl(
+      remoteDataSource: FeedbackRemoteDataSource(baseUrl: AppConstants.apiUrl),
+    );
+
+    final bookings = await bookingRepository.getBookingHistory(user.id);
+    if (!context.mounted) return;
+
+    final activeBookings = bookings
+        .where((b) => AppConstants.activeServiceStatuses.contains(b.status.toLowerCase()))
+        .toList()
+      ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+
+    if (activeBookings.isNotEmpty) {
+      final booking = activeBookings.first;
+      if (user.role == AppConstants.roleProvider) {
+        _router.go(
+          AppRoutes.providerTracking(booking.id),
+          extra: {
+            'pickupLocation': {
+              'latitude': booking.pickupLatitude,
+              'longitude': booking.pickupLongitude,
+            },
+            'dropoffLocation': {
+              'latitude': booking.dropLatitude,
+              'longitude': booking.dropLongitude,
+            },
+            'pickupAddress': booking.pickupAddress,
+            'dropAddress': booking.dropAddress,
+            'estimatedPrice': booking.estimatedPrice,
+            'serviceType': booking.serviceType,
+            'bookingStatus': booking.status,
+            'providerName': booking.providerName,
+          },
+        );
+      } else {
+        _router.go(
+          AppConstants.seekerTrackingPath(booking.id),
+          extra: {
+            'providerId': booking.providerId ?? '',
+            'pickupLocation': {
+              'latitude': booking.pickupLatitude,
+              'longitude': booking.pickupLongitude,
+            },
+            'dropoffLocation': {
+              'latitude': booking.dropLatitude,
+              'longitude': booking.dropLongitude,
+            },
+            'pickupAddress': booking.pickupAddress,
+            'dropAddress': booking.dropAddress,
+            'estimatedPrice': booking.estimatedPrice,
+            'serviceType': booking.serviceType,
+            'providerName': booking.providerName,
+            'bookingStatus': booking.status,
+          },
+        );
+      }
+      return;
+    }
+
+    final completedBookings = bookings
+        .where((b) => b.status.toLowerCase() == AppConstants.statusCompleted)
+        .toList()
+      ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+
+    for (final booking in completedBookings) {
+      if (user.role == AppConstants.roleProvider) {
+        if (booking.seekerId.isEmpty) continue;
+        final exists = await feedbackRepository.checkFeedbackExists(booking.id, AppConstants.roleProvider);
+        if (!context.mounted || exists) return;
+
+        _router.go(AppRoutes.feedbackProvider, extra: {
+          'bookingId': booking.id,
+          'seekerId': booking.seekerId,
+          'seekerName': booking.seekerName ?? 'Customer',
+        });
+        return;
+      } else {
+        if (booking.providerId == null || booking.providerId!.isEmpty) continue;
+        final exists = await feedbackRepository.checkFeedbackExists(booking.id, AppConstants.roleSeeker);
+        if (!context.mounted || exists) return;
+
+        _router.go(AppRoutes.feedbackSeeker, extra: {
+          'bookingId': booking.id,
+          'providerId': booking.providerId ?? '',
+          'providerName': booking.providerName ?? 'Provider',
+        });
+        return;
+      }
+    }
+  } catch (_) {
+    // Non-blocking fallback: if the resume check fails, normal dashboard loading continues.
+  }
 }
 
 final Set<String> _shownIncomingCallIds = <String>{};
@@ -338,6 +448,7 @@ class HaulistryApp extends StatelessWidget {
 
 // Router Configuration
 final _router = GoRouter(
+  navigatorKey: _rootNavigatorKey,
   initialLocation: AppRoutes.login,
   routes: [
     // Auth Routes
