@@ -71,17 +71,26 @@ class CallHistoryResponse(BaseModel):
     calls: List[dict]
 
 
+_FCM_LARGE_FIELDS = {"callerProfileImageUrl", "signalData"}
+
 async def _send_call_push(receiver_fcm_token: str, payload: Dict[str, Any]) -> bool:
     try:
+        # FCM data payloads are capped at 4 KB. Profile images are stored as base64
+        # data URIs (can be 100–200 KB), so exclude them. The receiver fetches the
+        # image via CallIdentityResolver → GET /auth/user/{callerId} when the screen
+        # opens. signalData is also excluded (ICE servers, session details not needed
+        # in the FCM wake-up packet — they are fetched via the call REST endpoint).
+        fcm_data = {
+            k: str(v) if v is not None else ""
+            for k, v in payload.items()
+            if k not in _FCM_LARGE_FIELDS
+        }
         message = messaging.Message(
             notification=messaging.Notification(
                 title="📹 Incoming Video Call" if payload.get("callType") == "video" else "📞 Incoming Call",
                 body=f"Incoming {payload.get('callType', 'voice')} call from {payload.get('callerName', 'User')}",
             ),
-            data={
-                "type": "call",
-                **{k: str(v) if v is not None else "" for k, v in payload.items()},
-            },
+            data={"type": "call", **fcm_data},
             android=messaging.AndroidConfig(
                 priority="high",
                 notification=messaging.AndroidNotification(

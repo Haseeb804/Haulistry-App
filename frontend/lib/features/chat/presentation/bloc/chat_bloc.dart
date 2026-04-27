@@ -245,10 +245,13 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
     final messageType = (row['messageType']?.toString() ?? 'text').toLowerCase();
     final messageText = row['messageText']?.toString() ?? row['message']?.toString() ?? '';
 
+    final senderProfileImageUrl = row['senderProfileImageUrl']?.toString();
+
     return ChatMessage(
       id: row['id']?.toString() ?? '',
       senderId: row['senderId']?.toString() ?? '',
       senderName: row['senderName']?.toString() ?? 'User',
+      senderProfileImageUrl: (senderProfileImageUrl?.isNotEmpty == true) ? senderProfileImageUrl : null,
       message: messageType == 'text' ? messageText : '',
       messageType: messageType,
       imageUrl: messageType == 'image' ? messageText : row['imageUrl']?.toString(),

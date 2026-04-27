@@ -437,6 +437,7 @@ class HaulistryApp extends StatelessWidget {
         builder: (context, child) {
           return MultiBlocListener(
             listeners: [
+              // Show incoming call screen when a call rings for this user.
               BlocListener<CallBloc, CallState>(
                 listenWhen: (previous, current) => current is CallRinging,
                 listener: (context, state) {
@@ -452,8 +453,23 @@ class HaulistryApp extends StatelessWidget {
                   );
                 },
               ),
-              // Issue 1 fix: redirect to active tracking/feedback screen on login,
-              // same as _handleAppResume() does on foreground resume.
+              // Show outgoing call screen when the current user places a call.
+              BlocListener<CallBloc, CallState>(
+                listenWhen: (previous, current) =>
+                    current is CallInitiated && previous is! CallInitiated,
+                listener: (context, state) {
+                  if (state is! CallInitiated) return;
+                  _router.push(AppRoutes.callOutgoing, extra: {
+                    'callId': state.callId,
+                    'receiverId': state.receiverId,
+                    'receiverName': state.receiverName,
+                    'receiverRole': state.receiverRole,
+                    'receiverProfileImageUrl': state.receiverProfileImageUrl,
+                    'callType': state.callType,
+                  });
+                },
+              ),
+              // Redirect to active tracking/feedback screen on login.
               BlocListener<AuthBloc, AuthState>(
                 listenWhen: (previous, current) =>
                     previous is! AuthAuthenticated && current is AuthAuthenticated,

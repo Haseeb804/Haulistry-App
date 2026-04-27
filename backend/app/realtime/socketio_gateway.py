@@ -105,18 +105,25 @@ async def _send_chat_push(receiver_id: str, sender_name: str, message_preview: s
     )
 
 
+_FCM_LARGE_FIELDS = {"callerProfileImageUrl", "signalData"}
+
 async def _send_call_push(receiver_id: str, call_payload: dict[str, Any]) -> None:
     caller_name = call_payload.get("callerName") or "User"
     call_type = str(call_payload.get("callType") or "voice").lower()
+    # FCM data payloads are capped at 4 KB. Profile images are stored as base64
+    # data URIs (100–200 KB), so exclude them. The receiver fetches the image
+    # via CallIdentityResolver → GET /auth/user/{callerId} when the screen opens.
+    fcm_data = {
+        k: str(v) if v is not None else ""
+        for k, v in call_payload.items()
+        if k not in _FCM_LARGE_FIELDS
+    }
     await fcm_service.send_to_user(
         user_id=receiver_id,
         notification_type="call",
         title="📹 Incoming Video Call" if call_type == "video" else "📞 Incoming Call",
         body=f"Incoming {call_type} call from {caller_name}",
-        data={
-            "type": "call",
-            **{k: str(v) if v is not None else "" for k, v in call_payload.items()},
-        },
+        data={"type": "call", **fcm_data},
         booking_id=str(call_payload.get("bookingId") or ""),
     )
 

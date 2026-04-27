@@ -9,6 +9,7 @@ import '../bloc/call_state.dart';
 import '../../../../core/services/webrtc_call_service.dart';
 import '../../../../core/constants/app_constants.dart';
 import '../../../../core/utils/call_identity_resolver.dart';
+import '../../../../core/utils/image_helper.dart';
 
 class VideoCallScreen extends StatefulWidget {
   final String callId;
@@ -168,19 +169,18 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
                             CircleAvatar(
                               radius: 60,
                               backgroundColor: Colors.white.withOpacity(0.3),
-                              backgroundImage: displayImageUrl != null
-                                ? NetworkImage(displayImageUrl)
+                              foregroundImage: ImageHelper.providerFor(displayImageUrl),
+                              onForegroundImageError: displayImageUrl != null
+                                  ? (_, __) {}
                                   : null,
-                              child: displayImageUrl == null
-                                  ? Text(
-                                      displayName.isNotEmpty ? displayName[0].toUpperCase() : '?',
-                                      style: const TextStyle(
-                                        fontSize: 48,
-                                        fontWeight: FontWeight.bold,
-                                        color: Colors.white,
-                                      ),
-                                    )
-                                  : null,
+                              child: Text(
+                                displayName.isNotEmpty ? displayName[0].toUpperCase() : '?',
+                                style: const TextStyle(
+                                  fontSize: 48,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.white,
+                                ),
+                              ),
                             ),
                             const SizedBox(height: 24),
                             Text(
@@ -264,7 +264,17 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
                   if (state.remoteUid != null)
                     RTCVideoView(_callService.remoteRenderer, objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover)
                   else
-                    Container(
+                    Builder(builder: (context) {
+                      final remoteImageUrl = CallIdentityResolver.resolveProfileImageUrl(
+                        preferredImageUrl: state.otherUserProfileImageUrl,
+                        fallbackImageUrl: _resolvedOtherUser?.profileImageUrl ?? widget.otherUserProfileImageUrl,
+                      );
+                      final remoteName = CallIdentityResolver.resolveDisplayName(
+                        preferredName: state.otherUserName,
+                        fallbackName: _resolvedOtherUser?.displayName ?? widget.otherUserName,
+                        defaultLabel: 'Video Call',
+                      );
+                      return Container(
                       color: Colors.black87,
                       child: Center(
                         child: Column(
@@ -273,37 +283,18 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
                             CircleAvatar(
                               radius: 40,
                               backgroundColor: Colors.white24,
-                              backgroundImage: CallIdentityResolver.resolveProfileImageUrl(
-                                        preferredImageUrl: state.otherUserProfileImageUrl,
-                                        fallbackImageUrl: _resolvedOtherUser?.profileImageUrl ?? widget.otherUserProfileImageUrl,
-                                      ) != null
-                                  ? NetworkImage(
-                                      CallIdentityResolver.resolveProfileImageUrl(
-                                        preferredImageUrl: state.otherUserProfileImageUrl,
-                                        fallbackImageUrl: _resolvedOtherUser?.profileImageUrl ?? widget.otherUserProfileImageUrl,
-                                      )!,
-                                    )
+                              foregroundImage: ImageHelper.providerFor(remoteImageUrl),
+                              onForegroundImageError: remoteImageUrl != null
+                                  ? (_, __) {}
                                   : null,
-                              child: CallIdentityResolver.resolveProfileImageUrl(
-                                        preferredImageUrl: state.otherUserProfileImageUrl,
-                                        fallbackImageUrl: _resolvedOtherUser?.profileImageUrl ?? widget.otherUserProfileImageUrl,
-                                      ) == null
-                                  ? Text(
-                                      (state.otherUserName.isNotEmpty
-                                              ? state.otherUserName
-                                              : CallIdentityResolver.resolveDisplayName(
-                                                  preferredName: _resolvedOtherUser?.displayName,
-                                                  fallbackName: widget.otherUserName,
-                                                  defaultLabel: 'Video Call',
-                                                ))[0]
-                                          .toUpperCase(),
-                                      style: const TextStyle(
-                                        fontSize: 36,
-                                        fontWeight: FontWeight.bold,
-                                        color: Colors.white,
-                                      ),
-                                    )
-                                  : null,
+                              child: Text(
+                                remoteName.isNotEmpty ? remoteName[0].toUpperCase() : '?',
+                                style: const TextStyle(
+                                  fontSize: 36,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.white,
+                                ),
+                              ),
                             ),
                             const SizedBox(height: 16),
                             Text(
@@ -357,7 +348,8 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
                           ],
                         ),
                       ),
-                    ),
+                    );
+                    }),
                   // Local Video Preview
                   Positioned(
                     top: 48,

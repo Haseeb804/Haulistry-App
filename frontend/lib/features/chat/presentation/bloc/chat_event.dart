@@ -75,6 +75,7 @@ class ChatMessage extends Equatable {
   final String id;
   final String senderId;
   final String senderName;
+  final String? senderProfileImageUrl;
   final String message;
   final String messageType;
   final String? imageUrl;
@@ -87,6 +88,7 @@ class ChatMessage extends Equatable {
     required this.id,
     required this.senderId,
     required this.senderName,
+    this.senderProfileImageUrl,
     required this.message,
     this.messageType = 'text',
     this.imageUrl,
@@ -101,6 +103,7 @@ class ChatMessage extends Equatable {
         id,
         senderId,
         senderName,
+        senderProfileImageUrl,
         message,
         messageType,
         imageUrl,

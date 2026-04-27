@@ -7,6 +7,7 @@ import '../bloc/call_event.dart';
 import '../bloc/call_state.dart';
 import '../../../../core/constants/app_constants.dart';
 import '../../../../core/utils/call_identity_resolver.dart';
+import '../../../../core/utils/image_helper.dart';
 
 class VoiceCallScreen extends StatefulWidget {
   final String callId;
@@ -146,19 +147,18 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> {
                           CircleAvatar(
                             radius: 60,
                             backgroundColor: Colors.white.withOpacity(0.3),
-                            backgroundImage: displayImageUrl != null
-                              ? NetworkImage(displayImageUrl)
+                            foregroundImage: ImageHelper.providerFor(displayImageUrl),
+                            onForegroundImageError: displayImageUrl != null
+                                ? (_, __) {}
                                 : null,
-                            child: displayImageUrl == null
-                                ? Text(
-                                    displayName.isNotEmpty ? displayName[0].toUpperCase() : '?',
-                                    style: const TextStyle(
-                                      fontSize: 48,
-                                      fontWeight: FontWeight.bold,
-                                      color: Colors.white,
-                                    ),
-                                  )
-                                : null,
+                            child: Text(
+                              displayName.isNotEmpty ? displayName[0].toUpperCase() : '?',
+                              style: const TextStyle(
+                                fontSize: 48,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                              ),
+                            ),
                           ),
                           const SizedBox(height: 24),
                           Text(
@@ -275,19 +275,18 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> {
                         CircleAvatar(
                           radius: 60,
                           backgroundColor: Colors.white.withOpacity(0.3),
-                          backgroundImage: displayImageUrl != null
-                              ? NetworkImage(displayImageUrl)
+                          foregroundImage: ImageHelper.providerFor(displayImageUrl),
+                          onForegroundImageError: displayImageUrl != null
+                              ? (_, __) {}
                               : null,
-                          child: displayImageUrl == null
-                              ? Text(
-                                  displayName.isNotEmpty ? displayName[0].toUpperCase() : '?',
-                                  style: const TextStyle(
-                                    fontSize: 48,
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.white,
-                                  ),
-                                )
-                              : null,
+                          child: Text(
+                            displayName.isNotEmpty ? displayName[0].toUpperCase() : '?',
+                            style: const TextStyle(
+                              fontSize: 48,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.white,
+                            ),
+                          ),
                         ),
                         const SizedBox(height: 24),
                         Text(

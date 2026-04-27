@@ -3,6 +3,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import '../../../../core/constants/app_constants.dart';
 import '../../../../core/utils/call_identity_resolver.dart';
+import '../../../../core/utils/image_helper.dart';
 import '../bloc/call_bloc.dart';
 import '../bloc/call_event.dart';
 import '../bloc/call_state.dart';
@@ -117,19 +118,18 @@ class _IncomingCallScreenState extends State<IncomingCallScreen> {
                     CircleAvatar(
                       radius: 60,
                       backgroundColor: Colors.white.withOpacity(0.3),
-                      backgroundImage: displayImageUrl != null
-                          ? NetworkImage(displayImageUrl)
+                      foregroundImage: ImageHelper.providerFor(displayImageUrl),
+                      onForegroundImageError: displayImageUrl != null
+                          ? (_, __) {}
                           : null,
-                      child: displayImageUrl == null
-                          ? Text(
-                              displayName.isNotEmpty ? displayName[0].toUpperCase() : '?',
-                              style: const TextStyle(
-                                fontSize: 48,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.white,
-                              ),
-                            )
-                          : null,
+                      child: Text(
+                        displayName.isNotEmpty ? displayName[0].toUpperCase() : '?',
+                        style: const TextStyle(
+                          fontSize: 48,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
+                      ),
                     ),
                     const SizedBox(height: 24),
                     Text(

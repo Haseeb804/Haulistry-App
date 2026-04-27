@@ -81,10 +81,12 @@ class _ChatScreenState extends State<ChatScreen> {
     final isVoice = messageType == 'voice' &&
         (messageText.startsWith('http') || messageText.startsWith('data:audio/'));
 
+    final senderImageUrl = row['senderProfileImageUrl']?.toString();
     return ChatMessage(
       id: row['id']?.toString() ?? '',
       senderId: row['senderId']?.toString() ?? '',
       senderName: row['senderName']?.toString() ?? 'User',
+      senderProfileImageUrl: (senderImageUrl?.isNotEmpty == true) ? senderImageUrl : null,
       message: (isImage || isVoice) ? '' : messageText,
       messageType: messageType,
       imageUrl: isImage ? messageText : null,
@@ -153,7 +155,9 @@ class _ChatScreenState extends State<ChatScreen> {
           final alreadyPresent = _backendMessages.any((m) => m.id.isNotEmpty && m.id == msg.id);
           if (!alreadyPresent) {
             setState(() {
-              _backendMessages = [msg, ..._backendMessages];
+              // Append so the list stays oldest-first (matching API ORDER BY createdAt ASC),
+              // which is required by the length-1-index access in _buildBackendMessagesView.
+              _backendMessages = [..._backendMessages, msg];
             });
             _scrollToBottom();
           }
@@ -333,12 +337,13 @@ class _ChatScreenState extends State<ChatScreen> {
 
       if (!mounted) return;
 
-      // Merge incoming with any socket-pushed messages that aren't in the
-      // server response yet, so the fast-path messages aren't wiped.
+      // Merge API response (oldest-first) with any socket-pushed messages that
+      // haven't been confirmed by the server yet. Unsaved messages go at the end
+      // to preserve oldest-first ordering used by _buildBackendMessagesView.
       final existingUnsaved = _backendMessages
           .where((m) => m.id.isNotEmpty && !parsed.any((p) => p.id == m.id))
           .toList();
-      final merged = [...existingUnsaved, ...parsed];
+      final merged = [...parsed, ...existingUnsaved];
 
       setState(() {
         _backendMessages = merged;
@@ -444,16 +449,7 @@ class _ChatScreenState extends State<ChatScreen> {
             callType: callType,
           ),
         );
-
-    // Navigate to outgoing call screen
-    context.push(AppRoutes.callOutgoing, extra: {
-      'callId': 'pending', // Will be set by bloc
-      'receiverId': widget.otherUserId,
-      'receiverName': _displayOtherUserName,
-      'receiverRole': _displayOtherUserRole,
-      'receiverProfileImageUrl': _displayOtherUserImage,
-      'callType': callType,
-    });
+    // Navigation is handled by the BlocListener in main.dart when CallInitiated fires.
   }
 
   /// Detect image format from file bytes (magic numbers)
@@ -698,17 +694,16 @@ class _ChatScreenState extends State<ChatScreen> {
                 child: CircleAvatar(
                   radius: 18,
                   backgroundColor: AppTheme.primaryColor.withOpacity(0.1),
-                  backgroundImage: ImageHelper.providerFor(_displayOtherUserImage),
-                  child: _displayOtherUserImage == null
-                      ? Text(
-                          _displayOtherUserName.isNotEmpty ? _displayOtherUserName[0].toUpperCase() : 'U',
-                          style: const TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                            color: AppTheme.primaryColor,
-                          ),
-                        )
-                      : null,
+                  foregroundImage: ImageHelper.providerFor(_displayOtherUserImage),
+                  onForegroundImageError: _displayOtherUserImage != null ? (_, __) {} : null,
+                  child: Text(
+                    _displayOtherUserName.isNotEmpty ? _displayOtherUserName[0].toUpperCase() : 'U',
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: AppTheme.primaryColor,
+                    ),
+                  ),
                 ),
               ),
             ),
@@ -1153,6 +1148,47 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 }
 
+class _SenderAvatar extends StatelessWidget {
+  final String? imageUrl;
+  final String name;
+  final double radius;
+
+  const _SenderAvatar({required this.imageUrl, required this.name, required this.radius});
+
+  @override
+  Widget build(BuildContext context) {
+    final provider = ImageHelper.providerFor(imageUrl);
+    if (provider != null) {
+      return CircleAvatar(
+        radius: radius,
+        backgroundColor: AppTheme.secondaryColor.withOpacity(0.1),
+        foregroundImage: provider,
+        onForegroundImageError: (_, __) {},
+        child: Text(
+          name.isNotEmpty ? name[0].toUpperCase() : '?',
+          style: TextStyle(
+            fontSize: radius * 0.8,
+            fontWeight: FontWeight.bold,
+            color: AppTheme.secondaryColor,
+          ),
+        ),
+      );
+    }
+    return CircleAvatar(
+      radius: radius,
+      backgroundColor: AppTheme.secondaryColor.withOpacity(0.1),
+      child: Text(
+        name.isNotEmpty ? name[0].toUpperCase() : '?',
+        style: TextStyle(
+          fontSize: radius * 0.8,
+          fontWeight: FontWeight.bold,
+          color: AppTheme.secondaryColor,
+        ),
+      ),
+    );
+  }
+}
+
 class _MessageBubble extends StatelessWidget {
   final ChatMessage message;
 
@@ -1194,17 +1230,10 @@ class _MessageBubble extends StatelessWidget {
                 gradient: AppTheme.secondaryGradient,
                 shape: BoxShape.circle,
               ),
-              child: CircleAvatar(
+              child: _SenderAvatar(
+                imageUrl: message.senderProfileImageUrl,
+                name: message.senderName,
                 radius: 14,
-                backgroundColor: AppTheme.secondaryColor.withOpacity(0.1),
-                child: Text(
-                  message.senderName[0].toUpperCase(),
-                  style: const TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.bold,
-                    color: AppTheme.secondaryColor,
-                  ),
-                ),
               ),
             ),
           if (!isCurrentUser) const SizedBox(width: 8),

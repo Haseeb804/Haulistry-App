@@ -257,16 +257,18 @@ class CallBloc extends Bloc<CallEvent, CallState> {
         return;
       }
 
+      final callerRole = event.receiverRole == AppConstants.roleProvider
+          ? AppConstants.roleSeeker
+          : AppConstants.roleProvider;
+
       final response = await _apiService.post(ApiEndpoints.callInitiate, {
         'callerId': user.uid,
         'receiverId': event.receiverId,
         'bookingId': event.bookingId,
         'callType': event.callType,
-        'callerName': user.displayName ?? 'User',
-        'callerRole': event.receiverRole == AppConstants.roleProvider
-            ? AppConstants.roleSeeker
-            : AppConstants.roleProvider,
-        'callerProfileImageUrl': user.photoURL,
+        'callerName': user.displayName ?? '',
+        'callerRole': callerRole,
+        'callerProfileImageUrl': null,
       });
 
       if (response['success'] != true) {
@@ -279,13 +281,19 @@ class CallBloc extends Bloc<CallEvent, CallState> {
           ? response['signalData'] as Map<String, dynamic>
           : <String, dynamic>{};
 
+      // Use names and images returned by the backend — they come from Neo4j
+      // directly so they are correct even for phone-auth users whose Firebase
+      // displayName / photoURL are null.
+      final neo4jCallerName = call['callerName']?.toString() ?? '';
+      final neo4jCallerImage = call['callerProfileImageUrl']?.toString();
+
       _currentCallId = call['id']?.toString() ?? '';
       _currentCallType = event.callType;
       _otherUserId = event.receiverId;
-      _otherUserName = event.receiverName;
+      _otherUserName = (call['receiverName']?.toString().isNotEmpty == true)
+          ? call['receiverName']!.toString()
+          : event.receiverName;
       _otherUserRole = event.receiverRole;
-      // Prefer Neo4j profile image from REST response (accurate even when Firebase
-      // photoURL is null for email/password accounts), fall back to event value.
       _otherUserProfileImageUrl = (call['receiverProfileImageUrl'] as String?)?.isNotEmpty == true
           ? call['receiverProfileImageUrl'] as String?
           : event.receiverProfileImageUrl;
@@ -314,11 +322,9 @@ class CallBloc extends Bloc<CallEvent, CallState> {
         'bookingId': event.bookingId,
         'receiverId': event.receiverId,
         'callType': event.callType,
-        'callerName': user.displayName ?? 'User',
-        'callerRole': event.receiverRole == AppConstants.roleProvider
-            ? AppConstants.roleSeeker
-            : AppConstants.roleProvider,
-        'callerProfileImageUrl': user.photoURL,
+        'callerName': neo4jCallerName.isNotEmpty ? neo4jCallerName : (user.displayName ?? ''),
+        'callerRole': callerRole,
+        'callerProfileImageUrl': neo4jCallerImage,
         'signalData': signalData,
       });
     } catch (e) {
