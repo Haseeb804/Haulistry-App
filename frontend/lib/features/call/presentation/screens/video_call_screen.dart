@@ -132,18 +132,19 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
           child: BlocBuilder<CallBloc, CallState>(
             builder: (context, state) {
               if (state is! CallConnected) {
+                final cs = state is CallConnecting ? state as CallConnecting : null;
                 final displayName = CallIdentityResolver.resolveDisplayName(
-                  preferredName: null,
+                  preferredName: cs?.otherUserName,
                   fallbackName: _resolvedOtherUser?.displayName ?? widget.otherUserName,
                   defaultLabel: 'Video Call',
                 );
                 final displayRole = CallIdentityResolver.resolveRole(
-                  preferredRole: _resolvedOtherUser?.role,
-                  fallbackRole: widget.otherUserRole,
+                  preferredRole: cs?.otherUserRole,
+                  fallbackRole: _resolvedOtherUser?.role ?? widget.otherUserRole,
                 );
                 final displayImageUrl = CallIdentityResolver.resolveProfileImageUrl(
-                  preferredImageUrl: _resolvedOtherUser?.profileImageUrl,
-                  fallbackImageUrl: widget.otherUserProfileImageUrl,
+                  preferredImageUrl: cs?.otherUserProfileImageUrl,
+                  fallbackImageUrl: _resolvedOtherUser?.profileImageUrl ?? widget.otherUserProfileImageUrl,
                 );
 
                 return Container(

@@ -122,17 +122,18 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> {
             child: BlocBuilder<CallBloc, CallState>(
               builder: (context, state) {
                 if (state is! CallConnected) {
+                  final cs = state is CallConnecting ? state as CallConnecting : null;
                   final displayName = CallIdentityResolver.resolveDisplayName(
-                    preferredName: state is CallConnected ? state.otherUserName : null,
+                    preferredName: cs?.otherUserName,
                     fallbackName: _resolvedOtherUser?.displayName ?? widget.otherUserName,
                     defaultLabel: 'Voice Call',
                   );
                   final displayRole = CallIdentityResolver.resolveRole(
-                    preferredRole: state is CallConnected ? state.otherUserRole : null,
+                    preferredRole: cs?.otherUserRole,
                     fallbackRole: _resolvedOtherUser?.role ?? widget.otherUserRole,
                   );
                   final displayImageUrl = CallIdentityResolver.resolveProfileImageUrl(
-                    preferredImageUrl: state is CallConnected ? state.otherUserProfileImageUrl : null,
+                    preferredImageUrl: cs?.otherUserProfileImageUrl,
                     fallbackImageUrl: _resolvedOtherUser?.profileImageUrl ?? widget.otherUserProfileImageUrl,
                   );
 
