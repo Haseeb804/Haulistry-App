@@ -9,6 +9,7 @@ Handles:
 - Location updates (provider arriving/arrived)
 """
 
+import asyncio
 from typing import Dict, Optional, Any
 from firebase_admin import messaging
 from datetime import datetime
@@ -81,8 +82,9 @@ class FCMService:
         from ..models.user import User
         
         try:
-            # Get user's FCM token from database
-            user_data = User.get_by_id(user_id)
+            # User.get_by_id is a synchronous Neo4j call — run it in a thread so
+            # we don't block the asyncio event loop.
+            user_data = await asyncio.to_thread(User.get_by_id, user_id)
             if not user_data:
                 logger.warning(f"User not found: {user_id}")
                 return False
@@ -160,27 +162,29 @@ class FCMService:
             query += " RETURN p.id as id, coalesce(p.fcmToken, p.fcm_token) as fcmToken"
             
             params = {"excludeUser": exclude_user} if exclude_user else {}
-            result = neo4j_driver.execute_read(query, params)
-            
+            result = await asyncio.to_thread(neo4j_driver.execute_read, query, params)
+
             if not result:
                 logger.info("No providers with FCM tokens found")
                 return 0
-            
-            success_count = 0
-            for record in result:
-                fcm_token = record.get('fcmToken')
-                if fcm_token:
-                    success = await self._send_notification(
-                        fcm_token=fcm_token,
-                        notification_type=notification_type,
-                        title=title,
-                        body=body,
-                        data=data,
-                        booking_id=booking_id
-                    )
-                    if success:
-                        success_count += 1
-            
+
+            # Send to all providers concurrently instead of one-by-one so a
+            # single slow FCM response doesn't serialise the whole broadcast.
+            tasks = [
+                self._send_notification(
+                    fcm_token=record.get('fcmToken'),
+                    notification_type=notification_type,
+                    title=title,
+                    body=body,
+                    data=data,
+                    booking_id=booking_id,
+                )
+                for record in result
+                if record.get('fcmToken')
+            ]
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            success_count = sum(1 for r in results if r is True)
+
             logger.info(f"Broadcast sent to {success_count} providers")
             return success_count
             
@@ -244,7 +248,9 @@ class FCMService:
                 token=fcm_token,
             )
             
-            response = messaging.send(message)
+            # messaging.send is a blocking HTTP call — offload to thread pool so
+            # the asyncio event loop is never stalled by FCM network latency.
+            response = await asyncio.to_thread(messaging.send, message)
             logger.info(f"FCM notification sent: {response}")
             return True
             

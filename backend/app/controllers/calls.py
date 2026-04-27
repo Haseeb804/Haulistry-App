@@ -8,6 +8,7 @@ REST persists call history and call state.
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 import uuid
 from typing import Optional, List, Dict, Any
@@ -95,7 +96,7 @@ async def _send_call_push(receiver_fcm_token: str, payload: Dict[str, Any]) -> b
             ),
             token=receiver_fcm_token,
         )
-        messaging.send(message)
+        await asyncio.to_thread(messaging.send, message)
         return True
     except Exception:
         logger.exception("Failed to send offline call push")
@@ -182,7 +183,9 @@ async def initiate_call(request: InitiateCallRequest):
         if delivered == 0:
             receiver_fcm_token = receiver_data.get("fcmToken") or receiver_data.get("fcm_token")
             if receiver_fcm_token:
-                await _send_call_push(receiver_fcm_token, incoming_event_payload)
+                # Fire-and-forget: don't block the REST response waiting for FCM.
+                # Socket.IO already emitted the event above; FCM is a background fallback.
+                asyncio.create_task(_send_call_push(receiver_fcm_token, incoming_event_payload))
 
         return CallResponse(
             success=True,

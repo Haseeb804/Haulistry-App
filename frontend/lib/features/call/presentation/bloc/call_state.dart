@@ -99,7 +99,7 @@ class CallConnected extends CallState {
     required this.callId,
     required this.callType,
     this.isMuted = false,
-    this.isSpeakerOn = true,
+    this.isSpeakerOn = false,
     this.isVideoOn = true,
     this.remoteUid,
     required this.connectedAt,

@@ -112,23 +112,27 @@ class Call:
         duration: Optional[int] = None
     ) -> bool:
         """Update call status and duration"""
+        # Terminal states must not be overwritten by any subsequent transition.
+        TERMINAL_STATES = ['ended', 'missed', 'rejected']
+
         query = """
         MATCH (c:Call {id: $callId})
+        WHERE NOT c.status IN $terminalStates
         SET c.status = $status
         """
-        
-        params = {"callId": call_id, "status": status}
-        
+
+        params = {"callId": call_id, "status": status, "terminalStates": TERMINAL_STATES}
+
         if status == 'answered':
             query += ", c.answeredAt = datetime()"
-        elif status in ['ended', 'missed', 'rejected']:
+        elif status in TERMINAL_STATES:
             query += ", c.endedAt = datetime()"
             if duration is not None:
                 query += ", c.duration = $duration"
                 params["duration"] = duration
-        
+
         query += " RETURN c"
-        
+
         result = neo4j_driver.execute_write(query, params)
         return result is not None and len(result) > 0
 

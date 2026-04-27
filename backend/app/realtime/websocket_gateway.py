@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 from dataclasses import dataclass
@@ -241,7 +242,7 @@ async def realtime_socket(websocket: WebSocket) -> None:
                 else:
                     sender_name = created.get("senderName") or "User"
                     preview = "📎 Media" if message_type != "text" else (message_text[:120] or "New message")
-                    await _send_chat_push(receiver_id, sender_name, preview, booking_id)
+                    asyncio.create_task(_send_chat_push(receiver_id, sender_name, preview, booking_id))
                 continue
 
             if event_type == "message_seen":
@@ -280,7 +281,7 @@ async def realtime_socket(websocket: WebSocket) -> None:
 
                 delivered = await manager.send_to_user(receiver_id, _event("call_incoming", call_payload))
                 if delivered == 0:
-                    await _send_call_push(receiver_id, call_payload)
+                    asyncio.create_task(_send_call_push(receiver_id, call_payload))
                 continue
 
             if event_type in {"call_accept", "call_reject", "call_end"}:

@@ -71,6 +71,7 @@ class _ProviderTrackingScreenState extends State<ProviderTrackingScreen> {
   bool _hasRedirectedToFeedback = false;
   bool _isBookingStatusLoaded = false;
   String? _currentBookingStatus;
+  String? _cachedSeekerProfileImageUrl;
 
   bool get _isActiveServiceStatus {
     final status = (_currentBookingStatus ?? widget.bookingStatus ?? '').toLowerCase();
@@ -180,6 +181,7 @@ class _ProviderTrackingScreenState extends State<ProviderTrackingScreen> {
       final status = (booking['status'] as String? ?? '').toLowerCase();
       final seekerId = (booking['seekerId'] ?? booking['seeker_id'])?.toString() ?? '';
       final seekerName = (booking['seekerName'] ?? booking['seeker_name'])?.toString() ?? 'Customer';
+      _cachedSeekerProfileImageUrl ??= (booking['seekerProfileImageUrl'] ?? booking['seeker_profile_image_url'])?.toString();
 
       _currentBookingStatus = status;
       _isBookingStatusLoaded = true;
@@ -919,6 +921,7 @@ class _ProviderTrackingScreenState extends State<ProviderTrackingScreen> {
                                 receiverId: seekerId,
                                 receiverName: seekerName ?? 'Seeker',
                                 receiverRole: AppConstants.roleSeeker,
+                                receiverProfileImageUrl: _cachedSeekerProfileImageUrl,
                                 bookingId: widget.bookingId,
                                 callType: AppConstants.callTypeVoice,
                               ),
@@ -928,6 +931,7 @@ class _ProviderTrackingScreenState extends State<ProviderTrackingScreen> {
                               'receiverId': seekerId,
                               'receiverName': seekerName ?? 'Seeker',
                               'receiverRole': AppConstants.roleSeeker,
+                              'receiverProfileImageUrl': _cachedSeekerProfileImageUrl,
                               'callType': AppConstants.callTypeVoice,
                             });
                           }
@@ -1071,6 +1075,7 @@ class _ProviderTrackingScreenState extends State<ProviderTrackingScreen> {
                                             receiverId: seekerId,
                                             receiverName: seekerName ?? 'Seeker',
                                             receiverRole: AppConstants.roleSeeker,
+                                            receiverProfileImageUrl: _cachedSeekerProfileImageUrl,
                                             bookingId: widget.bookingId,
                                             callType: AppConstants.callTypeVoice,
                                           ),
@@ -1080,6 +1085,7 @@ class _ProviderTrackingScreenState extends State<ProviderTrackingScreen> {
                                           'receiverId': seekerId,
                                           'receiverName': seekerName ?? 'Seeker',
                                           'receiverRole': AppConstants.roleSeeker,
+                                          'receiverProfileImageUrl': _cachedSeekerProfileImageUrl,
                                           'callType': AppConstants.callTypeVoice,
                                         });
                                       } else {
@@ -1137,6 +1143,7 @@ class _ProviderTrackingScreenState extends State<ProviderTrackingScreen> {
                                           receiverId: seekerId,
                                           receiverName: seekerName ?? 'Seeker',
                                           receiverRole: AppConstants.roleSeeker,
+                                          receiverProfileImageUrl: _cachedSeekerProfileImageUrl,
                                           bookingId: widget.bookingId,
                                           callType: AppConstants.callTypeVideo,
                                         ),
@@ -1146,6 +1153,7 @@ class _ProviderTrackingScreenState extends State<ProviderTrackingScreen> {
                                         'receiverId': seekerId,
                                         'receiverName': seekerName ?? 'Seeker',
                                         'receiverRole': AppConstants.roleSeeker,
+                                        'receiverProfileImageUrl': _cachedSeekerProfileImageUrl,
                                         'callType': AppConstants.callTypeVideo,
                                       });
                                     } else {

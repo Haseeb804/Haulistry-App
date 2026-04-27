@@ -297,7 +297,9 @@ async def chat_send(sid: str, data: dict[str, Any]):
         await redis_client.enqueue_pending(receiver_id, receiver_payload)
         sender_name = created.get("senderName") or "User"
         preview = "📎 Media" if message_type != "text" else (message_text[:120] or "New message")
-        await _send_chat_push(receiver_id, sender_name, preview, booking_id)
+        # Fire-and-forget: the message is already queued in Redis; FCM push is a
+        # background notification and must not delay the chat_sent ACK.
+        asyncio.create_task(_send_chat_push(receiver_id, sender_name, preview, booking_id))
 
     return ack_payload
 
@@ -332,22 +334,32 @@ async def call_request(sid: str, data: dict[str, Any]):
         await sio.emit("error", {"message": "receiverId is required"}, to=sid)
         return
 
+    # Fetch caller profile from Neo4j — Firebase photoURL is null for email/password users.
+    from ..models.user import User as UserModel
+    caller_data = UserModel.get_by_id(caller_id) or {}
+    caller_profile_image_url = (
+        caller_data.get("profileImageUrl")
+        or caller_data.get("profile_image_url")
+        or data.get("callerProfileImageUrl")
+    )
+
     call_payload = {
         "callId": str(data.get("callId") or ""),
         "bookingId": str(data.get("bookingId") or ""),
         "callerId": caller_id,
         "receiverId": receiver_id,
-        "callerName": str(data.get("callerName") or "User"),
+        "callerName": str(data.get("callerName") or caller_data.get("name") or "User"),
         "callerRole": str(data.get("callerRole") or "user"),
-        "callerProfileImageUrl": data.get("callerProfileImageUrl"),
+        "callerProfileImageUrl": caller_profile_image_url,
         "callType": str(data.get("callType") or "voice").lower(),
         "signalData": data.get("signalData") if isinstance(data.get("signalData"), dict) else {},
     }
 
-    if await _is_online(receiver_id):
-        await sio.emit("call_incoming", call_payload, room=_room_for_user(receiver_id))
-    else:
-        await _send_call_push(receiver_id, call_payload)
+    # REST /calls/initiate already delivered call_incoming to online users via Socket.IO.
+    # Only send FCM for offline users as a fallback — fire-and-forget so the ACK
+    # is returned to the caller immediately without waiting for FCM network latency.
+    if not await _is_online(receiver_id):
+        asyncio.create_task(_send_call_push(receiver_id, call_payload))
 
 
 async def _handle_call_status_event(event_name: str, sid: str, data: dict[str, Any]):
@@ -369,15 +381,29 @@ async def _handle_call_status_event(event_name: str, sid: str, data: dict[str, A
                 logger.exception("Failed updating call status", extra={"callId": call_id, "status": call_status})
 
     if target_user_id:
-        await sio.emit(
-            event_name,
-            {
-                "callId": call_id,
-                "fromUserId": from_user_id,
-                "duration": data.get("duration"),
-            },
-            room=_room_for_user(target_user_id),
-        )
+        event_payload = {
+            "callId": call_id,
+            "fromUserId": from_user_id,
+            "duration": data.get("duration"),
+        }
+        await sio.emit(event_name, event_payload, room=_room_for_user(target_user_id))
+
+        # FCM fallback for offline targets — fire-and-forget so the Socket.IO
+        # relay above is not blocked by FCM network latency.
+        if event_name == "call_end" and not await _is_online(target_user_id):
+            asyncio.create_task(fcm_service.send_to_user(
+                user_id=target_user_id,
+                notification_type="call_end",
+                title="Call Ended",
+                body="The call has ended.",
+                data={
+                    "type": "call_end",
+                    "callId": call_id,
+                    "fromUserId": str(from_user_id or ""),
+                    "duration": str(data.get("duration") or "0"),
+                },
+                booking_id="",
+            ))
 
 
 @sio.on("call_accept")

@@ -70,6 +70,28 @@ class WebRTCCallService {
     await _joinCall(videoEnabled: true);
   }
 
+  /// Starts the local camera and microphone early (e.g. during the outgoing
+  /// call ringing phase) so the user sees their own preview before the call
+  /// connects.  Safe to call multiple times — a no-op if already running.
+  Future<void> startLocalPreview() async {
+    if (_localStream != null) return;
+    try {
+      _localStream = await navigator.mediaDevices.getUserMedia({
+        'audio': true,
+        'video': {
+          'facingMode': 'user',
+          'width': {'ideal': 640},
+          'height': {'ideal': 480},
+          'frameRate': {'ideal': 15},
+        },
+      });
+      localRenderer.srcObject = _localStream;
+    } catch (_) {
+      // Camera permission denied or unavailable — joinVideoCall() will surface
+      // the error when the peer connection is actually created.
+    }
+  }
+
   Future<void> _joinCall({required bool videoEnabled}) async {
     if (!_initialized) {
       throw Exception('WebRTC call service not initialized');
@@ -104,8 +126,12 @@ class WebRTCCallService {
           : false,
     };
 
-    _localStream = await navigator.mediaDevices.getUserMedia(mediaConstraints);
-    localRenderer.srcObject = _localStream;
+    // Reuse the stream started by startLocalPreview() so we don't request
+    // camera permission a second time and avoid a visible camera blink.
+    if (_localStream == null) {
+      _localStream = await navigator.mediaDevices.getUserMedia(mediaConstraints);
+      localRenderer.srcObject = _localStream;
+    }
 
     final iceServers = await _resolveIceServers();
 
@@ -123,7 +149,13 @@ class WebRTCCallService {
     _peerConnection!.onTrack = (RTCTrackEvent event) {
       if (event.streams.isNotEmpty) {
         remoteRenderer.srcObject = event.streams.first;
-        final uid = _peerUserId.hashCode & 0x7fffffff;
+      }
+      // Signal remote-user joined regardless of whether a stream wrapper is
+      // present — audio tracks play automatically without a renderer, and a
+      // later video-track event will update the renderer via srcObject above.
+      final peer = _peerUserId;
+      if (peer != null) {
+        final uid = peer.hashCode & 0x7fffffff;
         _remoteUserController.add(RemoteUserState(uid, true));
       }
     };
@@ -367,28 +399,39 @@ class WebRTCCallService {
     }
   }
 
+  /// Immediately clears session identifiers so any in-flight socket events or
+  /// native WebRTC callbacks (ICE restart, etc.) are ignored.  Call this
+  /// synchronously before the async cleanup to prevent races.
+  void cancelSession() {
+    _callId = null;
+    _peerUserId = null;
+    _remoteDescriptionSet = false;
+    _isRestartingIce = false;
+    _pendingIceCandidates.clear();
+  }
+
   Future<void> leaveChannel() async {
     _connectionTimeoutTimer?.cancel();
+    _connectionTimeoutTimer = null;
 
-    try {
-      await _peerConnection?.close();
-    } catch (_) {}
+    // Null the peer-connection reference FIRST so any callbacks that fire
+    // during close() see _peerConnection == null and bail out early.
+    final pc = _peerConnection;
     _peerConnection = null;
+
+    cancelSession();
+
+    localRenderer.srcObject = null;
+    remoteRenderer.srcObject = null;
 
     try {
       await _localStream?.dispose();
     } catch (_) {}
     _localStream = null;
 
-    localRenderer.srcObject = null;
-    remoteRenderer.srcObject = null;
-
-    // Clear session so late-arriving events from the ended call are ignored.
-    _callId = null;
-    _peerUserId = null;
-    _remoteDescriptionSet = false;
-    _isRestartingIce = false;
-    _pendingIceCandidates.clear();
+    try {
+      await pc?.close();
+    } catch (_) {}
 
     _callStateController.add(CallMediaState.disconnected);
   }

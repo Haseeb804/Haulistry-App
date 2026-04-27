@@ -176,7 +176,7 @@ class CallBloc extends Bloc<CallEvent, CallState> {
   }
 
   void _emitConnectedIfReady(Emitter<CallState> emit) {
-    if (!_isLocalParticipantConnected || _pendingRemoteUid == null) {
+    if (!_isLocalParticipantConnected) {
       return;
     }
     if (state is CallConnected) {
@@ -212,6 +212,11 @@ class CallBloc extends Bloc<CallEvent, CallState> {
 
     _callStartTime ??= DateTime.now();
 
+    // Video calls default to speakerphone (user looks at screen).
+    // Voice calls default to earpiece (conventional phone behaviour).
+    final defaultSpeaker = callType == AppConstants.callTypeVideo;
+    unawaited(_callService.enableSpeakerphone(defaultSpeaker));
+
     emit(CallConnected(
       callId: callId,
       callType: callType,
@@ -220,6 +225,7 @@ class CallBloc extends Bloc<CallEvent, CallState> {
       otherUserRole: otherUserRole,
       otherUserProfileImageUrl: otherUserProfileImageUrl,
       remoteUid: _pendingRemoteUid,
+      isSpeakerOn: defaultSpeaker,
     ));
   }
 
@@ -278,7 +284,17 @@ class CallBloc extends Bloc<CallEvent, CallState> {
       _otherUserId = event.receiverId;
       _otherUserName = event.receiverName;
       _otherUserRole = event.receiverRole;
-      _otherUserProfileImageUrl = event.receiverProfileImageUrl;
+      // Prefer Neo4j profile image from REST response (accurate even when Firebase
+      // photoURL is null for email/password accounts), fall back to event value.
+      _otherUserProfileImageUrl = (call['receiverProfileImageUrl'] as String?)?.isNotEmpty == true
+          ? call['receiverProfileImageUrl'] as String?
+          : event.receiverProfileImageUrl;
+
+      // Start local camera preview immediately for video calls so the caller
+      // can see themselves during the ringing phase (WhatsApp-like UX).
+      if (event.callType == AppConstants.callTypeVideo) {
+        unawaited(_callService.startLocalPreview());
+      }
       _currentSignalData = signalData;
       _isLocalParticipantConnected = false;
       _pendingRemoteUid = null;
@@ -316,7 +332,9 @@ class CallBloc extends Bloc<CallEvent, CallState> {
   ) async {
     try {
       _currentCallId = event.callId;
-      _currentCallType = event.signalData['callType']?.toString() ?? AppConstants.callTypeVoice;
+      // Preserve _currentCallType (set by _onIncomingCallReceived) when signalData
+      // has no callType — e.g. FCM-delivered calls where signalData is sparse.
+      _currentCallType = event.signalData['callType']?.toString() ?? _currentCallType;
       _currentSignalData = event.signalData;
       _isLocalParticipantConnected = false;
       _pendingRemoteUid = null;
@@ -407,9 +425,13 @@ class CallBloc extends Bloc<CallEvent, CallState> {
     final userId = _auth.currentUser?.uid;
 
     // Emit terminal state FIRST so the UI pops immediately.
-    // Any failure in async cleanup below must not block or revert this.
     emit(CallEnded(callId: event.callId, duration: event.duration, reason: 'normal'));
     _resetCallSession();
+
+    // Immediately cancel the WebRTC session so any in-flight socket events
+    // (late ICE candidates, delayed offers from a restart, etc.) are ignored
+    // before the async leaveChannel() runs.
+    _callService.cancelSession();
 
     unawaited(_cleanupAfterEnd(event, otherUserId, userId));
   }
@@ -563,24 +585,9 @@ class CallBloc extends Bloc<CallEvent, CallState> {
 
     if (event.state == CallConnectionState.disconnected) {
       _isLocalParticipantConnected = false;
-      if (_currentCallId != null && _callStartTime != null) {
-        final duration = DateTime.now().difference(_callStartTime!).inSeconds;
-
-        await _apiService.post(ApiEndpoints.callUpdateStatus, {
-          'callId': _currentCallId,
-          'status': 'ended',
-          'duration': duration,
-          if (_auth.currentUser != null) 'userId': _auth.currentUser!.uid,
-        });
-
-        emit(CallEnded(
-          callId: _currentCallId!,
-          duration: duration,
-          reason: 'normal',
-        ));
-
-        _resetCallSession();
-      }
+      // RTCPeerConnectionStateDisconnected is transient — WebRTC may recover
+      // via ICE restart.  Do NOT auto-end here; call lifecycle is managed only
+      // by explicit EndCallRequested or a remote call_end socket event.
     }
   }
 
@@ -619,7 +626,10 @@ class CallBloc extends Bloc<CallEvent, CallState> {
     _otherUserId = event.callerId;
     _otherUserName = event.callerName;
     _otherUserRole = event.callerRole;
-    _otherUserProfileImageUrl = event.callerProfileImageUrl;
+    // Prefer a non-null URL: the REST-initiated event carries the Neo4j
+    // profile image; a redundant socket event may arrive with null.
+    _otherUserProfileImageUrl =
+        event.callerProfileImageUrl ?? _otherUserProfileImageUrl;
     _currentSignalData = event.signalData;
 
     emit(CallRinging(
@@ -643,9 +653,12 @@ class CallBloc extends Bloc<CallEvent, CallState> {
         ? 'rejected'
         : 'ended';
 
-    await _callService.leaveChannel();
+    // Emit terminal state FIRST so the UI pops immediately (same pattern as
+    // _onEndCallRequested), then clean up async so the pop is never blocked.
     emit(CallEnded(callId: event.callId, duration: event.duration, reason: reason));
     _resetCallSession();
+    _callService.cancelSession();
+    unawaited(_callService.leaveChannel());
   }
 
   Future<void> _onLoadCallHistoryRequested(

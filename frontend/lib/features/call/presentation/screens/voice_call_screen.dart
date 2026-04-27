@@ -1,5 +1,4 @@
 import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
@@ -31,6 +30,7 @@ class VoiceCallScreen extends StatefulWidget {
 
 class _VoiceCallScreenState extends State<VoiceCallScreen> {
   Duration _callDuration = Duration.zero;
+  Timer? _durationTimer;
   CallParticipantIdentity? _resolvedOtherUser;
 
   @override
@@ -56,7 +56,7 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> {
   }
 
   void _startDurationTimer() {
-    Timer.periodic(const Duration(seconds: 1), (timer) {
+    _durationTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
       if (!mounted) {
         timer.cancel();
         return;
@@ -69,6 +69,7 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> {
 
   @override
   void dispose() {
+    _durationTimer?.cancel();
     super.dispose();
   }
 

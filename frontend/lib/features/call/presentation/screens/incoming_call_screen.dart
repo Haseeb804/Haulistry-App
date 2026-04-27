@@ -2,11 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import '../../../../core/constants/app_constants.dart';
+import '../../../../core/utils/call_identity_resolver.dart';
 import '../bloc/call_bloc.dart';
 import '../bloc/call_event.dart';
 import '../bloc/call_state.dart';
 
-class IncomingCallScreen extends StatelessWidget {
+class IncomingCallScreen extends StatefulWidget {
   final String callId;
   final String callerId;
   final String callerName;
@@ -27,20 +28,62 @@ class IncomingCallScreen extends StatelessWidget {
   });
 
   @override
+  State<IncomingCallScreen> createState() => _IncomingCallScreenState();
+}
+
+class _IncomingCallScreenState extends State<IncomingCallScreen> {
+  CallParticipantIdentity? _resolvedCaller;
+
+  @override
+  void initState() {
+    super.initState();
+    _resolveCallerIdentity();
+  }
+
+  Future<void> _resolveCallerIdentity() async {
+    final resolved = await CallIdentityResolver.resolveParticipant(
+      userId: widget.callerId,
+      fallbackName: widget.callerName,
+      fallbackRole: widget.callerRole,
+      fallbackProfileImageUrl: widget.callerProfileImageUrl,
+      defaultLabel: 'Caller',
+    );
+    if (mounted) {
+      setState(() {
+        _resolvedCaller = resolved;
+      });
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final route = callType == AppConstants.callTypeVoice
+    final route = widget.callType == AppConstants.callTypeVoice
         ? AppRoutes.callVoice
         : AppRoutes.callVideo;
+
+    final displayName = CallIdentityResolver.resolveDisplayName(
+      preferredName: _resolvedCaller?.displayName,
+      fallbackName: widget.callerName,
+      defaultLabel: 'Caller',
+    );
+    final displayRole = CallIdentityResolver.resolveRole(
+      preferredRole: _resolvedCaller?.role,
+      fallbackRole: widget.callerRole,
+    );
+    final displayImageUrl = CallIdentityResolver.resolveProfileImageUrl(
+      preferredImageUrl: _resolvedCaller?.profileImageUrl,
+      fallbackImageUrl: widget.callerProfileImageUrl,
+    );
 
     return BlocListener<CallBloc, CallState>(
       listener: (context, state) {
         if (state is CallConnecting) {
           context.go(route, extra: {
-            'callId': callId,
-            'otherUserId': callerId,
-            'otherUserName': callerName,
-            'otherUserRole': callerRole,
-            'otherUserProfileImageUrl': callerProfileImageUrl,
+            'callId': widget.callId,
+            'otherUserId': widget.callerId,
+            'otherUserName': displayName,
+            'otherUserRole': displayRole,
+            'otherUserProfileImageUrl': displayImageUrl,
           });
         } else if (state is CallEnded) {
           context.pop();
@@ -74,12 +117,12 @@ class IncomingCallScreen extends StatelessWidget {
                     CircleAvatar(
                       radius: 60,
                       backgroundColor: Colors.white.withOpacity(0.3),
-                      backgroundImage: callerProfileImageUrl != null
-                          ? NetworkImage(callerProfileImageUrl!)
+                      backgroundImage: displayImageUrl != null
+                          ? NetworkImage(displayImageUrl)
                           : null,
-                      child: callerProfileImageUrl == null
+                      child: displayImageUrl == null
                           ? Text(
-                              callerName.isNotEmpty ? callerName[0].toUpperCase() : '?',
+                              displayName.isNotEmpty ? displayName[0].toUpperCase() : '?',
                               style: const TextStyle(
                                 fontSize: 48,
                                 fontWeight: FontWeight.bold,
@@ -90,14 +133,14 @@ class IncomingCallScreen extends StatelessWidget {
                     ),
                     const SizedBox(height: 24),
                     Text(
-                      callerName,
+                      displayName,
                       style: const TextStyle(
                         fontSize: 28,
                         fontWeight: FontWeight.bold,
                         color: Colors.white,
                       ),
                     ),
-                    if (callerRole != AppConstants.roleUser && callerRole.isNotEmpty) ...[
+                    if (displayRole != AppConstants.roleUser && displayRole.isNotEmpty) ...[
                       const SizedBox(height: 6),
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
@@ -106,7 +149,7 @@ class IncomingCallScreen extends StatelessWidget {
                           borderRadius: BorderRadius.circular(12),
                         ),
                         child: Text(
-                          callerRole[0].toUpperCase() + callerRole.substring(1),
+                          displayRole[0].toUpperCase() + displayRole.substring(1),
                           style: TextStyle(
                             fontSize: 13,
                             color: Colors.white.withOpacity(0.9),
@@ -120,13 +163,13 @@ class IncomingCallScreen extends StatelessWidget {
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         Icon(
-                          callType == 'voice' ? Icons.phone : Icons.videocam,
+                          widget.callType == 'voice' ? Icons.phone : Icons.videocam,
                           color: Colors.white.withOpacity(0.8),
                           size: 20,
                         ),
                         const SizedBox(width: 8),
                         Text(
-                          'Incoming ${callType == 'voice' ? 'voice' : 'video'} call',
+                          'Incoming ${widget.callType == 'voice' ? 'voice' : 'video'} call',
                           style: TextStyle(
                             fontSize: 16,
                             color: Colors.white.withOpacity(0.8),
@@ -149,7 +192,7 @@ class IncomingCallScreen extends StatelessWidget {
                         backgroundColor: Colors.red,
                         onPressed: () {
                           context.read<CallBloc>().add(
-                                RejectCallRequested(callId: callId),
+                                RejectCallRequested(callId: widget.callId),
                               );
                         },
                       ),
@@ -159,11 +202,10 @@ class IncomingCallScreen extends StatelessWidget {
                         label: 'Accept',
                         backgroundColor: Colors.green,
                         onPressed: () {
-                          // Emit answer request; navigate only when BLoC reaches CallConnecting.
                           context.read<CallBloc>().add(
                                 AnswerCallRequested(
-                                  callId: callId,
-                                  signalData: signalData,
+                                  callId: widget.callId,
+                                  signalData: widget.signalData,
                                 ),
                               );
                         },

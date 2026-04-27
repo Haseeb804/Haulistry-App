@@ -2,9 +2,11 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../core/constants/app_constants.dart';
+import '../../../../core/services/webrtc_call_service.dart';
 import '../../../../core/utils/call_identity_resolver.dart';
 import '../bloc/call_bloc.dart';
 import '../bloc/call_event.dart';
@@ -174,7 +176,10 @@ class _OutgoingCallScreenState extends State<OutgoingCallScreen>
             ),
           ),
           child: SafeArea(
-            child: Column(
+            child: Stack(
+              children: [
+                // ── Main call UI ──────────────────────────────────────────
+                Column(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 const SizedBox(height: 60),
@@ -276,6 +281,26 @@ class _OutgoingCallScreenState extends State<OutgoingCallScreen>
                     child: const Icon(Icons.call_end, size: 32),
                   ),
                 ),
+              ],
+            ),
+                // ── Local camera preview (video calls only) ───────────────
+                if (widget.callType == AppConstants.callTypeVideo)
+                  Positioned(
+                    top: 16,
+                    right: 16,
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: SizedBox(
+                        width: 100,
+                        height: 140,
+                        child: RTCVideoView(
+                          WebRTCCallService().localRenderer,
+                          mirror: true,
+                          objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
+                        ),
+                      ),
+                    ),
+                  ),
               ],
             ),
           ),

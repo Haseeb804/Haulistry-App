@@ -617,11 +617,14 @@ class _TrackingScreenState extends State<TrackingScreen> {
 
     if (providerId.isEmpty || providerId == '') return;
 
+    final providerImageUrl = _getProviderProfileImageUrl();
+
     context.read<CallBloc>().add(
           InitiateCallRequested(
             receiverId: providerId,
             receiverName: providerName,
             receiverRole: AppConstants.roleProvider,
+            receiverProfileImageUrl: providerImageUrl,
             bookingId: widget.bookingId,
             callType: callType,
           ),
@@ -632,6 +635,7 @@ class _TrackingScreenState extends State<TrackingScreen> {
       'receiverId': providerId,
       'receiverName': providerName,
       'receiverRole': AppConstants.roleProvider,
+      'receiverProfileImageUrl': providerImageUrl,
       'callType': callType,
     });
   }
