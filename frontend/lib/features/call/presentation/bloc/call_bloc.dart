@@ -345,14 +345,7 @@ class CallBloc extends Bloc<CallEvent, CallState> {
         return;
       }
 
-      await _apiService.post(ApiEndpoints.callUpdateStatus, {
-        'callId': event.callId,
-        'status': 'answered',
-        'userId': user.uid,
-      });
-
-      await NotificationService().cancelCallNotification(event.callId);
-
+      // Emit UI state immediately so receiver sees the call screen without delay.
       emit(CallConnecting(
         callId: event.callId,
         callType: _currentCallType,
@@ -362,6 +355,19 @@ class CallBloc extends Bloc<CallEvent, CallState> {
         otherUserProfileImageUrl: _otherUserProfileImageUrl,
       ));
 
+      // Background: update status and cancel notification — don't block WebRTC setup.
+      unawaited(Future<void>.microtask(() async {
+        try {
+          await _apiService.post(ApiEndpoints.callUpdateStatus, {
+            'callId': event.callId,
+            'status': 'answered',
+            'userId': user.uid,
+          });
+          await NotificationService().cancelCallNotification(event.callId);
+        } catch (_) {}
+      }));
+
+      // Peer connection must exist BEFORE call_accept — caller sends offer on receipt.
       await _callService.configureSession(
         callId: event.callId,
         peerUserId: _otherUserId,

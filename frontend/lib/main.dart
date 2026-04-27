@@ -56,6 +56,7 @@ import 'features/feedback/presentation/screens/provider_feedback_screen.dart';
 import 'features/feedback/data/datasources/feedback_remote_datasource.dart';
 import 'features/feedback/data/repositories/feedback_repository_impl.dart';
 import 'features/call/presentation/bloc/call_bloc.dart';
+import 'features/call/presentation/bloc/call_event.dart';
 import 'features/call/presentation/bloc/call_state.dart';
 import 'features/call/presentation/screens/incoming_call_screen.dart';
 import 'features/call/presentation/screens/outgoing_call_screen.dart';
@@ -154,6 +155,21 @@ void _setupNotificationHandling() {
         callType: callType,
         signalData: signalData,
       );
+    } else if (type == 'call_end') {
+      // FCM fallback when call ends while receiver is in background.
+      final callId = data['callId']?.toString() ?? '';
+      if (callId.isEmpty) return;
+
+      _shownIncomingCallIds.remove(callId);
+
+      final ctx = _rootNavigatorKey.currentContext;
+      if (ctx != null && ctx.mounted) {
+        ctx.read<CallBloc>().add(RemoteCallStatusUpdated(
+          callId: callId,
+          status: AppConstants.callStatusEnded,
+          duration: int.tryParse(data['duration']?.toString() ?? '0') ?? 0,
+        ));
+      }
     } else if (type == 'call_status') {
       final callId = data['callId']?.toString() ?? '';
       final status = data['status']?.toString().toLowerCase() ?? '';
@@ -419,20 +435,33 @@ class HaulistryApp extends StatelessWidget {
       ],
       child: MaterialApp.router(
         builder: (context, child) {
-          return BlocListener<CallBloc, CallState>(
-            listenWhen: (previous, current) => current is CallRinging,
-            listener: (context, state) {
-              if (state is! CallRinging) return;
-              _navigateToIncomingCall(
-                callId: state.callId,
-                callerId: state.callerId,
-                callerName: state.callerName,
-                callerRole: state.callerRole,
-                callerProfileImageUrl: state.callerProfileImageUrl,
-                callType: state.callType,
-                signalData: state.signalData,
-              );
-            },
+          return MultiBlocListener(
+            listeners: [
+              BlocListener<CallBloc, CallState>(
+                listenWhen: (previous, current) => current is CallRinging,
+                listener: (context, state) {
+                  if (state is! CallRinging) return;
+                  _navigateToIncomingCall(
+                    callId: state.callId,
+                    callerId: state.callerId,
+                    callerName: state.callerName,
+                    callerRole: state.callerRole,
+                    callerProfileImageUrl: state.callerProfileImageUrl,
+                    callType: state.callType,
+                    signalData: state.signalData,
+                  );
+                },
+              ),
+              // Issue 1 fix: redirect to active tracking/feedback screen on login,
+              // same as _handleAppResume() does on foreground resume.
+              BlocListener<AuthBloc, AuthState>(
+                listenWhen: (previous, current) =>
+                    previous is! AuthAuthenticated && current is AuthAuthenticated,
+                listener: (context, state) {
+                  unawaited(_handleAppResume());
+                },
+              ),
+            ],
             child: child ?? const SizedBox.shrink(),
           );
         },

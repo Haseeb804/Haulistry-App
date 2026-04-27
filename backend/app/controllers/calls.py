@@ -21,6 +21,7 @@ from ..constants import LIVE_COMMUNICATION_STATUSES
 from ..models.call import Call
 from ..realtime.websocket_gateway import manager, _event
 from ..realtime.socketio_gateway import emit_to_user_event
+from ..services.fcm_service import fcm_service
 from ..services.turn_credentials import fetch_turn_credentials
 
 router = APIRouter(prefix="/calls", tags=["calls"])
@@ -241,13 +242,27 @@ async def update_call_status(request: UpdateCallStatusRequest):
             if delivered_socketio:
                 continue
 
-            await manager.send_to_user(
-                str(target_user_id),
-                _event(
-                    "call_status",
-                    payload,
-                ),
-            )
+            delivered_ws = await manager.send_to_user(str(target_user_id), _event("call_status", payload))
+            if delivered_ws > 0:
+                continue
+
+            # User is fully offline — FCM fallback for terminal call states so
+            # a stale incoming-call screen is dismissed on the next foreground.
+            if request.status in {"ended", "rejected", "missed"}:
+                asyncio.create_task(
+                    fcm_service.send_to_user(
+                        user_id=str(target_user_id),
+                        notification_type="call_end",
+                        title="Call Ended",
+                        body="The call has ended",
+                        data={
+                            "type": "call_end",
+                            "callId": request.callId,
+                            "status": request.status,
+                            "duration": str(request.duration or 0),
+                        },
+                    )
+                )
 
         return CallResponse(success=True, message=f"Call status updated to {request.status}")
 

@@ -187,6 +187,14 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> {
                             ),
                           ],
                           const SizedBox(height: 10),
+                          Text(
+                            _formatDuration(_callDuration),
+                            style: TextStyle(
+                              fontSize: 18,
+                              color: Colors.white.withOpacity(0.8),
+                            ),
+                          ),
+                          const SizedBox(height: 8),
                           const Row(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [

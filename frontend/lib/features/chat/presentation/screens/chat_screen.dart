@@ -586,9 +586,23 @@ class _ChatScreenState extends State<ChatScreen> {
     final currentUser = FirebaseAuth.instance.currentUser;
     if (currentUser == null) return;
 
-    // Clear input immediately for snappy UX.
     _messageController.clear();
     final clientMessageId = '${currentUser.uid}_${DateTime.now().millisecondsSinceEpoch}';
+
+    // Optimistic display: show message immediately before server confirms.
+    final optimisticId = 'pending_$clientMessageId';
+    final optimisticMsg = ChatMessage(
+      id: optimisticId,
+      senderId: currentUser.uid,
+      senderName: currentUser.displayName ?? 'Me',
+      message: message,
+      timestamp: DateTime.now(),
+      isRead: false,
+    );
+    setState(() {
+      _backendMessages = [optimisticMsg, ..._backendMessages];
+    });
+    _scrollToBottom();
 
     try {
       final ack = await _socketService.sendWithAck('chat_send', {
@@ -599,6 +613,8 @@ class _ChatScreenState extends State<ChatScreen> {
         'clientMessageId': clientMessageId,
       });
 
+      if (!mounted) return;
+
       if (ack != null && ack['ok'] == true) {
         final data = (ack['data'] is Map) ? Map<String, dynamic>.from(ack['data'] as Map) : <String, dynamic>{};
         final messageMap = (data['message'] is Map)
@@ -606,25 +622,33 @@ class _ChatScreenState extends State<ChatScreen> {
             : <String, dynamic>{};
         if (messageMap.isNotEmpty) {
           final parsed = _parseBackendMessage(messageMap);
-          if (!mounted) return;
-          final alreadyPresent = _backendMessages.any((m) => m.id.isNotEmpty && m.id == parsed.id);
-          if (!alreadyPresent) {
-            setState(() {
-              _backendMessages = [parsed, ..._backendMessages];
-            });
-          }
+          setState(() {
+            // Remove optimistic placeholder; add confirmed message if socket
+            // listener hasn't already inserted it.
+            final withoutOptimistic = _backendMessages.where((m) => m.id != optimisticId).toList();
+            if (!withoutOptimistic.any((m) => m.id.isNotEmpty && m.id == parsed.id)) {
+              _backendMessages = [parsed, ...withoutOptimistic];
+            } else {
+              _backendMessages = withoutOptimistic;
+            }
+          });
           _scrollToBottom();
           return;
         }
       }
 
-      // Fallback: reload from backend if ACK was missing/unexpected.
+      // Fallback: remove optimistic message and reload from backend.
+      setState(() {
+        _backendMessages = _backendMessages.where((m) => m.id != optimisticId).toList();
+      });
       await _loadBackendMessages();
       _scrollToBottom();
     } catch (_) {
-      // Suppress noisy error snackbar; message will retry via socket queue.
-      // Restore the input so user can retry manually.
       if (!mounted) return;
+      // Remove optimistic message and restore input for manual retry.
+      setState(() {
+        _backendMessages = _backendMessages.where((m) => m.id != optimisticId).toList();
+      });
       _messageController.text = message;
     }
   }
