@@ -188,6 +188,8 @@ class CallBloc extends Bloc<CallEvent, CallState> {
     String otherUserName = _otherUserName;
     String otherUserRole = _otherUserRole;
     String? otherUserProfileImageUrl = _otherUserProfileImageUrl;
+    bool isMuted = false;
+    bool isVideoOn = true;
 
     if (state is CallConnecting) {
       final connectingState = state as CallConnecting;
@@ -196,6 +198,9 @@ class CallBloc extends Bloc<CallEvent, CallState> {
       otherUserName = connectingState.otherUserName;
       otherUserRole = connectingState.otherUserRole;
       otherUserProfileImageUrl = connectingState.otherUserProfileImageUrl;
+      // Carry over any mute/video toggle made during the connecting phase.
+      isMuted = connectingState.isMuted;
+      isVideoOn = connectingState.isVideoOn;
     } else if (state is CallInitiated) {
       final initiatedState = state as CallInitiated;
       callId = initiatedState.callId;
@@ -226,6 +231,8 @@ class CallBloc extends Bloc<CallEvent, CallState> {
       otherUserProfileImageUrl: otherUserProfileImageUrl,
       remoteUid: _pendingRemoteUid,
       isSpeakerOn: defaultSpeaker,
+      isMuted: isMuted,
+      isVideoOn: isVideoOn,
     ));
   }
 
@@ -399,6 +406,9 @@ class CallBloc extends Bloc<CallEvent, CallState> {
     CallAnswerAcceptedByReceiver event,
     Emitter<CallState> emit,
   ) async {
+    // Guard: ignore duplicate call_accept events once we're already connecting/connected.
+    if (state is CallConnecting || state is CallConnected) return;
+
     try {
       emit(CallConnecting(
         callId: event.callId,
@@ -535,9 +545,13 @@ class CallBloc extends Bloc<CallEvent, CallState> {
     if (state is CallConnected) {
       final currentState = state as CallConnected;
       final newMuteState = !currentState.isMuted;
-
       await _callService.muteLocalAudio(newMuteState);
       emit(currentState.copyWith(isMuted: newMuteState));
+    } else if (state is CallConnecting) {
+      final cs = state as CallConnecting;
+      final newMuteState = !cs.isMuted;
+      await _callService.muteLocalAudio(newMuteState);
+      emit(cs.copyWith(isMuted: newMuteState));
     }
   }
 
@@ -548,7 +562,6 @@ class CallBloc extends Bloc<CallEvent, CallState> {
     if (state is CallConnected) {
       final currentState = state as CallConnected;
       final newSpeakerState = !currentState.isSpeakerOn;
-
       await _callService.enableSpeakerphone(newSpeakerState);
       emit(currentState.copyWith(isSpeakerOn: newSpeakerState));
     }
@@ -561,9 +574,13 @@ class CallBloc extends Bloc<CallEvent, CallState> {
     if (state is CallConnected) {
       final currentState = state as CallConnected;
       final newVideoState = !currentState.isVideoOn;
-
       await _callService.muteLocalVideo(!newVideoState);
       emit(currentState.copyWith(isVideoOn: newVideoState));
+    } else if (state is CallConnecting) {
+      final cs = state as CallConnecting;
+      final newVideoState = !cs.isVideoOn;
+      await _callService.muteLocalVideo(!newVideoState);
+      emit(cs.copyWith(isVideoOn: newVideoState));
     }
   }
 
@@ -589,9 +606,33 @@ class CallBloc extends Bloc<CallEvent, CallState> {
     }
 
     if (event.state == CallConnectionState.error) {
-      if (state is! CallConnected) {
-        // Notify the other participant so their screen doesn't hang indefinitely.
-        // Snapshot IDs before reset so the fire-and-forget closure captures them.
+      if (state is CallConnected) {
+        // ICE restart timed out after a connected call lost its connection.
+        // End the call gracefully rather than leaving the UI stuck.
+        final connected = state as CallConnected;
+        final callIdSnapshot = _currentCallId ?? connected.callId;
+        final otherUserIdSnapshot = _otherUserId;
+        final duration = _callStartTime != null
+            ? DateTime.now().difference(_callStartTime!).inSeconds
+            : 0;
+        emit(CallEnded(callId: callIdSnapshot, duration: duration, reason: 'connection_lost'));
+        _resetCallSession();
+        _callService.cancelSession();
+        unawaited(() async {
+          try { await _callService.leaveChannel(); } catch (_) {}
+          if (otherUserIdSnapshot.isNotEmpty && callIdSnapshot.isNotEmpty) {
+            try {
+              await _socketService.send('call_end', {
+                'callId': callIdSnapshot,
+                'targetUserId': otherUserIdSnapshot,
+                'duration': duration,
+              });
+            } catch (_) {}
+          }
+        }());
+      } else if (state is! CallEnded) {
+        // Connecting-phase failure — notify the other participant so their
+        // screen doesn't hang indefinitely.
         final callIdSnapshot = _currentCallId;
         final otherUserIdSnapshot = _otherUserId;
         if (callIdSnapshot != null && callIdSnapshot.isNotEmpty && otherUserIdSnapshot.isNotEmpty) {

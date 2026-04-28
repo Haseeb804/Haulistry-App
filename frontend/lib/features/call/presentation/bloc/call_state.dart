@@ -69,6 +69,8 @@ class CallConnecting extends CallState {
   final String otherUserName;
   final String otherUserRole;
   final String? otherUserProfileImageUrl;
+  final bool isMuted;
+  final bool isVideoOn;
 
   const CallConnecting({
     required this.callId,
@@ -77,10 +79,23 @@ class CallConnecting extends CallState {
     this.otherUserName = '',
     this.otherUserRole = AppConstants.roleUser,
     this.otherUserProfileImageUrl,
+    this.isMuted = false,
+    this.isVideoOn = true,
   });
 
+  CallConnecting copyWith({bool? isMuted, bool? isVideoOn}) => CallConnecting(
+        callId: callId,
+        callType: callType,
+        isCaller: isCaller,
+        otherUserName: otherUserName,
+        otherUserRole: otherUserRole,
+        otherUserProfileImageUrl: otherUserProfileImageUrl,
+        isMuted: isMuted ?? this.isMuted,
+        isVideoOn: isVideoOn ?? this.isVideoOn,
+      );
+
   @override
-  List<Object?> get props => [callId, callType, isCaller, otherUserName, otherUserRole, otherUserProfileImageUrl];
+  List<Object?> get props => [callId, callType, isCaller, otherUserName, otherUserRole, otherUserProfileImageUrl, isMuted, isVideoOn];
 }
 
 class CallConnected extends CallState {

@@ -125,6 +125,9 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
                   fallbackImageUrl: _resolvedOtherUser?.profileImageUrl ?? widget.otherUserProfileImageUrl,
                 );
 
+                final isMuted = cs?.isMuted ?? false;
+                final isVideoOn = cs?.isVideoOn ?? true;
+
                 return Container(
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
@@ -207,20 +210,45 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
                           ],
                         ),
                         Padding(
-                          padding: const EdgeInsets.all(48.0),
-                          child: FloatingActionButton.extended(
-                            onPressed: () {
-                              final activeCallId = _resolveActiveCallId(context.read<CallBloc>().state);
-                              context.read<CallBloc>().add(
-                                    EndCallRequested(
-                                      callId: activeCallId,
-                                      duration: _callDuration.inSeconds,
-                                    ),
-                                  );
-                            },
-                            backgroundColor: Colors.red,
-                            icon: const Icon(Icons.call_end),
-                            label: const Text('End Call'),
+                          padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 48),
+                          child: Column(
+                            children: [
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                                children: [
+                                  _VideoCallControlButton(
+                                    icon: isMuted ? Icons.mic_off : Icons.mic,
+                                    isActive: isMuted,
+                                    onPressed: () => context.read<CallBloc>().add(const ToggleMuteRequested()),
+                                  ),
+                                  _VideoCallControlButton(
+                                    icon: isVideoOn ? Icons.videocam : Icons.videocam_off,
+                                    isActive: !isVideoOn,
+                                    onPressed: () => context.read<CallBloc>().add(const ToggleVideoRequested()),
+                                  ),
+                                  _VideoCallControlButton(
+                                    icon: Icons.cameraswitch,
+                                    isActive: false,
+                                    onPressed: () => context.read<CallBloc>().add(const SwitchCameraRequested()),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 24),
+                              FloatingActionButton.extended(
+                                onPressed: () {
+                                  final activeCallId = _resolveActiveCallId(context.read<CallBloc>().state);
+                                  context.read<CallBloc>().add(
+                                        EndCallRequested(
+                                          callId: activeCallId,
+                                          duration: _callDuration.inSeconds,
+                                        ),
+                                      );
+                                },
+                                backgroundColor: Colors.red,
+                                icon: const Icon(Icons.call_end),
+                                label: const Text('End Call'),
+                              ),
+                            ],
                           ),
                         ),
                       ],

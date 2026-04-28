@@ -255,6 +255,10 @@ class RealtimeSocketService {
     _pending.clear();
 
     for (final item in snapshot) {
+      // Chat messages are excluded from flush: they use optimistic UI and
+      // have explicit failure handling in the chat screen (show error, re-type).
+      // Re-sending them here risks duplicate DB writes if the server already saved.
+      if (item.type == 'chat_send') continue;
       await sendWithAck(item.type, item.data, retries: 1);
     }
   }

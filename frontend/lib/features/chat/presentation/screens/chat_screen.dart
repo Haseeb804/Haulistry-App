@@ -409,7 +409,7 @@ class _ChatScreenState extends State<ChatScreen> {
         'messageType': 'voice',
         'mediaDuration': duration,
         'clientMessageId': '${user.uid}_${DateTime.now().millisecondsSinceEpoch}',
-      });
+      }, retries: 0);
       // The server will echo a chat_sent event that the socket listener already
       // appends to _backendMessages. No separate reload needed.
       _scrollToBottom();
@@ -525,7 +525,7 @@ class _ChatScreenState extends State<ChatScreen> {
           'messageText': imageDataUrl,
           'messageType': 'image',
           'clientMessageId': '${user.uid}_${DateTime.now().millisecondsSinceEpoch}',
-        });
+        }, retries: 0);
         // chat_sent socket event appends the image to _backendMessages.
         _scrollToBottom();
       } else {
@@ -617,7 +617,7 @@ class _ChatScreenState extends State<ChatScreen> {
         'messageText': message,
         'messageType': 'text',
         'clientMessageId': clientMessageId,
-      });
+      }, retries: 0);
 
       if (!mounted) return;
 

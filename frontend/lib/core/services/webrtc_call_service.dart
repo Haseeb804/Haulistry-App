@@ -35,6 +35,7 @@ class WebRTCCallService {
 
   RTCPeerConnection? _peerConnection;
   MediaStream? _localStream;
+  MediaStream? _remoteStream;
   StreamSubscription<Map<String, dynamic>>? _socketSubscription;
   Timer? _connectionTimeoutTimer;
   final List<RTCIceCandidate> _pendingIceCandidates = [];
@@ -146,13 +147,22 @@ class WebRTCCallService {
       await _peerConnection!.addTrack(track, _localStream!);
     }
 
-    _peerConnection!.onTrack = (RTCTrackEvent event) {
+    // Pre-create a synthetic remote stream so onTrack can always set
+    // remoteRenderer.srcObject — even on Android where event.streams is empty.
+    _remoteStream = await createLocalMediaStream('remote_${_callId ?? ""}');
+
+    _peerConnection!.onTrack = (RTCTrackEvent event) async {
       if (event.streams.isNotEmpty) {
-        remoteRenderer.srcObject = event.streams.first;
+        _remoteStream = event.streams.first;
+        remoteRenderer.srcObject = _remoteStream;
+      } else if (_remoteStream != null) {
+        // Android unified-plan delivers tracks without stream wrappers.
+        // Add the track to our synthetic stream so the renderer shows video.
+        try {
+          await _remoteStream!.addTrack(event.track);
+        } catch (_) {}
+        remoteRenderer.srcObject = _remoteStream;
       }
-      // Signal remote-user joined regardless of whether a stream wrapper is
-      // present — audio tracks play automatically without a renderer, and a
-      // later video-track event will update the renderer via srcObject above.
       final peer = _peerUserId;
       if (peer != null) {
         final uid = peer.hashCode & 0x7fffffff;
@@ -351,6 +361,17 @@ class WebRTCCallService {
     _remoteDescriptionSet = false;
     _pendingIceCandidates.clear();
 
+    // If the restart doesn't reconnect within 15 s, declare a permanent error
+    // so the UI can surface it (rather than hanging silently).
+    _connectionTimeoutTimer?.cancel();
+    _connectionTimeoutTimer = Timer(const Duration(seconds: 15), () {
+      final pc = _peerConnection;
+      if (pc != null &&
+          pc.connectionState != RTCPeerConnectionState.RTCPeerConnectionStateConnected) {
+        _callStateController.add(CallMediaState.error);
+      }
+    });
+
     try {
       final offer = await _peerConnection!.createOffer({
         'iceRestart': true,
@@ -408,6 +429,7 @@ class WebRTCCallService {
     _remoteDescriptionSet = false;
     _isRestartingIce = false;
     _pendingIceCandidates.clear();
+    _remoteStream = null;
   }
 
   Future<void> leaveChannel() async {
@@ -423,6 +445,7 @@ class WebRTCCallService {
 
     localRenderer.srcObject = null;
     remoteRenderer.srcObject = null;
+    _remoteStream = null;
 
     try {
       await _localStream?.dispose();
