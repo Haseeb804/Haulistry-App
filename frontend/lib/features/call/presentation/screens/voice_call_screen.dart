@@ -30,15 +30,17 @@ class VoiceCallScreen extends StatefulWidget {
 }
 
 class _VoiceCallScreenState extends State<VoiceCallScreen> {
-  Duration _callDuration = Duration.zero;
-  Timer? _durationTimer;
   CallParticipantIdentity? _resolvedOtherUser;
+  // Written by _CallDurationTimer callback; read by end-call buttons. No setState needed.
+  Duration _callDuration = Duration.zero;
 
   @override
   void initState() {
     super.initState();
-    _startDurationTimer();
-    _resolveOtherUserIdentity();
+    // Only fetch from API when widget doesn't already carry the identity info.
+    if (widget.otherUserName.isEmpty || widget.otherUserProfileImageUrl == null) {
+      _resolveOtherUserIdentity();
+    }
   }
 
   Future<void> _resolveOtherUserIdentity() async {
@@ -54,34 +56,6 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> {
         _resolvedOtherUser = resolved;
       });
     }
-  }
-
-  void _startDurationTimer() {
-    _durationTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (!mounted) {
-        timer.cancel();
-        return;
-      }
-      setState(() {
-        _callDuration = Duration(seconds: _callDuration.inSeconds + 1);
-      });
-    });
-  }
-
-  @override
-  void dispose() {
-    _durationTimer?.cancel();
-    super.dispose();
-  }
-
-  String _formatDuration(Duration duration) {
-    String twoDigits(int n) => n.toString().padLeft(2, '0');
-    String twoDigitMinutes = twoDigits(duration.inMinutes.remainder(60));
-    String twoDigitSeconds = twoDigits(duration.inSeconds.remainder(60));
-    if (duration.inHours > 0) {
-      return '${twoDigits(duration.inHours)}:$twoDigitMinutes:$twoDigitSeconds';
-    }
-    return '$twoDigitMinutes:$twoDigitSeconds';
   }
 
   String _resolveActiveCallId(CallState state) {
@@ -188,13 +162,7 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> {
                             ),
                           ],
                           const SizedBox(height: 10),
-                          Text(
-                            _formatDuration(_callDuration),
-                            style: TextStyle(
-                              fontSize: 18,
-                              color: Colors.white.withOpacity(0.8),
-                            ),
-                          ),
+                          _CallDurationTimer(onTick: (d) => _callDuration = d),
                           const SizedBox(height: 8),
                           const Row(
                             mainAxisAlignment: MainAxisAlignment.center,
@@ -316,13 +284,7 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> {
                           ),
                         ],
                         const SizedBox(height: 8),
-                        Text(
-                          _formatDuration(_callDuration),
-                          style: TextStyle(
-                            fontSize: 18,
-                            color: Colors.white.withOpacity(0.8),
-                          ),
-                        ),
+                        _CallDurationTimer(onTick: (d) => _callDuration = d),
                         const SizedBox(height: 24),
                         // Volume Indicator
                         if (state.remoteUid != null)
@@ -458,6 +420,50 @@ class _CallControlButton extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+// Isolated timer widget — only this widget rebuilds every second.
+class _CallDurationTimer extends StatefulWidget {
+  final void Function(Duration)? onTick;
+  const _CallDurationTimer({this.onTick});
+
+  @override
+  State<_CallDurationTimer> createState() => _CallDurationTimerState();
+}
+
+class _CallDurationTimerState extends State<_CallDurationTimer> {
+  Duration _duration = Duration.zero;
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    _timer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!mounted) return;
+      setState(() => _duration = Duration(seconds: _duration.inSeconds + 1));
+      widget.onTick?.call(_duration);
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  String _format(Duration d) {
+    String p(int n) => n.toString().padLeft(2, '0');
+    if (d.inHours > 0) return '${p(d.inHours)}:${p(d.inMinutes.remainder(60))}:${p(d.inSeconds.remainder(60))}';
+    return '${p(d.inMinutes.remainder(60))}:${p(d.inSeconds.remainder(60))}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      _format(_duration),
+      style: TextStyle(fontSize: 18, color: Colors.white.withOpacity(0.8)),
     );
   }
 }

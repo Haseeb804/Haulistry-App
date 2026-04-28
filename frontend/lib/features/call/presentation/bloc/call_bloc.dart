@@ -590,6 +590,24 @@ class CallBloc extends Bloc<CallEvent, CallState> {
 
     if (event.state == CallConnectionState.error) {
       if (state is! CallConnected) {
+        // Notify the other participant so their screen doesn't hang indefinitely.
+        // Snapshot IDs before reset so the fire-and-forget closure captures them.
+        final callIdSnapshot = _currentCallId;
+        final otherUserIdSnapshot = _otherUserId;
+        if (callIdSnapshot != null && callIdSnapshot.isNotEmpty && otherUserIdSnapshot.isNotEmpty) {
+          _resetCallSession();
+          _callService.cancelSession();
+          unawaited(() async {
+            try { await _callService.leaveChannel(); } catch (_) {}
+            try {
+              await _socketService.send('call_end', {
+                'callId': callIdSnapshot,
+                'targetUserId': otherUserIdSnapshot,
+                'duration': 0,
+              });
+            } catch (_) {}
+          }());
+        }
         emit(const CallError(message: 'Call connection failed. Please try again.'));
       }
       return;

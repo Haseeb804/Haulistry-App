@@ -28,8 +28,11 @@ class VoiceRecorderService {
 
   String? _currentRecordingPath;
   String? _lastTempPlaybackPath;
+  String? _currentlyPlayingUrl;
   Timer? _recordingTimer;
   Duration _recordingDuration = Duration.zero;
+
+  String? get currentlyPlayingUrl => _currentlyPlayingUrl;
 
   Future<String> _preparePlayablePath(String source) async {
     if (!source.startsWith('data:audio/')) {
@@ -96,13 +99,13 @@ class VoiceRecorderService {
     // Initialize player
     if (!_isPlayerInitialized) {
       await _player.openPlayer();
+      await _player.setSubscriptionDuration(const Duration(milliseconds: 100));
       _isPlayerInitialized = true;
 
-      // Listen to player state changes
       _player.onProgress!.listen((event) {
         _playbackPositionController.add(event.position);
-        
-        if (event.position >= event.duration) {
+        if (event.position >= event.duration && event.duration > Duration.zero) {
+          _currentlyPlayingUrl = null;
           _playerStateController.add(PlayerState.stopped);
         }
       });
@@ -194,10 +197,12 @@ class VoiceRecorderService {
                 ? Codec.opusOGG
                 : Codec.aacMP4;
 
+    _currentlyPlayingUrl = path;
     await _player.startPlayer(
       fromURI: playablePath,
       codec: codec,
       whenFinished: () {
+        _currentlyPlayingUrl = null;
         _playerStateController.add(PlayerState.stopped);
       },
     );
@@ -221,6 +226,7 @@ class VoiceRecorderService {
 
   Future<void> stopPlayback() async {
     if (_player.isPlaying || _player.isPaused) {
+      _currentlyPlayingUrl = null;
       await _player.stopPlayer();
       _playerStateController.add(PlayerState.stopped);
     }

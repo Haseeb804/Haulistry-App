@@ -121,7 +121,7 @@ class _ChatScreenState extends State<ChatScreen> {
     _checkCommunicationPermission();
     if (widget.bookingId != null && widget.bookingId!.isNotEmpty) {
       _communicationStatusTimer = Timer.periodic(
-        const Duration(seconds: 5),
+        const Duration(seconds: 30),
         (_) => _checkCommunicationPermission(),
       );
 
@@ -165,7 +165,16 @@ class _ChatScreenState extends State<ChatScreen> {
           unawaited(_loadBackendMessages());
         }
       } else if (type == 'message_status') {
-        unawaited(_loadBackendMessages());
+        // Update read receipts locally by marking matching messages as read.
+        final msgId = data['messageId']?.toString() ?? '';
+        final isRead = data['isRead'] == true;
+        if (msgId.isNotEmpty && isRead && mounted) {
+          setState(() {
+            _backendMessages = _backendMessages.map((m) {
+              return m.id == msgId ? m.copyWith(isRead: true) : m;
+            }).toList();
+          });
+        }
       }
 
       if (type == 'typing') {
@@ -393,7 +402,7 @@ class _ChatScreenState extends State<ChatScreen> {
       final encoded = base64Encode(audioBytes);
       final voiceDataUrl = 'data:audio/m4a;base64,$encoded';
 
-      await _socketService.send('chat_send', {
+      await _socketService.sendWithAck('chat_send', {
         'receiverId': widget.otherUserId,
         'bookingId': widget.bookingId,
         'messageText': voiceDataUrl,
@@ -401,8 +410,8 @@ class _ChatScreenState extends State<ChatScreen> {
         'mediaDuration': duration,
         'clientMessageId': '${user.uid}_${DateTime.now().millisecondsSinceEpoch}',
       });
-
-      await _loadBackendMessages();
+      // The server will echo a chat_sent event that the socket listener already
+      // appends to _backendMessages. No separate reload needed.
       _scrollToBottom();
 
       if (mounted) {
@@ -510,14 +519,14 @@ class _ChatScreenState extends State<ChatScreen> {
         final encoded = base64Encode(image.bytes);
         final imageDataUrl = 'data:$mime;base64,$encoded';
 
-        await _socketService.send('chat_send', {
+        await _socketService.sendWithAck('chat_send', {
           'receiverId': widget.otherUserId,
           'bookingId': widget.bookingId,
           'messageText': imageDataUrl,
           'messageType': 'image',
           'clientMessageId': '${user.uid}_${DateTime.now().millisecondsSinceEpoch}',
         });
-        await _loadBackendMessages();
+        // chat_sent socket event appends the image to _backendMessages.
         _scrollToBottom();
       } else {
         throw Exception('Image sharing is only supported via booking chat with Neo4j backend');
@@ -595,8 +604,9 @@ class _ChatScreenState extends State<ChatScreen> {
       timestamp: DateTime.now(),
       isRead: false,
     );
+    // Append at end — list is oldest-first, so new messages belong at the tail.
     setState(() {
-      _backendMessages = [optimisticMsg, ..._backendMessages];
+      _backendMessages = [..._backendMessages, optimisticMsg];
     });
     _scrollToBottom();
 
@@ -619,11 +629,11 @@ class _ChatScreenState extends State<ChatScreen> {
         if (messageMap.isNotEmpty) {
           final parsed = _parseBackendMessage(messageMap);
           setState(() {
-            // Remove optimistic placeholder; add confirmed message if socket
-            // listener hasn't already inserted it.
+            // Remove optimistic placeholder; append confirmed message unless the
+            // chat_sent socket event already inserted it.
             final withoutOptimistic = _backendMessages.where((m) => m.id != optimisticId).toList();
             if (!withoutOptimistic.any((m) => m.id.isNotEmpty && m.id == parsed.id)) {
-              _backendMessages = [parsed, ...withoutOptimistic];
+              _backendMessages = [...withoutOptimistic, parsed];
             } else {
               _backendMessages = withoutOptimistic;
             }

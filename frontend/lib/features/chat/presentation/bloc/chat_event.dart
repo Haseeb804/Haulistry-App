@@ -98,6 +98,34 @@ class ChatMessage extends Equatable {
     required this.isRead,
   });
 
+  ChatMessage copyWith({
+    String? id,
+    String? senderId,
+    String? senderName,
+    String? senderProfileImageUrl,
+    String? message,
+    String? messageType,
+    String? imageUrl,
+    String? voiceUrl,
+    int? voiceDuration,
+    DateTime? timestamp,
+    bool? isRead,
+  }) {
+    return ChatMessage(
+      id: id ?? this.id,
+      senderId: senderId ?? this.senderId,
+      senderName: senderName ?? this.senderName,
+      senderProfileImageUrl: senderProfileImageUrl ?? this.senderProfileImageUrl,
+      message: message ?? this.message,
+      messageType: messageType ?? this.messageType,
+      imageUrl: imageUrl ?? this.imageUrl,
+      voiceUrl: voiceUrl ?? this.voiceUrl,
+      voiceDuration: voiceDuration ?? this.voiceDuration,
+      timestamp: timestamp ?? this.timestamp,
+      isRead: isRead ?? this.isRead,
+    );
+  }
+
   @override
   List<Object?> get props => [
         id,

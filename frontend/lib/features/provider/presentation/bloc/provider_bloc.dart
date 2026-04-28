@@ -88,9 +88,13 @@ class ProviderBloc extends Bloc<ProviderEvent, ProviderState> {
         final type = data['type'] as String?;
 
         if (type == 'new_booking_request') {
-          // FCM payload only carries a summary — trigger a full dashboard
-          // refresh so the provider sees the complete booking data immediately.
-          add(ProviderLoadDashboardRequested());
+          // FCM fires when the app is in background (socket disconnected).
+          // If the socket is already connected, the socket listener handles
+          // this optimistically via ProviderNewBookingReceived (no spinner).
+          // Only fall back to a full reload when socket is offline.
+          if (!RealtimeSocketService().isConnected) {
+            add(ProviderLoadDashboardRequested());
+          }
         } else if (type == 'fare_offer_accepted') {
           final offerId = data['offerId'] as String?;
           if (offerId != null) {

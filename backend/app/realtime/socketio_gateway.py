@@ -289,6 +289,11 @@ async def chat_send(sid: str, data: dict[str, Any]):
         "status": "delivered",
     }
 
+    # Always echo back to the sender via a chat_sent event so the sender's
+    # socket listener can append the message instantly without a round-trip API
+    # reload.  The ACK return value alone is not forwarded to the events stream.
+    await sio.emit("chat_sent", ack_payload["data"], room=_room_for_user(sender_id))
+
     receiver_online = await _is_online(receiver_id)
     if receiver_online:
         await sio.emit("chat_message", receiver_payload, room=_room_for_user(receiver_id))
@@ -304,8 +309,6 @@ async def chat_send(sid: str, data: dict[str, Any]):
         await redis_client.enqueue_pending(receiver_id, receiver_payload)
         sender_name = created.get("senderName") or "User"
         preview = "📎 Media" if message_type != "text" else (message_text[:120] or "New message")
-        # Fire-and-forget: the message is already queued in Redis; FCM push is a
-        # background notification and must not delay the chat_sent ACK.
         asyncio.create_task(_send_chat_push(receiver_id, sender_name, preview, booking_id))
 
     return ack_payload
@@ -326,6 +329,7 @@ async def message_seen(sid: str, data: dict[str, Any]):
         "message_status",
         {
             "messageId": message_id,
+            "isRead": True,
             "status": "seen",
             "seenBy": user_id,
         },
