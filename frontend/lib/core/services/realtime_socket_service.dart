@@ -205,6 +205,10 @@ class RealtimeSocketService {
       'location_update',
       'booking_completed',
       'new_booking_request',
+      'fare_offer_accepted',
+      'fare_offer_rejected',
+      'fare_offer_updated',
+      'counter_offer',
       'pong',
       'error',
     ];

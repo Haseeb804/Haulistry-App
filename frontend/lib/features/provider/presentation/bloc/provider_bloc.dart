@@ -125,22 +125,49 @@ class ProviderBloc extends Bloc<ProviderEvent, ProviderState> {
   void _setupSocketListeners() {
     _socketSubscription = RealtimeSocketService().events.listen(
       (event) {
-        if (event['type'] != 'new_booking_request') return;
-
-        // The enriched socket payload contains all BookingEntity fields.
-        // Parse it for an instant optimistic update; fall back to a full
-        // dashboard refresh if the payload is somehow incomplete.
+        final type = event['type'] as String?;
         final raw = event['data'];
-        if (raw is Map<String, dynamic>) {
-          try {
-            final booking = BookingEntity.fromJson(raw);
-            add(ProviderNewBookingReceived(booking: booking));
-            return;
-          } catch (_) {
-            // Payload was incomplete — fall through to refresh.
+
+        if (type == 'new_booking_request') {
+          if (raw is Map<String, dynamic>) {
+            try {
+              final booking = BookingEntity.fromJson(raw);
+              add(ProviderNewBookingReceived(booking: booking));
+              return;
+            } catch (_) {
+              // Payload incomplete — fall through to refresh.
+            }
           }
+          add(ProviderLoadDashboardRequested());
+        } else if (type == 'fare_offer_accepted') {
+          final offerId = raw is Map ? raw['offerId']?.toString() : null;
+          if (offerId != null && offerId.isNotEmpty) {
+            add(ProviderOfferStatusReceived(offerId: offerId, status: 'accepted'));
+          } else {
+            add(ProviderLoadDashboardRequested());
+          }
+        } else if (type == 'fare_offer_rejected') {
+          final offerId = raw is Map ? raw['offerId']?.toString() : null;
+          if (offerId != null && offerId.isNotEmpty) {
+            add(ProviderOfferStatusReceived(offerId: offerId, status: 'rejected'));
+          } else {
+            add(const ProviderLoadOffersRequested());
+          }
+        } else if (type == 'counter_offer') {
+          final offerId = raw is Map ? raw['offerId']?.toString() : null;
+          final counterPrice = raw is Map
+              ? double.tryParse(raw['counterPrice']?.toString() ?? '')
+              : null;
+          if (offerId != null && offerId.isNotEmpty) {
+            add(ProviderOfferStatusReceived(
+              offerId: offerId,
+              status: 'counter_offered',
+              counterPrice: counterPrice,
+            ));
+          }
+        } else if (type == 'booking_completed') {
+          add(ProviderLoadDashboardRequested());
         }
-        add(ProviderLoadDashboardRequested());
       },
       onError: (_) {
         // Keep subscription alive — do not rethrow.

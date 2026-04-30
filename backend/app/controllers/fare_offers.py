@@ -11,6 +11,7 @@ from ..schemas.fare_offer_schema import (
 )
 from ..models.fare_offer import FareOffer
 from ..services.fcm_service import fcm_service, FCMNotificationType
+from ..realtime.socketio_gateway import emit_to_user_event
 
 router = APIRouter()
 
@@ -136,14 +137,28 @@ async def accept_offer(offer_id: str):
                 detail="Offer not found"
             )
         
-        # Notify provider that their offer was accepted via FCM
+        seeker_name = offer_data.get('booking', {}).get('seekerName', 'Customer')
+        accepted_price = offer_data.get('acceptedPrice', offer_data.get('offeredPrice', 0))
+
+        # Notify provider via Socket.IO (instant when online) and FCM (fallback)
+        await emit_to_user_event(
+            offer_data['providerId'],
+            'fare_offer_accepted',
+            {
+                'offerId': offer_id,
+                'bookingId': offer_data['bookingId'],
+                'acceptedPrice': accepted_price,
+                'seekerName': seeker_name,
+                'status': 'accepted',
+            }
+        )
         await fcm_service.notify_fare_accepted(
             target_user_id=offer_data['providerId'],
             booking_id=offer_data['bookingId'],
-            accepter_name=offer_data.get('booking', {}).get('seekerName', 'Customer'),
-            fare_amount=offer_data.get('acceptedPrice', offer_data.get('offeredPrice', 0))
+            accepter_name=seeker_name,
+            fare_amount=accepted_price
         )
-        
+
         return FareOfferResponse(
             success=True,
             message="Offer accepted - booking confirmed!",
@@ -174,11 +189,21 @@ async def reject_offer(offer_id: str):
                 detail="Offer not found"
             )
         
-        # Notify provider that their offer was rejected via FCM
+        # Notify provider via Socket.IO (instant when online) and FCM (fallback)
         if existing:
             from ..models.booking import Booking
             booking = Booking.get_by_id(existing['bookingId'])
             seeker_name = booking.get('seekerName', 'Customer') if booking else 'Customer'
+            await emit_to_user_event(
+                existing['providerId'],
+                'fare_offer_rejected',
+                {
+                    'offerId': offer_id,
+                    'bookingId': existing['bookingId'],
+                    'seekerName': seeker_name,
+                    'status': 'rejected',
+                }
+            )
             await fcm_service.notify_fare_rejected(
                 target_user_id=existing['providerId'],
                 booking_id=existing['bookingId'],
@@ -218,11 +243,22 @@ async def counter_offer(offer_id: str, counter: CounterOfferRequest):
                 detail="Offer not found"
             )
         
-        # Notify provider about the counter offer via FCM
+        # Notify provider via Socket.IO (instant when online) and FCM (fallback)
         if existing:
             from ..models.booking import Booking
             booking = Booking.get_by_id(existing['bookingId'])
             seeker_name = booking.get('seekerName', 'Customer') if booking else 'Customer'
+            await emit_to_user_event(
+                existing['providerId'],
+                'counter_offer',
+                {
+                    'offerId': offer_id,
+                    'bookingId': existing['bookingId'],
+                    'counterPrice': counter.counterPrice,
+                    'seekerName': seeker_name,
+                    'status': 'counter_offered',
+                }
+            )
             await fcm_service.notify_counter_offer(
                 provider_id=existing['providerId'],
                 booking_id=existing['bookingId'],
@@ -262,11 +298,22 @@ async def update_offer_price(offer_id: str, update: UpdateOfferPrice):
                 detail="Offer not found"
             )
         
-        # Notify seeker about the updated offer via FCM
+        # Notify seeker via Socket.IO (instant when online) and FCM (fallback)
         if existing:
             from ..models.booking import Booking
             booking = Booking.get_by_id(existing['bookingId'])
             if booking:
+                await emit_to_user_event(
+                    booking['seekerId'],
+                    'fare_offer_updated',
+                    {
+                        'offerId': offer_id,
+                        'bookingId': existing['bookingId'],
+                        'newPrice': update.newPrice,
+                        'providerName': existing.get('providerName', 'Provider'),
+                        'status': 'updated',
+                    }
+                )
                 await fcm_service.notify_new_fare_offer(
                     seeker_id=booking['seekerId'],
                     booking_id=existing['bookingId'],
