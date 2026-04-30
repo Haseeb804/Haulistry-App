@@ -18,18 +18,37 @@ class CallHistoryScreen extends StatefulWidget {
 }
 
 class _CallHistoryScreenState extends State<CallHistoryScreen> {
-  @override
-  void initState() {
-    super.initState();
+  // Local loading flag so the spinner is shown while the API call is in flight
+  // without polluting the shared CallBloc state with CallLoading.
+  bool _isLoading = true;
+
+  void _loadHistory() {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid != null) {
+      setState(() => _isLoading = true);
       context.read<CallBloc>().add(LoadCallHistoryRequested(userId: uid));
+    } else {
+      setState(() => _isLoading = false);
     }
   }
 
   @override
+  void initState() {
+    super.initState();
+    _loadHistory();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    // BlocListener sits at Scaffold level so it can call setState on the
+    // enclosing State and dismiss the loading spinner.
+    return BlocListener<CallBloc, CallState>(
+      listenWhen: (_, current) =>
+          current is CallHistoryLoaded || current is CallError,
+      listener: (context, state) {
+        if (mounted) setState(() => _isLoading = false);
+      },
+      child: Scaffold(
       backgroundColor: AppTheme.backgroundColor,
       body: CustomScrollView(
         slivers: [
@@ -58,12 +77,7 @@ class _CallHistoryScreenState extends State<CallHistoryScreen> {
                 ),
                 child: IconButton(
                   icon: const Icon(Icons.refresh_rounded, color: Colors.white),
-                  onPressed: () {
-                    final uid = FirebaseAuth.instance.currentUser?.uid;
-                    if (uid != null) {
-                      context.read<CallBloc>().add(LoadCallHistoryRequested(userId: uid));
-                    }
-                  },
+                  onPressed: _loadHistory,
                 ),
               ),
             ],
@@ -112,9 +126,14 @@ class _CallHistoryScreenState extends State<CallHistoryScreen> {
               ),
             ),
           ),
+          // buildWhen prevents call-signaling events (CallRinging, CallConnecting,
+          // etc.) from wiping out the loaded history list while the user is
+          // reading it.
           BlocBuilder<CallBloc, CallState>(
+            buildWhen: (_, current) =>
+                current is CallHistoryLoaded || current is CallError,
             builder: (context, state) {
-              if (state is CallLoading) {
+              if (_isLoading) {
                 return const SliverFillRemaining(
                   child: Center(child: CircularProgressIndicator()),
                 );
@@ -132,6 +151,12 @@ class _CallHistoryScreenState extends State<CallHistoryScreen> {
                           state.message,
                           style: TextStyle(color: Colors.grey[600]),
                           textAlign: TextAlign.center,
+                        ),
+                        const SizedBox(height: 16),
+                        ElevatedButton.icon(
+                          onPressed: _loadHistory,
+                          icon: const Icon(Icons.refresh_rounded),
+                          label: const Text('Retry'),
                         ),
                       ],
                     ),
@@ -182,7 +207,7 @@ class _CallHistoryScreenState extends State<CallHistoryScreen> {
           ),
         ],
       ),
-    );
+    ));
   }
 }
 

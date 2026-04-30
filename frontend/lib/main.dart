@@ -470,13 +470,13 @@ class HaulistryApp extends StatelessWidget {
                   });
                 },
               ),
-              // Show a snackbar when a call fails to start (e.g., API error,
-              // user not authenticated, communication not allowed).  This makes
-              // the chat call buttons give visible feedback instead of silently
-              // doing nothing.
+              // Show a snackbar when a call fails to START (pre-connect error).
+              // Scoped to CallLoading → CallError only: the call screens
+              // (voice/video/outgoing) already show their own snackbars for
+              // mid-call errors, so this avoids duplicate feedback.
               BlocListener<CallBloc, CallState>(
                 listenWhen: (previous, current) =>
-                    current is CallError && previous is! CallError,
+                    current is CallError && previous is CallLoading,
                 listener: (context, state) {
                   if (state is! CallError) return;
                   ScaffoldMessenger.of(context).showSnackBar(

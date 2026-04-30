@@ -269,8 +269,10 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
                     ),
                   ),
                   // Avatar placeholder shown until remote stream is active.
+                  // Must be Positioned.fill so it covers the RTCVideoView beneath.
                   if (state.remoteUid == null)
-                    Builder(builder: (context) {
+                    Positioned.fill(
+                    child: Builder(builder: (context) {
                       final remoteImageUrl = CallIdentityResolver.resolveProfileImageUrl(
                         preferredImageUrl: state.otherUserProfileImageUrl,
                         fallbackImageUrl: _resolvedOtherUser?.profileImageUrl ?? widget.otherUserProfileImageUrl,
@@ -355,7 +357,7 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
                         ),
                       ),
                     );
-                    }),
+                    })),
                   // Local Video Preview
                   Positioned(
                     top: 48,
