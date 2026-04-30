@@ -124,6 +124,7 @@ class IncomingCallReceived extends CallEvent {
   final String? callerProfileImageUrl;
   final String callType;
   final Map<String, dynamic> signalData;
+  final String bookingId;
 
   const IncomingCallReceived({
     required this.callId,
@@ -133,10 +134,11 @@ class IncomingCallReceived extends CallEvent {
     this.callerProfileImageUrl,
     required this.callType,
     required this.signalData,
+    this.bookingId = '',
   });
 
   @override
-  List<Object?> get props => [callId, callerId, callerName, callerRole, callerProfileImageUrl, callType, signalData];
+  List<Object?> get props => [callId, callerId, callerName, callerRole, callerProfileImageUrl, callType, signalData, bookingId];
 }
 
 class LoadCallHistoryRequested extends CallEvent {

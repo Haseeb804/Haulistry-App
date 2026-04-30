@@ -413,10 +413,17 @@ class WebRTCCallService {
   }
 
   Future<void> enableSpeakerphone(bool enabled) async {
+    // setSpeakerphoneOn is a system-level call — invoke once, not per-track.
+    // It can throw "Speaker information is not available" on Android after a
+    // process restart; catch so the call session is not affected.
+    try {
+      await Helper.setSpeakerphoneOn(enabled);
+    } catch (_) {}
     final tracks = _localStream?.getAudioTracks() ?? const <MediaStreamTrack>[];
     for (final track in tracks) {
-      await Helper.setSpeakerphoneOn(enabled);
-      track.enableSpeakerphone(enabled);
+      try {
+        track.enableSpeakerphone(enabled);
+      } catch (_) {}
     }
   }
 

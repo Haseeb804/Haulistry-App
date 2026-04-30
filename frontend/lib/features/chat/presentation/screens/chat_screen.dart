@@ -80,7 +80,6 @@ class _ChatScreenState extends State<ChatScreen> {
         (messageText.startsWith('http') || messageText.startsWith('data:image/'));
     final isVoice = messageType == 'voice' &&
         (messageText.startsWith('http') || messageText.startsWith('data:audio/'));
-
     final senderImageUrl = row['senderProfileImageUrl']?.toString();
     return ChatMessage(
       id: row['id']?.toString() ?? '',
@@ -1224,6 +1223,10 @@ class _MessageBubble extends StatelessWidget {
     final currentUserId = FirebaseAuth.instance.currentUser?.uid ?? '';
     final isCurrentUser = message.senderId == currentUserId;
 
+    if (message.messageType == 'call') {
+      return _buildCallLogTile(isCurrentUser);
+    }
+
     final decodedImageBytes = message.imageUrl != null ? _decodeDataImage(message.imageUrl!) : null;
 
     return Padding(
@@ -1356,6 +1359,48 @@ class _MessageBubble extends StatelessWidget {
           ),
           if (isCurrentUser) const SizedBox(width: 8),
         ],
+      ),
+    );
+  }
+
+  Widget _buildCallLogTile(bool isCurrentUser) {
+    final isMissed = message.message.toLowerCase().contains('missed') ||
+        message.message.toLowerCase().contains('declined');
+    final isVideo = message.message.toLowerCase().contains('video');
+    final callIcon = isVideo ? Icons.videocam_rounded : Icons.phone_rounded;
+    final iconColor = isMissed ? Colors.red : Colors.green;
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Center(
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          decoration: BoxDecoration(
+            color: Colors.grey.shade100,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: Colors.grey.shade200),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(callIcon, size: 16, color: iconColor),
+              const SizedBox(width: 8),
+              Text(
+                message.message,
+                style: TextStyle(
+                  fontSize: 13,
+                  color: isMissed ? Colors.red.shade700 : AppTheme.textPrimary,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                _formatTimestamp(message.timestamp),
+                style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

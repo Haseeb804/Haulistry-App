@@ -105,6 +105,7 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
         }
       },
       child: Scaffold(
+        backgroundColor: Colors.black,
         body: GestureDetector(
           onTap: _resetControlsTimer,
           child: BlocBuilder<CallBloc, CallState>(
@@ -189,9 +190,7 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
                                 ),
                               ),
                             ],
-                            const SizedBox(height: 10),
-                            _CallDurationTimer(onTick: (d) => _callDuration = d),
-                            const SizedBox(height: 8),
+                            const SizedBox(height: 16),
                             const Row(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [

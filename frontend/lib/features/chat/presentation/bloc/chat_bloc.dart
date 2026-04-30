@@ -252,7 +252,7 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
       senderId: row['senderId']?.toString() ?? '',
       senderName: row['senderName']?.toString() ?? 'User',
       senderProfileImageUrl: (senderProfileImageUrl?.isNotEmpty == true) ? senderProfileImageUrl : null,
-      message: messageType == 'text' ? messageText : '',
+      message: (messageType == 'text' || messageType == 'call') ? messageText : '',
       messageType: messageType,
       imageUrl: messageType == 'image' ? messageText : row['imageUrl']?.toString(),
       voiceUrl: messageType == 'voice' ? messageText : row['voiceUrl']?.toString(),

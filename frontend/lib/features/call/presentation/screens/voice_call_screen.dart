@@ -161,9 +161,7 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> {
                               ),
                             ),
                           ],
-                          const SizedBox(height: 10),
-                          _CallDurationTimer(onTick: (d) => _callDuration = d),
-                          const SizedBox(height: 8),
+                          const SizedBox(height: 16),
                           const Row(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [

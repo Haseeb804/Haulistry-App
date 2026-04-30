@@ -24,6 +24,7 @@ class CallBloc extends Bloc<CallEvent, CallState> {
 
   DateTime? _callStartTime;
   String? _currentCallId;
+  String? _currentBookingId;
   String _otherUserId = '';
   String _otherUserName = '';
   String _otherUserRole = AppConstants.roleUser;
@@ -97,6 +98,7 @@ class CallBloc extends Bloc<CallEvent, CallState> {
           signalData: (data['signalData'] is Map<String, dynamic>)
               ? data['signalData'] as Map<String, dynamic>
               : <String, dynamic>{},
+          bookingId: data['bookingId']?.toString() ?? '',
         ));
       }
 
@@ -295,6 +297,7 @@ class CallBloc extends Bloc<CallEvent, CallState> {
       final neo4jCallerImage = call['callerProfileImageUrl']?.toString();
 
       _currentCallId = call['id']?.toString() ?? '';
+      _currentBookingId = event.bookingId.isNotEmpty ? event.bookingId : null;
       _currentCallType = event.callType;
       _otherUserId = event.receiverId;
       _otherUserName = (call['receiverName']?.toString().isNotEmpty == true)
@@ -444,6 +447,8 @@ class CallBloc extends Bloc<CallEvent, CallState> {
   ) async {
     // Snapshot context BEFORE reset — cleanup runs fire-and-forget after.
     final otherUserId = _otherUserId;
+    final bookingId = _currentBookingId;
+    final callType = _currentCallType;
     final userId = _auth.currentUser?.uid;
 
     // Emit terminal state FIRST so the UI pops immediately.
@@ -455,12 +460,14 @@ class CallBloc extends Bloc<CallEvent, CallState> {
     // before the async leaveChannel() runs.
     _callService.cancelSession();
 
-    unawaited(_cleanupAfterEnd(event, otherUserId, userId));
+    unawaited(_cleanupAfterEnd(event, otherUserId, bookingId, callType, userId));
   }
 
   Future<void> _cleanupAfterEnd(
     EndCallRequested event,
     String otherUserId,
+    String? bookingId,
+    String callType,
     String? userId,
   ) async {
     // Notify the remote user FIRST — before leaveChannel() which can take seconds.
@@ -493,6 +500,30 @@ class CallBloc extends Bloc<CallEvent, CallState> {
         if (userId != null) 'userId': userId,
       });
     } catch (_) {}
+
+    // Log the call in the chat thread so both parties have a record.
+    if (bookingId != null && bookingId.isNotEmpty && otherUserId.isNotEmpty) {
+      final label = callType == AppConstants.callTypeVideo ? 'Video call' : 'Voice call';
+      final summary = event.duration > 0
+          ? '$label • ${_formatCallDuration(event.duration)}'
+          : label;
+      try {
+        await _socketService.send('chat_send', {
+          'receiverId': otherUserId,
+          'bookingId': bookingId,
+          'messageText': summary,
+          'messageType': 'call',
+          'clientMessageId': '${event.callId}_call_log',
+        });
+      } catch (_) {}
+    }
+  }
+
+  String _formatCallDuration(int seconds) {
+    if (seconds < 60) return '${seconds}s';
+    final m = seconds ~/ 60;
+    final s = seconds % 60;
+    return s > 0 ? '${m}m ${s}s' : '${m}m';
   }
 
   Future<void> _onRejectCallRequested(
@@ -500,6 +531,9 @@ class CallBloc extends Bloc<CallEvent, CallState> {
     Emitter<CallState> emit,
   ) async {
     try {
+      final otherUserId = _otherUserId;
+      final bookingId = _currentBookingId;
+
       await NotificationService().cancelCallNotification(event.callId);
 
       await _apiService.post(ApiEndpoints.callUpdateStatus, {
@@ -508,15 +542,27 @@ class CallBloc extends Bloc<CallEvent, CallState> {
         if (_auth.currentUser != null) 'userId': _auth.currentUser!.uid,
       });
 
-      if (_otherUserId.isNotEmpty) {
+      if (otherUserId.isNotEmpty) {
         await _socketService.send('call_reject', {
           'callId': event.callId,
-          'targetUserId': _otherUserId,
+          'targetUserId': otherUserId,
         });
       }
 
       emit(CallEnded(callId: event.callId, duration: 0, reason: 'rejected'));
       _resetCallSession();
+
+      if (bookingId != null && bookingId.isNotEmpty && otherUserId.isNotEmpty) {
+        try {
+          await _socketService.send('chat_send', {
+            'receiverId': otherUserId,
+            'bookingId': bookingId,
+            'messageText': 'Missed call',
+            'messageType': 'call',
+            'clientMessageId': '${event.callId}_call_log',
+          });
+        } catch (_) {}
+      }
     } catch (e) {
       emit(CallError(message: 'Failed to reject call: $e'));
     }
@@ -527,6 +573,9 @@ class CallBloc extends Bloc<CallEvent, CallState> {
     Emitter<CallState> emit,
   ) async {
     try {
+      final otherUserId = _otherUserId;
+      final bookingId = _currentBookingId;
+
       await _apiService.post(ApiEndpoints.callUpdateStatus, {
         'callId': event.callId,
         'status': 'missed',
@@ -535,6 +584,18 @@ class CallBloc extends Bloc<CallEvent, CallState> {
 
       emit(CallEnded(callId: event.callId, duration: 0, reason: 'missed'));
       _resetCallSession();
+
+      if (bookingId != null && bookingId.isNotEmpty && otherUserId.isNotEmpty) {
+        try {
+          await _socketService.send('chat_send', {
+            'receiverId': otherUserId,
+            'bookingId': bookingId,
+            'messageText': 'Missed call',
+            'messageType': 'call',
+            'clientMessageId': '${event.callId}_call_log',
+          });
+        } catch (_) {}
+      }
     } catch (e) {
       emit(CallError(message: 'Failed to report missed call: $e'));
     }
@@ -695,6 +756,7 @@ class CallBloc extends Bloc<CallEvent, CallState> {
     await NotificationService().cancelCallNotification(event.callId);
 
     _currentCallId = event.callId;
+    _currentBookingId = event.bookingId.isNotEmpty ? event.bookingId : null;
     _currentCallType = event.callType;
     _otherUserId = event.callerId;
     _otherUserName = event.callerName;
@@ -757,6 +819,7 @@ class CallBloc extends Bloc<CallEvent, CallState> {
 
   void _resetCallSession() {
     _currentCallId = null;
+    _currentBookingId = null;
     _callStartTime = null;
     _otherUserId = '';
     _otherUserName = '';
