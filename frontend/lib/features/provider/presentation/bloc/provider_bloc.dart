@@ -902,10 +902,20 @@ class ProviderBloc extends Bloc<ProviderEvent, ProviderState> {
     final currentState = state;
 
     if (currentState is ProviderLoaded) {
-      // Add new booking to available bookings list
-      emit(currentState.copyWith(
-        availableBookings: [event.booking, ...currentState.availableBookings],
-      ));
+      if (event.booking.providerId != null && event.booking.providerId!.isNotEmpty) {
+        // Direct booking assigned to this provider → pending bookings section
+        emit(currentState.copyWith(
+          pendingBookings: [event.booking, ...currentState.pendingBookings],
+        ));
+      } else {
+        // Open request visible to all providers → available bookings section
+        emit(currentState.copyWith(
+          availableBookings: [event.booking, ...currentState.availableBookings],
+        ));
+      }
+    } else {
+      // Dashboard is still loading — fall back to a full reload so the booking appears
+      add(const ProviderLoadDashboardRequested());
     }
   }
 

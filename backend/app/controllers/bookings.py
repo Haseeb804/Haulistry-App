@@ -178,10 +178,12 @@ async def create_booking(booking: BookingCreate):
         }
         
         if booking_data.get('providerId'):
-            # Direct booking - emit only to assigned provider's room
-            await sio.emit('new_booking_request', booking_payload, room=f"provider_{booking_data['providerId']}")
+            # Direct booking — emit only to the assigned provider via their user room.
+            # NOTE: the gateway creates rooms named "user:{userId}", NOT "provider_{userId}".
+            from ..realtime.socketio_gateway import emit_to_user_event
+            await emit_to_user_event(booking_data['providerId'], 'new_booking_request', booking_payload)
         else:
-            # Open request - broadcast to all connected providers
+            # Open request — broadcast to all connected clients (providers will handle it).
             await sio.emit('new_booking_request', booking_payload)
 
         return BookingResponse(
