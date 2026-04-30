@@ -72,6 +72,8 @@ class _ProviderTrackingScreenState extends State<ProviderTrackingScreen> {
   bool _isBookingStatusLoaded = false;
   String? _currentBookingStatus;
   String? _cachedSeekerProfileImageUrl;
+  String? _cachedSeekerId;
+  String? _cachedSeekerName;
 
   bool get _isActiveServiceStatus {
     final status = (_currentBookingStatus ?? widget.bookingStatus ?? '').toLowerCase();
@@ -182,6 +184,8 @@ class _ProviderTrackingScreenState extends State<ProviderTrackingScreen> {
       final seekerId = (booking['seekerId'] ?? booking['seeker_id'])?.toString() ?? '';
       final seekerName = (booking['seekerName'] ?? booking['seeker_name'])?.toString() ?? 'Customer';
       _cachedSeekerProfileImageUrl ??= (booking['seekerProfileImageUrl'] ?? booking['seeker_profile_image_url'])?.toString();
+      if (seekerId.isNotEmpty) _cachedSeekerId = seekerId;
+      if (seekerName.isNotEmpty) _cachedSeekerName = seekerName;
 
       _currentBookingStatus = status;
       _isBookingStatusLoaded = true;
@@ -318,8 +322,8 @@ class _ProviderTrackingScreenState extends State<ProviderTrackingScreen> {
   }
 
   void _openSeekerChat() {
-    final seekerId = _booking?.seekerId;
-    final seekerName = _booking?.seekerName;
+    final seekerId = _booking?.seekerId ?? _cachedSeekerId;
+    final seekerName = _booking?.seekerName ?? _cachedSeekerName;
     if (seekerId == null || seekerId.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Seeker information not available')),
@@ -913,9 +917,9 @@ class _ProviderTrackingScreenState extends State<ProviderTrackingScreen> {
                         heroTag: 'provider_track_call',
                         backgroundColor: AppTheme.secondaryColor,
                         onPressed: () {
-                          final seekerId = _booking?.seekerId;
-                          final seekerName = _booking?.seekerName;
-                          if (seekerId != null) {
+                          final seekerId = _booking?.seekerId ?? _cachedSeekerId;
+                          final seekerName = _booking?.seekerName ?? _cachedSeekerName;
+                          if (seekerId != null && seekerId.isNotEmpty) {
                             context.read<CallBloc>().add(
                               InitiateCallRequested(
                                 receiverId: seekerId,
@@ -1067,9 +1071,9 @@ class _ProviderTrackingScreenState extends State<ProviderTrackingScreen> {
                                   child: InkWell(
                                     onTap: () {
                                       // Initiate voice call
-                                      final seekerId = _booking?.seekerId;
-                                      final seekerName = _booking?.seekerName;
-                                      if (seekerId != null) {
+                                      final seekerId = _booking?.seekerId ?? _cachedSeekerId;
+                                      final seekerName = _booking?.seekerName ?? _cachedSeekerName;
+                                      if (seekerId != null && seekerId.isNotEmpty) {
                                         context.read<CallBloc>().add(
                                           InitiateCallRequested(
                                             receiverId: seekerId,
@@ -1135,9 +1139,9 @@ class _ProviderTrackingScreenState extends State<ProviderTrackingScreen> {
                                 child: InkWell(
                                   onTap: () {
                                     // Initiate video call
-                                    final seekerId = _booking?.seekerId;
-                                    final seekerName = _booking?.seekerName;
-                                    if (seekerId != null) {
+                                    final seekerId = _booking?.seekerId ?? _cachedSeekerId;
+                                    final seekerName = _booking?.seekerName ?? _cachedSeekerName;
+                                    if (seekerId != null && seekerId.isNotEmpty) {
                                       context.read<CallBloc>().add(
                                         InitiateCallRequested(
                                           receiverId: seekerId,
