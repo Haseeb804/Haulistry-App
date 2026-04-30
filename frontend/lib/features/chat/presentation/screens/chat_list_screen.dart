@@ -112,6 +112,22 @@ class _ChatListScreenState extends State<ChatListScreen> {
                                 ],
                               ),
                             ),
+                            const Spacer(),
+                            GestureDetector(
+                              onTap: () => context.push(AppRoutes.callHistory),
+                              child: Container(
+                                padding: const EdgeInsets.all(10),
+                                decoration: BoxDecoration(
+                                  color: Colors.white.withOpacity(0.2),
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: const Icon(
+                                  Icons.call_rounded,
+                                  color: Colors.white,
+                                  size: 22,
+                                ),
+                              ),
+                            ),
                           ],
                         ),
                       ),

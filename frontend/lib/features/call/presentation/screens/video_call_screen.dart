@@ -259,10 +259,17 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
 
               return Stack(
                 children: [
-                  // Remote Video View
-                  if (state.remoteUid != null)
-                    RTCVideoView(_callService.remoteRenderer, objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover)
-                  else
+                  // Remote Video View — always in the tree so the renderer can
+                  // display frames the moment they arrive, independent of BLoC
+                  // state. An avatar overlay sits on top until the first frame.
+                  Positioned.fill(
+                    child: RTCVideoView(
+                      _callService.remoteRenderer,
+                      objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
+                    ),
+                  ),
+                  // Avatar placeholder shown until remote stream is active.
+                  if (state.remoteUid == null)
                     Builder(builder: (context) {
                       final remoteImageUrl = CallIdentityResolver.resolveProfileImageUrl(
                         preferredImageUrl: state.otherUserProfileImageUrl,

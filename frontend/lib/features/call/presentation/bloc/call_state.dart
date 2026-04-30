@@ -197,28 +197,34 @@ class CallHistoryItem extends Equatable {
   final String callerId;
   final String callerName;
   final String callerRole;
+  final String? callerProfileImageUrl;
   final String receiverId;
   final String receiverName;
   final String receiverRole;
+  final String? receiverProfileImageUrl;
   final String callType;
   final String status;
   final DateTime startedAt;
   final DateTime? endedAt;
   final int duration;
+  final String? bookingId;
 
   const CallHistoryItem({
     required this.id,
     required this.callerId,
     required this.callerName,
     this.callerRole = AppConstants.roleUser,
+    this.callerProfileImageUrl,
     required this.receiverId,
     required this.receiverName,
     this.receiverRole = AppConstants.roleUser,
+    this.receiverProfileImageUrl,
     required this.callType,
     required this.status,
     required this.startedAt,
     this.endedAt,
     required this.duration,
+    this.bookingId,
   });
 
   factory CallHistoryItem.fromJson(Map<String, dynamic> json) {
@@ -227,14 +233,17 @@ class CallHistoryItem extends Equatable {
       callerId: json['callerId'] ?? '',
       callerName: json['callerName'] ?? 'Unknown',
       callerRole: json['callerRole'] ?? AppConstants.roleUser,
+      callerProfileImageUrl: json['callerProfileImageUrl']?.toString(),
       receiverId: json['receiverId'] ?? '',
       receiverName: json['receiverName'] ?? 'Unknown',
       receiverRole: json['receiverRole'] ?? AppConstants.roleUser,
+      receiverProfileImageUrl: json['receiverProfileImageUrl']?.toString(),
       callType: json['callType'] ?? 'voice',
       status: json['status'] ?? 'ended',
       startedAt: DateTime.parse(json['startedAt'] ?? DateTime.now().toIso8601String()),
       endedAt: json['endedAt'] != null ? DateTime.parse(json['endedAt']) : null,
       duration: json['duration'] ?? 0,
+      bookingId: json['bookingId']?.toString(),
     );
   }
 
@@ -244,13 +253,16 @@ class CallHistoryItem extends Equatable {
         callerId,
         callerName,
         callerRole,
+        callerProfileImageUrl,
         receiverId,
         receiverName,
         receiverRole,
+        receiverProfileImageUrl,
         callType,
         status,
         startedAt,
         endedAt,
         duration,
+        bookingId,
       ];
 }

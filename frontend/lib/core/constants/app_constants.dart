@@ -183,6 +183,7 @@ class AppRoutes {
   static const String callOutgoing = '/call/outgoing';
   static const String callVoice = '/call/voice';
   static const String callVideo = '/call/video';
+  static const String callHistory = '/call/history';
 
   // Feedback
   static const String feedbackSeeker = '/feedback/seeker';
@@ -241,6 +242,7 @@ class ApiEndpoints {
   static const String callUpdateStatus = '/api/calls/update-status';
   static const String turnCredentials = '/api/calls/turn-credentials';
   static String callById(String callId) => '/api/calls/$callId';
+  static String callHistory(String userId) => '/api/calls/history/$userId';
 
   static String conversationMessages(String user1Id, String user2Id, String bookingId) =>
       '/api/messages/conversation/$user1Id/$user2Id/$bookingId';

@@ -62,6 +62,7 @@ import 'features/call/presentation/screens/incoming_call_screen.dart';
 import 'features/call/presentation/screens/outgoing_call_screen.dart';
 import 'features/call/presentation/screens/voice_call_screen.dart';
 import 'features/call/presentation/screens/video_call_screen.dart';
+import 'features/call/presentation/screens/call_history_screen.dart';
 import 'core/services/app_lifecycle_service.dart';
 import 'core/services/realtime_socket_service.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -469,6 +470,24 @@ class HaulistryApp extends StatelessWidget {
                   });
                 },
               ),
+              // Show a snackbar when a call fails to start (e.g., API error,
+              // user not authenticated, communication not allowed).  This makes
+              // the chat call buttons give visible feedback instead of silently
+              // doing nothing.
+              BlocListener<CallBloc, CallState>(
+                listenWhen: (previous, current) =>
+                    current is CallError && previous is! CallError,
+                listener: (context, state) {
+                  if (state is! CallError) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(state.message),
+                      backgroundColor: Theme.of(context).colorScheme.error,
+                      behavior: SnackBarBehavior.floating,
+                    ),
+                  );
+                },
+              ),
               // Redirect to active tracking/feedback screen on login.
               BlocListener<AuthBloc, AuthState>(
                 listenWhen: (previous, current) =>
@@ -857,7 +876,14 @@ final _router = GoRouter(
         );
       },
     ),
-    
+    GoRoute(
+      path: AppRoutes.callHistory,
+      builder: (context, state) => BlocProvider.value(
+        value: context.read<CallBloc>(),
+        child: const CallHistoryScreen(),
+      ),
+    ),
+
     // Tracking Route
     GoRoute(
       path: AppConstants.routeLegacyTrackingPattern,

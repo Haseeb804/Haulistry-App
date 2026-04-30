@@ -463,6 +463,18 @@ class CallBloc extends Bloc<CallEvent, CallState> {
     String otherUserId,
     String? userId,
   ) async {
+    // Notify the remote user FIRST — before leaveChannel() which can take seconds.
+    // This ensures the other side gets the call_end signal immediately.
+    if (otherUserId.isNotEmpty && event.callId.isNotEmpty && event.callId != 'pending') {
+      try {
+        await _socketService.send('call_end', {
+          'callId': event.callId,
+          'targetUserId': otherUserId,
+          'duration': event.duration,
+        });
+      } catch (_) {}
+    }
+
     try {
       await _callService.leaveChannel();
     } catch (_) {}
@@ -481,16 +493,6 @@ class CallBloc extends Bloc<CallEvent, CallState> {
         if (userId != null) 'userId': userId,
       });
     } catch (_) {}
-
-    if (otherUserId.isNotEmpty) {
-      try {
-        await _socketService.send('call_end', {
-          'callId': event.callId,
-          'targetUserId': otherUserId,
-          'duration': event.duration,
-        });
-      } catch (_) {}
-    }
   }
 
   Future<void> _onRejectCallRequested(
@@ -619,7 +621,6 @@ class CallBloc extends Bloc<CallEvent, CallState> {
         _resetCallSession();
         _callService.cancelSession();
         unawaited(() async {
-          try { await _callService.leaveChannel(); } catch (_) {}
           if (otherUserIdSnapshot.isNotEmpty && callIdSnapshot.isNotEmpty) {
             try {
               await _socketService.send('call_end', {
@@ -629,6 +630,7 @@ class CallBloc extends Bloc<CallEvent, CallState> {
               });
             } catch (_) {}
           }
+          try { await _callService.leaveChannel(); } catch (_) {}
         }());
       } else if (state is! CallEnded) {
         // Connecting-phase failure — notify the other participant so their
@@ -737,7 +739,7 @@ class CallBloc extends Bloc<CallEvent, CallState> {
     Emitter<CallState> emit,
   ) async {
     try {
-      final response = await _apiService.get('/api/calls/history/${event.userId}');
+      final response = await _apiService.get(ApiEndpoints.callHistory(event.userId));
 
       if (response['success'] == true) {
         final calls = (response['calls'] as List)
