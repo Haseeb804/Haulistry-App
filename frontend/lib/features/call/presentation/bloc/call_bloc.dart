@@ -8,6 +8,7 @@ import '../../../../core/services/api_service.dart';
 import '../../../../core/services/notification_service.dart';
 import '../../../../core/services/realtime_socket_service.dart';
 import '../../../../core/services/webrtc_call_service.dart';
+import '../../../../core/utils/call_identity_resolver.dart';
 import 'call_event.dart';
 import 'call_state.dart';
 
@@ -277,7 +278,7 @@ class CallBloc extends Bloc<CallEvent, CallState> {
         'callType': event.callType,
         'callerName': user.displayName ?? '',
         'callerRole': callerRole,
-        'callerProfileImageUrl': null,
+        'callerProfileImageUrl': user.photoURL,
       });
 
       if (response['success'] != true) {
@@ -317,6 +318,15 @@ class CallBloc extends Bloc<CallEvent, CallState> {
       _isLocalParticipantConnected = false;
       _pendingRemoteUid = null;
 
+      // Pre-cache the receiver's identity immediately so OutgoingCallScreen
+      // renders the avatar without an API round-trip.
+      CallIdentityResolver.preCacheIdentity(
+        userId: event.receiverId,
+        displayName: _otherUserName,
+        role: _otherUserRole,
+        profileImageUrl: _otherUserProfileImageUrl,
+      );
+
       emit(CallInitiated(
         callId: _currentCallId ?? '',
         receiverId: event.receiverId,
@@ -327,6 +337,13 @@ class CallBloc extends Bloc<CallEvent, CallState> {
         signalData: signalData,
       ));
 
+      // Use Neo4j image if available, fall back to Firebase Auth photoURL so
+      // the receiver's incoming screen gets the caller's avatar even when the
+      // Neo4j node has no profileImageUrl stored.
+      final callerImageForSignal = (neo4jCallerImage?.isNotEmpty == true)
+          ? neo4jCallerImage
+          : user.photoURL;
+
       await _socketService.send('call_request', {
         'callId': _currentCallId,
         'bookingId': event.bookingId,
@@ -334,7 +351,7 @@ class CallBloc extends Bloc<CallEvent, CallState> {
         'callType': event.callType,
         'callerName': neo4jCallerName.isNotEmpty ? neo4jCallerName : (user.displayName ?? ''),
         'callerRole': callerRole,
-        'callerProfileImageUrl': neo4jCallerImage,
+        'callerProfileImageUrl': callerImageForSignal,
         'signalData': signalData,
       });
     } catch (e) {
@@ -766,6 +783,15 @@ class CallBloc extends Bloc<CallEvent, CallState> {
     _otherUserProfileImageUrl =
         event.callerProfileImageUrl ?? _otherUserProfileImageUrl;
     _currentSignalData = event.signalData;
+
+    // Pre-cache the caller's identity so IncomingCallScreen renders the avatar
+    // instantly without an API round-trip.
+    CallIdentityResolver.preCacheIdentity(
+      userId: event.callerId,
+      displayName: event.callerName,
+      role: event.callerRole,
+      profileImageUrl: _otherUserProfileImageUrl,
+    );
 
     emit(CallRinging(
       callId: event.callId,

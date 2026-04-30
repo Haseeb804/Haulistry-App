@@ -111,6 +111,27 @@ class CallIdentityResolver {
     return null;
   }
 
+  /// Synchronously seeds the identity cache so that the next call to
+  /// [resolveParticipant] with the same [userId] returns immediately without an
+  /// API round-trip.  Only caches when [profileImageUrl] is non-empty; if the
+  /// image is missing the resolver is left free to fetch it via the API.
+  static void preCacheIdentity({
+    required String userId,
+    required String displayName,
+    required String role,
+    String? profileImageUrl,
+  }) {
+    final trimmedId = userId.trim();
+    if (trimmedId.isEmpty) return;
+    if ((profileImageUrl?.trim() ?? '').isEmpty) return;
+    _identityCache[trimmedId] = Future.value(CallParticipantIdentity(
+      userId: trimmedId,
+      displayName: displayName,
+      role: role,
+      profileImageUrl: profileImageUrl,
+    ));
+  }
+
   static Future<CallParticipantIdentity> resolveParticipant({
     required String userId,
     String? fallbackName,
