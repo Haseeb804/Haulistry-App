@@ -81,12 +81,26 @@ class AuthRepositoryImpl implements AuthRepository {
           return UserEntity.fromJson(data['user']);
         }
       }
-      
-      throw Exception('User data not found in database');
+
+      // Extract the backend error message so it surfaces to the user instead
+      // of being swallowed by the generic catch block below.
+      String backendMessage = 'Sign in failed. Please try again.';
+      try {
+        final errData = json.decode(response.body) as Map<String, dynamic>;
+        final detail = errData['detail']?.toString() ?? '';
+        if (detail.isNotEmpty) backendMessage = detail;
+      } catch (_) {}
+
+      if (response.statusCode == 404) {
+        throw Exception('Account not found. Please sign up first.');
+      }
+      throw Exception(backendMessage);
     } on FirebaseAuthException catch (e) {
       throw Exception(_getAuthErrorMessage(e.code));
+    } on SocketException {
+      throw Exception('Please check your internet connection and try again');
     } catch (e) {
-      throw Exception(_getNetworkErrorMessage(e));
+      throw _toUserFacingException(e);
     }
   }
 
