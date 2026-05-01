@@ -39,6 +39,9 @@ class WebRTCCallService {
   StreamSubscription<Map<String, dynamic>>? _socketSubscription;
   Timer? _connectionTimeoutTimer;
   final List<RTCIceCandidate> _pendingIceCandidates = [];
+  // Holds a webrtc_offer that arrived before _joinCall() created the peer
+  // connection (race: caller sends offer faster than receiver's camera init).
+  RTCSessionDescription? _pendingOffer;
 
   Future<void> initialize() async {
     if (_initialized) return;
@@ -227,6 +230,12 @@ class WebRTCCallService {
         'type': offer.type,
         'sdp': offer.sdp,
       });
+    } else if (_pendingOffer != null) {
+      // Receiver: an offer arrived before the peer connection was ready.
+      // Now that _peerConnection exists, process it immediately.
+      final queued = _pendingOffer!;
+      _pendingOffer = null;
+      await _handleIncomingOffer(queued.sdp!, null);
     }
   }
 
@@ -240,25 +249,18 @@ class WebRTCCallService {
     if (callId != null && _callId != null && callId != _callId) return;
 
     if (type == 'webrtc_offer') {
-      if (_peerConnection == null) return;
-
       final sdp = data['sdp']?.toString();
       if (sdp == null || sdp.isEmpty) return;
 
-      await _setRemoteDescription(RTCSessionDescription(sdp, 'offer'));
+      if (_peerConnection == null) {
+        // Peer connection not yet created — caller sent the offer faster than
+        // the receiver's camera/mic init finished. Queue it; _joinCall() will
+        // process it once the connection exists.
+        _pendingOffer = RTCSessionDescription(sdp, 'offer');
+        return;
+      }
 
-      final answer = await _peerConnection!.createAnswer({
-        'offerToReceiveAudio': true,
-        'offerToReceiveVideo': _videoEnabled,
-      });
-      await _peerConnection!.setLocalDescription(answer);
-
-      await _socket.send('webrtc_answer', {
-        'callId': _callId,
-        'targetUserId': data['fromUserId']?.toString() ?? _peerUserId,
-        'type': answer.type,
-        'sdp': answer.sdp,
-      });
+      await _handleIncomingOffer(sdp, data['fromUserId']?.toString());
       return;
     }
 
@@ -305,6 +307,28 @@ class WebRTCCallService {
         await _peerConnection!.addCandidate(candidate);
       }
     }
+  }
+
+  /// Processes an incoming SDP offer: sets remote description, creates answer,
+  /// and sends it back.  Extracted so both the real-time socket path and the
+  /// deferred (_pendingOffer) path share the same logic.
+  Future<void> _handleIncomingOffer(String sdp, String? fromUserId) async {
+    if (_peerConnection == null) return;
+
+    await _setRemoteDescription(RTCSessionDescription(sdp, 'offer'));
+
+    final answer = await _peerConnection!.createAnswer({
+      'offerToReceiveAudio': true,
+      'offerToReceiveVideo': _videoEnabled,
+    });
+    await _peerConnection!.setLocalDescription(answer);
+
+    await _socket.send('webrtc_answer', {
+      'callId': _callId,
+      'targetUserId': fromUserId ?? _peerUserId,
+      'type': answer.type,
+      'sdp': answer.sdp,
+    });
   }
 
   Future<List<Map<String, dynamic>>> _resolveIceServers() async {
@@ -436,6 +460,7 @@ class WebRTCCallService {
     _remoteDescriptionSet = false;
     _isRestartingIce = false;
     _pendingIceCandidates.clear();
+    _pendingOffer = null;
     _remoteStream = null;
   }
 

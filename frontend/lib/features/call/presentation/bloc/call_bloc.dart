@@ -106,7 +106,10 @@ class CallBloc extends Bloc<CallEvent, CallState> {
 
       if (type == 'call_accept') {
         final callId = data['callId']?.toString() ?? '';
-        if (callId.isEmpty || callId != _currentCallId) return;
+        if (callId.isEmpty) return;
+        // Allow if callId matches, OR if we're still on 'pending' (API hasn't
+        // responded yet but receiver answered very fast).
+        if (callId != _currentCallId && _currentCallId != 'pending') return;
 
         add(CallAnswerAcceptedByReceiver(
           callId: callId,
@@ -118,7 +121,8 @@ class CallBloc extends Bloc<CallEvent, CallState> {
 
       if (type == 'call_reject' || type == 'call_end') {
         final callId = data['callId']?.toString() ?? '';
-        if (callId.isEmpty || callId != _currentCallId) return;
+        if (callId.isEmpty) return;
+        if (callId != _currentCallId && _currentCallId != 'pending') return;
 
         add(RemoteCallStatusUpdated(
           callId: callId,
@@ -214,8 +218,9 @@ class CallBloc extends Bloc<CallEvent, CallState> {
       otherUserProfileImageUrl = initiatedState.receiverProfileImageUrl;
     }
 
-    if (callId.isEmpty) {
-      emit(const CallError(message: 'Unable to resolve active call while connecting'));
+    // 'pending' means the API hasn't confirmed the call ID yet — do not
+    // transition to Connected until the real ID is in place.
+    if (callId.isEmpty || callId == 'pending') {
       return;
     }
 
@@ -260,8 +265,6 @@ class CallBloc extends Bloc<CallEvent, CallState> {
     Emitter<CallState> emit,
   ) async {
     try {
-      emit(const CallLoading());
-
       final user = _auth.currentUser;
       if (user == null) {
         emit(const CallError(message: 'User not authenticated'));
@@ -272,6 +275,42 @@ class CallBloc extends Bloc<CallEvent, CallState> {
           ? AppConstants.roleSeeker
           : AppConstants.roleProvider;
 
+      // ── Step 1: Show outgoing call screen IMMEDIATELY (no network wait) ──
+      // WhatsApp-style: UI appears on button press; API failure pops it with an error.
+      _currentCallType = event.callType;
+      _otherUserId = event.receiverId;
+      _otherUserName = event.receiverName;
+      _otherUserRole = event.receiverRole;
+      _otherUserProfileImageUrl = event.receiverProfileImageUrl;
+      _currentBookingId = event.bookingId.isNotEmpty ? event.bookingId : null;
+      _isLocalParticipantConnected = false;
+      _pendingRemoteUid = null;
+
+      // Pre-cache identity so the outgoing screen renders avatar instantly.
+      CallIdentityResolver.preCacheIdentity(
+        userId: event.receiverId,
+        displayName: event.receiverName,
+        role: event.receiverRole,
+        profileImageUrl: event.receiverProfileImageUrl,
+      );
+
+      // Start camera preview in parallel with the API call for video calls.
+      if (event.callType == AppConstants.callTypeVideo) {
+        unawaited(_callService.startLocalPreview());
+      }
+
+      // Emit with pending ID so the outgoing call screen is visible immediately.
+      emit(CallInitiated(
+        callId: 'pending',
+        receiverId: event.receiverId,
+        receiverName: _otherUserName,
+        receiverRole: _otherUserRole,
+        receiverProfileImageUrl: _otherUserProfileImageUrl,
+        callType: event.callType,
+        signalData: const {},
+      ));
+
+      // ── Step 2: API call (UI is already showing) ──
       final response = await _apiService.post(ApiEndpoints.callInitiate, {
         'callerId': user.uid,
         'receiverId': event.receiverId,
@@ -283,7 +322,17 @@ class CallBloc extends Bloc<CallEvent, CallState> {
       });
 
       if (response['success'] != true) {
+        // API rejected — pop the already-visible call screen gracefully.
+        emit(CallEnded(callId: 'pending', duration: 0, reason: 'initiation_failed'));
         emit(CallError(message: response['message']?.toString() ?? 'Failed to initiate call'));
+        _resetCallSession();
+        return;
+      }
+
+      // Guard: if the user cancelled the call while the API was in-flight
+      // (EndCallRequested was processed concurrently), abort here.
+      if (state is CallEnded || state is CallError || state is CallInitial) {
+        _resetCallSession();
         return;
       }
 
@@ -292,35 +341,22 @@ class CallBloc extends Bloc<CallEvent, CallState> {
           ? response['signalData'] as Map<String, dynamic>
           : <String, dynamic>{};
 
-      // Use names and images returned by the backend — they come from Neo4j
-      // directly so they are correct even for phone-auth users whose Firebase
-      // displayName / photoURL are null.
+      // Use names and images returned by Neo4j — correct even for phone-auth
+      // users whose Firebase displayName / photoURL are null.
       final neo4jCallerName = call['callerName']?.toString() ?? '';
       final neo4jCallerImage = call['callerProfileImageUrl']?.toString();
 
       _currentCallId = call['id']?.toString() ?? '';
-      _currentBookingId = event.bookingId.isNotEmpty ? event.bookingId : null;
-      _currentCallType = event.callType;
-      _otherUserId = event.receiverId;
+      _currentSignalData = signalData;
+      // Prefer Neo4j name/image over the local values set above.
       _otherUserName = (call['receiverName']?.toString().isNotEmpty == true)
           ? call['receiverName']!.toString()
           : event.receiverName;
-      _otherUserRole = event.receiverRole;
       _otherUserProfileImageUrl = (call['receiverProfileImageUrl'] as String?)?.isNotEmpty == true
           ? call['receiverProfileImageUrl'] as String?
           : event.receiverProfileImageUrl;
 
-      // Start local camera preview immediately for video calls so the caller
-      // can see themselves during the ringing phase (WhatsApp-like UX).
-      if (event.callType == AppConstants.callTypeVideo) {
-        unawaited(_callService.startLocalPreview());
-      }
-      _currentSignalData = signalData;
-      _isLocalParticipantConnected = false;
-      _pendingRemoteUid = null;
-
-      // Pre-cache the receiver's identity immediately so OutgoingCallScreen
-      // renders the avatar without an API round-trip.
+      // Update identity cache with server-confirmed values.
       CallIdentityResolver.preCacheIdentity(
         userId: event.receiverId,
         displayName: _otherUserName,
@@ -328,6 +364,7 @@ class CallBloc extends Bloc<CallEvent, CallState> {
         profileImageUrl: _otherUserProfileImageUrl,
       );
 
+      // ── Step 3: Re-emit with real call ID so state consumers can track it ──
       emit(CallInitiated(
         callId: _currentCallId ?? '',
         receiverId: event.receiverId,
@@ -338,9 +375,6 @@ class CallBloc extends Bloc<CallEvent, CallState> {
         signalData: signalData,
       ));
 
-      // Use Neo4j image if available, fall back to Firebase Auth photoURL so
-      // the receiver's incoming screen gets the caller's avatar even when the
-      // Neo4j node has no profileImageUrl stored.
       final callerImageForSignal = (neo4jCallerImage?.isNotEmpty == true)
           ? neo4jCallerImage
           : user.photoURL;
@@ -356,7 +390,12 @@ class CallBloc extends Bloc<CallEvent, CallState> {
         'signalData': signalData,
       });
     } catch (e) {
+      // Network or unexpected error — pop the call screen if it was already shown.
+      if (state is CallInitiated) {
+        emit(CallEnded(callId: _currentCallId ?? 'pending', duration: 0, reason: 'initiation_failed'));
+      }
       emit(CallError(message: 'Failed to initiate call: $e'));
+      _resetCallSession();
     }
   }
 
@@ -377,6 +416,19 @@ class CallBloc extends Bloc<CallEvent, CallState> {
       if (user == null) {
         emit(const CallError(message: 'User not authenticated'));
         return;
+      }
+
+      // _otherUserId is normally set by _onIncomingCallReceived.
+      // FCM-path calls may deliver AnswerCallRequested before IncomingCallReceived
+      // fully processes — recover callerId from signalData so ICE candidates have
+      // a valid targetUserId instead of sending to an empty room and silently failing.
+      if (_otherUserId.isEmpty) {
+        final fallbackCallerId = event.signalData['callerId']?.toString() ?? '';
+        if (fallbackCallerId.isEmpty) {
+          emit(const CallError(message: 'Cannot answer: caller identity unknown. Please try again.'));
+          return;
+        }
+        _otherUserId = fallbackCallerId;
       }
 
       // Emit UI state immediately so receiver sees the call screen without delay.

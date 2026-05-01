@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from collections import defaultdict
 from datetime import datetime
 from typing import Any
@@ -242,8 +243,11 @@ async def typing_event(sid: str, data: dict[str, Any]):
 
 @sio.on("chat_send")
 async def chat_send(sid: str, data: dict[str, Any]):
+    t0 = time.monotonic()
+
     sender_id = _sid_to_user.get(sid)
     if not sender_id:
+        logger.warning("chat_send rejected: unauthenticated sid=%s", sid)
         return {"ok": False, "message": "Unauthenticated socket session"}
 
     receiver_id = str(data.get("receiverId") or "").strip()
@@ -253,13 +257,35 @@ async def chat_send(sid: str, data: dict[str, Any]):
     media_duration = data.get("mediaDuration")
     client_message_id = str(data.get("clientMessageId") or "").strip()
 
+    def _log_result(ok: bool, reason: str, extra: dict | None = None) -> dict:
+        elapsed_ms = round((time.monotonic() - t0) * 1000)
+        log = {
+            "sender_id": sender_id,
+            "receiver_id": receiver_id,
+            "booking_id": booking_id,
+            "message_type": message_type,
+            "client_message_id": client_message_id,
+            "ok": ok,
+            "reason": reason,
+            "elapsed_ms": elapsed_ms,
+            **(extra or {}),
+        }
+        if ok:
+            logger.info("chat_send ok", extra=log)
+        else:
+            logger.error("chat_send failed: %s", reason, extra=log)
+        return {"ok": ok, "message": reason} if not ok else {}
+
     if not receiver_id or not booking_id:
+        _log_result(False, "receiverId and bookingId are required")
         return {"ok": False, "message": "receiverId and bookingId are required"}
 
     if message_type == "text" and not message_text:
+        _log_result(False, "messageText is required for text messages")
         return {"ok": False, "message": "messageText is required for text messages"}
 
     if client_message_id and await redis_client.is_duplicate_message(sender_id, client_message_id):
+        logger.info("chat_send duplicate skipped: sender=%s client_id=%s", sender_id, client_message_id)
         return {"ok": True, "type": "chat_sent", "data": {"clientMessageId": client_message_id, "status": "duplicate"}}
 
     created = Message.create_message(
@@ -272,6 +298,8 @@ async def chat_send(sid: str, data: dict[str, Any]):
     )
 
     if not created:
+        # Most common causes: booking not found, participants mismatch, wrong booking status.
+        _log_result(False, "Message.create_message returned None — check booking status and participant IDs")
         return {"ok": False, "message": "Failed to create message"}
 
     ack_payload = {
@@ -305,11 +333,13 @@ async def chat_send(sid: str, data: dict[str, Any]):
             },
             room=_room_for_user(sender_id),
         )
+        _log_result(True, "delivered via socket", {"receiver_online": True})
     else:
         await redis_client.enqueue_pending(receiver_id, receiver_payload)
         sender_name = created.get("senderName") or "User"
         preview = "📎 Media" if message_type != "text" else (message_text[:120] or "New message")
         asyncio.create_task(_send_chat_push(receiver_id, sender_name, preview, booking_id))
+        _log_result(True, "queued + FCM push sent", {"receiver_online": False})
 
     return ack_payload
 

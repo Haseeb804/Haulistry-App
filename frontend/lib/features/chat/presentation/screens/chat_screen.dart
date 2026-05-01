@@ -294,8 +294,11 @@ class _ChatScreenState extends State<ChatScreen> {
       });
     } catch (_) {
       if (!mounted) return;
+      // On API error during a periodic re-check, keep the last known value so
+      // a transient network hiccup doesn't silently block the user from
+      // messaging or calling. Only the initial load defaults to false.
       setState(() {
-        _isCommunicationAllowed = false;
+        // _isCommunicationAllowed intentionally unchanged — preserve last value.
         _isCheckingCommunication = false;
       });
     }
@@ -383,59 +386,79 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<void> _uploadAndSendVoiceMessage(File audioFile, int duration) async {
+    if (!_isCommunicationAllowed) {
+      _showCommunicationBlockedMessage();
+      return;
+    }
+
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null || widget.bookingId == null) return;
+
+    setState(() => _isSending = true);
+
+    final clientMessageId = '${user.uid}_${DateTime.now().millisecondsSinceEpoch}';
+    final optimisticId = 'pending_$clientMessageId';
+
+    // Show a placeholder immediately — don't wait for server confirmation.
+    final optimisticMsg = ChatMessage(
+      id: optimisticId,
+      senderId: user.uid,
+      senderName: user.displayName ?? 'Me',
+      message: '',
+      messageType: 'voice',
+      voiceUrl: null,
+      voiceDuration: duration,
+      timestamp: DateTime.now(),
+      isRead: false,
+    );
+    setState(() {
+      _backendMessages = [..._backendMessages, optimisticMsg];
+    });
+    _scrollToBottom();
+
     try {
-      if (!_isCommunicationAllowed) {
-        _showCommunicationBlockedMessage();
-        return;
-      }
-
-      setState(() => _isSending = true);
-
-      // Send to backend
-      final user = FirebaseAuth.instance.currentUser;
-      if (user == null || widget.bookingId == null) {
-        throw Exception('User not authenticated or booking ID missing');
-      }
-
       final audioBytes = await audioFile.readAsBytes();
       final encoded = base64Encode(audioBytes);
       final voiceDataUrl = 'data:audio/m4a;base64,$encoded';
 
-      await _socketService.sendWithAck('chat_send', {
+      final ack = await _socketService.sendWithAck('chat_send', {
         'receiverId': widget.otherUserId,
         'bookingId': widget.bookingId,
         'messageText': voiceDataUrl,
         'messageType': 'voice',
         'mediaDuration': duration,
-        'clientMessageId': '${user.uid}_${DateTime.now().millisecondsSinceEpoch}',
+        'clientMessageId': clientMessageId,
       }, retries: 0);
-      // The server will echo a chat_sent event that the socket listener already
-      // appends to _backendMessages. No separate reload needed.
-      _scrollToBottom();
 
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text('Voice message sent'),
-            backgroundColor: AppTheme.successColor,
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          ),
-        );
+      if (!mounted) return;
+
+      // Remove optimistic placeholder; the chat_sent socket event will append
+      // the server-confirmed message with a real ID and playable URL.
+      setState(() {
+        _backendMessages = _backendMessages.where((m) => m.id != optimisticId).toList();
+      });
+
+      if (ack == null || ack['ok'] != true) {
+        throw Exception(ack?['message']?.toString() ?? 'Server rejected voice message');
       }
+
+      _scrollToBottom();
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to send voice message: $e'),
-            backgroundColor: AppTheme.errorColor,
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          ),
-        );
-      }
+      if (!mounted) return;
+      // Remove placeholder and show actionable error.
+      setState(() {
+        _backendMessages = _backendMessages.where((m) => m.id != optimisticId).toList();
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to send voice message: $e'),
+          backgroundColor: AppTheme.errorColor,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ),
+      );
     } finally {
-      setState(() => _isSending = false);
+      if (mounted) setState(() => _isSending = false);
     }
   }
 
@@ -498,49 +521,84 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<void> _uploadAndSendImage(CrossPlatformImage image) async {
-    try {
-      final user = FirebaseAuth.instance.currentUser;
-      if (user == null) {
-        throw Exception('User not authenticated');
-      }
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
 
-      if (_useBackendMessaging) {
-        final ext = _detectImageFormat(image.bytes).replaceFirst('.', '').toLowerCase();
-        final mime = ext == 'png'
-            ? 'image/png'
-            : ext == 'gif'
-                ? 'image/gif'
-                : ext == 'webp'
-                    ? 'image/webp'
-                    : ext == 'bmp'
-                        ? 'image/bmp'
-                        : 'image/jpeg';
-        final encoded = base64Encode(image.bytes);
-        final imageDataUrl = 'data:$mime;base64,$encoded';
-
-        await _socketService.sendWithAck('chat_send', {
-          'receiverId': widget.otherUserId,
-          'bookingId': widget.bookingId,
-          'messageText': imageDataUrl,
-          'messageType': 'image',
-          'clientMessageId': '${user.uid}_${DateTime.now().millisecondsSinceEpoch}',
-        }, retries: 0);
-        // chat_sent socket event appends the image to _backendMessages.
-        _scrollToBottom();
-      } else {
-        throw Exception('Image sharing is only supported via booking chat with Neo4j backend');
-      }
-    } catch (e) {
+    if (!_useBackendMessaging) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to upload image: $e'),
-            backgroundColor: AppTheme.errorColor,
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          ),
+          const SnackBar(content: Text('Image sharing requires an active booking.')),
         );
       }
+      return;
+    }
+
+    final clientMessageId = '${user.uid}_${DateTime.now().millisecondsSinceEpoch}';
+    final optimisticId = 'pending_$clientMessageId';
+
+    // Show the image immediately from local bytes — no upload round-trip needed.
+    final ext = _detectImageFormat(image.bytes).replaceFirst('.', '').toLowerCase();
+    final mime = ext == 'png'
+        ? 'image/png'
+        : ext == 'gif'
+            ? 'image/gif'
+            : ext == 'webp'
+                ? 'image/webp'
+                : ext == 'bmp'
+                    ? 'image/bmp'
+                    : 'image/jpeg';
+    final encoded = base64Encode(image.bytes);
+    final imageDataUrl = 'data:$mime;base64,$encoded';
+
+    final optimisticMsg = ChatMessage(
+      id: optimisticId,
+      senderId: user.uid,
+      senderName: user.displayName ?? 'Me',
+      message: '',
+      messageType: 'image',
+      imageUrl: imageDataUrl,
+      timestamp: DateTime.now(),
+      isRead: false,
+    );
+    setState(() {
+      _backendMessages = [..._backendMessages, optimisticMsg];
+    });
+    _scrollToBottom();
+
+    try {
+      final ack = await _socketService.sendWithAck('chat_send', {
+        'receiverId': widget.otherUserId,
+        'bookingId': widget.bookingId,
+        'messageText': imageDataUrl,
+        'messageType': 'image',
+        'clientMessageId': clientMessageId,
+      }, retries: 0);
+
+      if (!mounted) return;
+
+      // Remove placeholder; chat_sent socket event will insert the confirmed message.
+      setState(() {
+        _backendMessages = _backendMessages.where((m) => m.id != optimisticId).toList();
+      });
+
+      if (ack == null || ack['ok'] != true) {
+        throw Exception(ack?['message']?.toString() ?? 'Server rejected image');
+      }
+
+      _scrollToBottom();
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _backendMessages = _backendMessages.where((m) => m.id != optimisticId).toList();
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to send image: $e'),
+          backgroundColor: AppTheme.errorColor,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ),
+      );
     }
   }
 
@@ -640,21 +698,58 @@ class _ChatScreenState extends State<ChatScreen> {
           _scrollToBottom();
           return;
         }
+        // ok=true but no message in payload — server accepted the send.
+        // The chat_sent socket event may arrive shortly; fall back to a
+        // full reload to ensure the message appears.
+        setState(() {
+          _backendMessages = _backendMessages.where((m) => m.id != optimisticId).toList();
+        });
+        await _loadBackendMessages();
+        _scrollToBottom();
+        return;
       }
 
-      // Fallback: remove optimistic message and reload from backend.
-      setState(() {
-        _backendMessages = _backendMessages.where((m) => m.id != optimisticId).toList();
-      });
-      await _loadBackendMessages();
-      _scrollToBottom();
-    } catch (_) {
-      if (!mounted) return;
-      // Remove optimistic message and restore input for manual retry.
+      // Server returned ok=false — surface the reason and let the user retry.
+      final serverReason = ack?['message']?.toString() ?? 'Message not delivered';
       setState(() {
         _backendMessages = _backendMessages.where((m) => m.id != optimisticId).toList();
       });
       _messageController.text = message;
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(serverReason),
+            backgroundColor: AppTheme.errorColor,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            action: SnackBarAction(
+              label: 'Retry',
+              textColor: Colors.white,
+              onPressed: () => _sendMessageViaBackend(message),
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      // Network/socket error — restore the input so the user can retry manually.
+      setState(() {
+        _backendMessages = _backendMessages.where((m) => m.id != optimisticId).toList();
+      });
+      _messageController.text = message;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Failed to send — tap Retry or check your connection'),
+          backgroundColor: AppTheme.errorColor,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          action: SnackBarAction(
+            label: 'Retry',
+            textColor: Colors.white,
+            onPressed: () => _sendMessageViaBackend(message),
+          ),
+        ),
+      );
     }
   }
 
