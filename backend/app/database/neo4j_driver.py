@@ -38,6 +38,12 @@ class Neo4jDriver:
         """Initialize Neo4j driver"""
         try:
             uri = self._normalize_neo4j_uri(settings.NEO4J_URI)
+            pwd = settings.NEO4J_PASSWORD
+            logger.warning(
+                "[NEO4J] uri=%s user=%r pwd_len=%d pwd_prefix=%s",
+                uri, settings.NEO4J_USERNAME, len(pwd),
+                pwd[:4] if len(pwd) >= 4 else "???"
+            )
             self._driver = GraphDatabase.driver(
                 uri,
                 auth=(settings.NEO4J_USERNAME, settings.NEO4J_PASSWORD),
@@ -45,7 +51,7 @@ class Neo4jDriver:
                 max_connection_pool_size=50,
                 connection_acquisition_timeout=60
             )
-            logger.info(f"Neo4j driver initialized for {uri}")
+            logger.info("Neo4j driver initialized for %s", uri)
         except Exception as e:
             logger.error(f"Failed to initialize Neo4j driver: {str(e)}", exc_info=True)
             self._driver = None
