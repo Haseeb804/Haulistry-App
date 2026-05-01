@@ -6,20 +6,37 @@ from pydantic_settings import BaseSettings
 from pydantic import field_validator, model_validator
 from dotenv import load_dotenv
 
-# Load .env from multiple possible locations
+# Load .env from multiple possible locations.
+# override=True ensures .env file values always win over any blank/corrupt
+# environment variables that may have been injected by the platform (e.g.
+# Railway setting NEO4J_PASSWORD="" accidentally).
 env_paths = [
     Path(__file__).parent.parent / ".env",  # backend/.env
     Path(__file__).parent.parent.parent / ".env",  # root .env
 ]
 for env_path in env_paths:
     if env_path.exists():
-        load_dotenv(env_path)
+        load_dotenv(env_path, override=True)
         break
+
+
+_NEO4J_ENV_KEYS = {
+    'NEO4J_URI': ('NEO4J_URI', 'NEO4J_URL'),
+    'NEO4J_USERNAME': ('NEO4J_USERNAME', 'NEO4J_USER'),
+    'NEO4J_PASSWORD': ('NEO4J_PASSWORD',),
+    'NEO4J_DATABASE': ('NEO4J_DATABASE',),
+}
+_NEO4J_HARDCODED_DEFAULTS = {
+    'NEO4J_URI': 'bolt://localhost:7687',
+    'NEO4J_USERNAME': 'neo4j',
+    'NEO4J_PASSWORD': 'password',
+    'NEO4J_DATABASE': 'neo4j',
+}
 
 
 class Settings(BaseSettings):
     """Application settings and configuration"""
-    
+
     # Application
     APP_NAME: str = "Haulistry Backend"
     VERSION: str = "1.0.0"
@@ -66,13 +83,24 @@ class Settings(BaseSettings):
     @model_validator(mode='before')
     @classmethod
     def strip_bad_prefixes(cls, values: dict) -> dict:
-        """Strip accidental leading tab/space/= from ALL env var values (Railway copy-paste artifact)."""
+        """Strip accidental leading tab/space/= from ALL env var values (Railway copy-paste artifact).
+        Also rescues empty critical credentials by re-reading from os.environ."""
         cleaned = {}
         for k, v in values.items():
             if isinstance(v, str):
                 s = v.strip()
                 if s.startswith('='):
                     s = s.lstrip('=').strip()
+                # For empty critical credentials, try direct os.environ lookup
+                # (already reloaded via load_dotenv(override=True) at module import time)
+                if not s and k in _NEO4J_ENV_KEYS:
+                    for env_key in _NEO4J_ENV_KEYS[k]:
+                        direct = os.environ.get(env_key, '').strip().lstrip('=').strip()
+                        if direct:
+                            s = direct
+                            break
+                    if not s:
+                        s = _NEO4J_HARDCODED_DEFAULTS.get(k, '')
                 cleaned[k] = s
             else:
                 cleaned[k] = v
