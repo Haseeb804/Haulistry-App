@@ -629,15 +629,6 @@ class _TrackingScreenState extends State<TrackingScreen> {
             callType: callType,
           ),
         );
-
-    context.push(AppRoutes.callOutgoing, extra: {
-      'callId': 'pending',
-      'receiverId': providerId,
-      'receiverName': providerName,
-      'receiverRole': AppConstants.roleProvider,
-      'receiverProfileImageUrl': providerImageUrl,
-      'callType': callType,
-    });
   }
 
   void _messageProvider() {

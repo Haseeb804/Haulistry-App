@@ -129,7 +129,8 @@ class _OutgoingCallScreenState extends State<OutgoingCallScreen>
         ? AppRoutes.callVoice
         : AppRoutes.callVideo;
 
-    context.go(route, extra: {
+    context.pop();
+    context.push(route, extra: {
       'callId': callId,
       'otherUserId': widget.receiverId,
       'otherUserName': _resolveDisplayName(state),

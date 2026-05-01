@@ -79,7 +79,8 @@ class _IncomingCallScreenState extends State<IncomingCallScreen> {
     return BlocListener<CallBloc, CallState>(
       listener: (context, state) {
         if (state is CallConnecting) {
-          context.go(route, extra: {
+          context.pop();
+          context.push(route, extra: {
             'callId': widget.callId,
             'otherUserId': widget.callerId,
             'otherUserName': displayName,

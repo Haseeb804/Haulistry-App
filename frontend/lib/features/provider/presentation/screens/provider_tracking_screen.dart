@@ -930,14 +930,6 @@ class _ProviderTrackingScreenState extends State<ProviderTrackingScreen> {
                                 callType: AppConstants.callTypeVoice,
                               ),
                             );
-                            context.push(AppRoutes.callOutgoing, extra: {
-                              'callId': 'pending',
-                              'receiverId': seekerId,
-                              'receiverName': seekerName ?? 'Seeker',
-                              'receiverRole': AppConstants.roleSeeker,
-                              'receiverProfileImageUrl': _cachedSeekerProfileImageUrl,
-                              'callType': AppConstants.callTypeVoice,
-                            });
                           }
                         },
                         child: const Icon(Icons.call_rounded, color: Colors.white),
@@ -1084,14 +1076,6 @@ class _ProviderTrackingScreenState extends State<ProviderTrackingScreen> {
                                             callType: AppConstants.callTypeVoice,
                                           ),
                                         );
-                                        context.push(AppRoutes.callOutgoing, extra: {
-                                          'callId': 'pending',
-                                          'receiverId': seekerId,
-                                          'receiverName': seekerName ?? 'Seeker',
-                                          'receiverRole': AppConstants.roleSeeker,
-                                          'receiverProfileImageUrl': _cachedSeekerProfileImageUrl,
-                                          'callType': AppConstants.callTypeVoice,
-                                        });
                                       } else {
                                         ScaffoldMessenger.of(context).showSnackBar(
                                           const SnackBar(content: Text('Seeker information not available')),
@@ -1152,14 +1136,6 @@ class _ProviderTrackingScreenState extends State<ProviderTrackingScreen> {
                                           callType: AppConstants.callTypeVideo,
                                         ),
                                       );
-                                      context.push(AppRoutes.callOutgoing, extra: {
-                                        'callId': 'pending',
-                                        'receiverId': seekerId,
-                                        'receiverName': seekerName ?? 'Seeker',
-                                        'receiverRole': AppConstants.roleSeeker,
-                                        'receiverProfileImageUrl': _cachedSeekerProfileImageUrl,
-                                        'callType': AppConstants.callTypeVideo,
-                                      });
                                     } else {
                                       ScaffoldMessenger.of(context).showSnackBar(
                                         const SnackBar(content: Text('Seeker information not available')),

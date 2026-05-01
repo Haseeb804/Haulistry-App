@@ -63,6 +63,7 @@ import 'features/call/presentation/screens/outgoing_call_screen.dart';
 import 'features/call/presentation/screens/voice_call_screen.dart';
 import 'features/call/presentation/screens/video_call_screen.dart';
 import 'features/call/presentation/screens/call_history_screen.dart';
+import 'features/call/presentation/widgets/floating_call_bar.dart';
 import 'core/services/app_lifecycle_service.dart';
 import 'core/services/realtime_socket_service.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -497,7 +498,15 @@ class HaulistryApp extends StatelessWidget {
                 },
               ),
             ],
-            child: child ?? const SizedBox.shrink(),
+            child: Stack(
+              children: [
+                child ?? const SizedBox.shrink(),
+                const Align(
+                  alignment: Alignment.topCenter,
+                  child: FloatingCallBar(),
+                ),
+              ],
+            ),
           );
         },
         title: AppConstants.appName,

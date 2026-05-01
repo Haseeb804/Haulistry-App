@@ -6,6 +6,7 @@ import 'package:flutter_webrtc/flutter_webrtc.dart';
 import '../bloc/call_bloc.dart';
 import '../bloc/call_event.dart';
 import '../bloc/call_state.dart';
+import '../../../../core/services/call_minimize_service.dart';
 import '../../../../core/services/webrtc_call_service.dart';
 import '../../../../core/constants/app_constants.dart';
 import '../../../../core/utils/call_identity_resolver.dart';
@@ -38,10 +39,14 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
   bool _showControls = true;
   Timer? _controlsTimer;
   CallParticipantIdentity? _resolvedOtherUser;
+  // Set once on first CallConnected build; passed to timer so restore keeps correct elapsed time.
+  Duration? _timerInitialDuration;
 
   @override
   void initState() {
     super.initState();
+    // Ensure the floating bar hides when this screen is (re-)pushed.
+    CallMinimizeService.instance.restore();
     _startControlsTimer();
     // Only fetch from API when widget doesn't already carry the identity info.
     if (widget.otherUserName.isEmpty || widget.otherUserProfileImageUrl == null) {
@@ -93,19 +98,29 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return BlocListener<CallBloc, CallState>(
-      listener: (context, state) {
-        if (state is CallEnded) {
-          context.pop();
-        } else if (state is CallError) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(state.message)),
-          );
-          context.pop();
-        }
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        // Back gesture → minimize to floating bar instead of ending the call.
+        CallMinimizeService.instance.minimize();
+        if (context.mounted && context.canPop()) context.pop();
       },
-      child: Scaffold(
-        backgroundColor: Colors.black,
+      child: BlocListener<CallBloc, CallState>(
+        listener: (context, state) {
+          if (state is CallEnded) {
+            CallMinimizeService.instance.restore();
+            context.pop();
+          } else if (state is CallError) {
+            CallMinimizeService.instance.restore();
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text(state.message)),
+            );
+            context.pop();
+          }
+        },
+        child: Scaffold(
+          backgroundColor: Colors.black,
         body: GestureDetector(
           onTap: _resetControlsTimer,
           child: BlocBuilder<CallBloc, CallState>(
@@ -256,6 +271,9 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
                 );
               }
 
+              // Compute timer offset once so restore keeps the correct elapsed time.
+              _timerInitialDuration ??= DateTime.now().difference(state.connectedAt);
+
               return Stack(
                 children: [
                   // Remote Video View — always in the tree so the renderer can
@@ -394,6 +412,7 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
                           borderRadius: BorderRadius.circular(20),
                         ),
                         child: _CallDurationTimer(
+                          initialDuration: _timerInitialDuration ?? Duration.zero,
                           onTick: (d) => _callDuration = d,
                           textStyle: const TextStyle(
                             color: Colors.white,
@@ -500,6 +519,7 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
           ),
         ),
       ),
+    ),
     );
   }
 }
@@ -536,19 +556,21 @@ class _VideoCallControlButton extends StatelessWidget {
 class _CallDurationTimer extends StatefulWidget {
   final void Function(Duration)? onTick;
   final TextStyle? textStyle;
-  const _CallDurationTimer({this.onTick, this.textStyle});
+  final Duration initialDuration;
+  const _CallDurationTimer({this.onTick, this.textStyle, this.initialDuration = Duration.zero});
 
   @override
   State<_CallDurationTimer> createState() => _CallDurationTimerState();
 }
 
 class _CallDurationTimerState extends State<_CallDurationTimer> {
-  Duration _duration = Duration.zero;
+  late Duration _duration;
   Timer? _timer;
 
   @override
   void initState() {
     super.initState();
+    _duration = widget.initialDuration;
     _timer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!mounted) return;
       setState(() => _duration = Duration(seconds: _duration.inSeconds + 1));
