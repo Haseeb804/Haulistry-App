@@ -666,6 +666,25 @@ class AuthRepositoryImpl implements AuthRepository {
       return Exception(_getNetworkErrorMessage(error));
     }
 
+    // Translate internal server / database errors to friendly messages.
+    if (lower.contains('neo4j') ||
+        lower.contains('neo.client') ||
+        lower.contains('failed to get user') ||
+        lower.contains('failed to sync') ||
+        lower.contains('failed to create') ||
+        lower.contains('internal server error') ||
+        lower.contains('service unavailable') ||
+        lower.contains('unable to retrieve routing')) {
+      return Exception('Service is temporarily unavailable. Please try again in a moment.');
+    }
+
+    if (lower.contains('firebase token') ||
+        lower.contains('invalid token') ||
+        lower.contains('token has expired') ||
+        lower.contains('unauthorized')) {
+      return Exception('Session expired. Please sign in again.');
+    }
+
     if (normalized.trim().isNotEmpty && normalized.trim() != 'null') {
       return Exception(normalized.trim());
     }
