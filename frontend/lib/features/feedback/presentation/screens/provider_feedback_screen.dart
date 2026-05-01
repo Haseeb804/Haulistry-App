@@ -25,14 +25,72 @@ class ProviderFeedbackScreen extends StatefulWidget {
 }
 
 class _ProviderFeedbackScreenState extends State<ProviderFeedbackScreen> {
+  static const int _minCommentLength = 10;
+
   double _rating = 0;
   final TextEditingController _commentController = TextEditingController();
   bool _hasNavigatedAfterSubmit = false;
+  // Tracks the trimmed comment length so the submit button + helper text
+  // can react live as the user types.
+  int _commentLength = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _commentController.addListener(_handleCommentChanged);
+  }
 
   @override
   void dispose() {
+    _commentController.removeListener(_handleCommentChanged);
     _commentController.dispose();
     super.dispose();
+  }
+
+  void _handleCommentChanged() {
+    final length = _commentController.text.trim().length;
+    if (length != _commentLength) {
+      setState(() => _commentLength = length);
+    }
+  }
+
+  bool get _isCommentValid => _commentLength >= _minCommentLength;
+  bool get _canSubmit => _rating > 0 && _isCommentValid;
+
+  /// Sanitize any error that slips through to the UI so the user never
+  /// sees backend tokens like "Exception:", "loc:", "input:", "value_error".
+  String _userFriendlyError(String raw) {
+    final lower = raw.toLowerCase();
+    if (lower.contains('comment') ||
+        lower.contains('value_error') ||
+        lower.contains('string_too_short') ||
+        lower.contains('characters long')) {
+      return 'Review must be at least 10 characters long.';
+    }
+    if (lower.contains('rating')) {
+      return 'Please select a rating between 1 and 5 stars.';
+    }
+    if (lower.contains('already submitted')) {
+      return 'You have already reviewed this booking.';
+    }
+    if (lower.contains('socketexception') ||
+        lower.contains('failed host lookup') ||
+        lower.contains('network')) {
+      return 'Please check your internet connection and try again.';
+    }
+    // Strip the leading 'Exception: ' that Dart adds when stringifying an
+    // Exception. If the remaining text still looks technical, fall back
+    // to a generic friendly message.
+    final stripped = raw.replaceFirst(RegExp(r'^Exception:\s*'), '').trim();
+    if (stripped.isEmpty ||
+        stripped.contains('{') ||
+        stripped.contains('[') ||
+        stripped.contains('loc:') ||
+        stripped.contains('type:') ||
+        stripped.contains('input:')) {
+      return 'Something went wrong. Please try again.';
+    }
+    return stripped;
   }
 
   void _goToDashboard() {
@@ -45,26 +103,20 @@ class _ProviderFeedbackScreenState extends State<ProviderFeedbackScreen> {
   }
 
   void _submitFeedback() {
+    // The submit button is disabled when these aren't met, but we double-check
+    // here so a misfire never reaches the backend with invalid data.
     if (_rating == 0) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please select a rating')),
+        const SnackBar(content: Text('Please select a rating before submitting.')),
       );
       return;
     }
 
     final comment = _commentController.text.trim();
-    if (comment.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please write your review before submitting')),
-      );
-      return;
-    }
-
-    // Validate minimum content length for meaningful reviews
-    if (comment.length < 10) {
+    if (comment.length < _minCommentLength) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Please provide more detailed feedback (at least 10 characters)'),
+          content: Text('Review must be at least 10 characters long.'),
           duration: Duration(seconds: 3),
         ),
       );
@@ -80,7 +132,7 @@ class _ProviderFeedbackScreenState extends State<ProviderFeedbackScreen> {
             providerId: user.uid,
             seekerId: widget.seekerId,
             rating: _rating,
-            comment: comment.isEmpty ? null : comment,
+            comment: comment,
           ),
         );
   }
@@ -109,7 +161,7 @@ class _ProviderFeedbackScreenState extends State<ProviderFeedbackScreen> {
             _goToDashboard();
           } else if (state is FeedbackError) {
             ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text(state.message)),
+              SnackBar(content: Text(_userFriendlyError(state.message))),
             );
           }
         },
@@ -258,6 +310,15 @@ class _ProviderFeedbackScreenState extends State<ProviderFeedbackScreen> {
                     ),
                     filled: true,
                     fillColor: Colors.white,
+                    helperText: _isCommentValid
+                        ? 'Looks good — ready to submit'
+                        : 'Review must be at least 10 characters long ($_commentLength/$_minCommentLength).',
+                    helperStyle: TextStyle(
+                      color: _isCommentValid
+                          ? Colors.green.shade700
+                          : AppTheme.textSecondary,
+                      fontSize: 13,
+                    ),
                   ),
                 ),
                 const SizedBox(height: 32),
@@ -267,7 +328,7 @@ class _ProviderFeedbackScreenState extends State<ProviderFeedbackScreen> {
                   width: double.infinity,
                   height: 50,
                   child: ElevatedButton(
-                    onPressed: isLoading ? null : _submitFeedback,
+                    onPressed: (isLoading || !_canSubmit) ? null : _submitFeedback,
                     style: ElevatedButton.styleFrom(
                       backgroundColor: AppTheme.primaryColor,
                       foregroundColor: Colors.white,

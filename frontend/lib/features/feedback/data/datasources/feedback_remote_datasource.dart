@@ -35,8 +35,7 @@ class FeedbackRemoteDataSource {
       final data = jsonDecode(response.body);
       return _parseFeedback(data['feedback']);
     } else {
-      final error = jsonDecode(response.body);
-      throw Exception(error['detail'] ?? 'Failed to submit feedback');
+      throw Exception(_parseBackendError(response.body));
     }
   }
 
@@ -63,9 +62,48 @@ class FeedbackRemoteDataSource {
       final data = jsonDecode(response.body);
       return _parseFeedback(data['feedback']);
     } else {
-      final error = jsonDecode(response.body);
-      throw Exception(error['detail'] ?? 'Failed to submit feedback');
+      throw Exception(_parseBackendError(response.body));
     }
+  }
+
+  /// Convert FastAPI/Pydantic error responses into a user-friendly message.
+  ///
+  /// FastAPI 422 returns `{detail: [{loc, msg, type, input, ...}]}`. Stringifying
+  /// this whole structure leaks technical jargon ("loc", "input", "value_error")
+  /// to the user. Detect known shapes and return clean copy instead.
+  String _parseBackendError(String body) {
+    try {
+      final decoded = jsonDecode(body);
+      if (decoded is Map<String, dynamic>) {
+        final detail = decoded['detail'];
+        // Plain-string detail (HTTPException raised manually in the controller)
+        if (detail is String && detail.isNotEmpty) {
+          return detail;
+        }
+        // Pydantic validation error: list of {loc, msg, type, ...}
+        if (detail is List && detail.isNotEmpty) {
+          final first = detail.first;
+          if (first is Map) {
+            final loc = (first['loc'] as List?)?.map((e) => e.toString()).toList() ?? const [];
+            final type = first['type']?.toString() ?? '';
+            // Comment-specific friendly messages
+            if (loc.contains('comment')) {
+              if (type == 'string_too_short' || type.contains('value_error')) {
+                return 'Review must be at least 10 characters long.';
+              }
+              return 'Please write a longer review before submitting.';
+            }
+            if (loc.contains('rating')) {
+              return 'Please select a rating between 1 and 5 stars.';
+            }
+          }
+          return 'Please check your input and try again.';
+        }
+      }
+    } catch (_) {
+      // Body wasn't JSON — fall through to generic message.
+    }
+    return 'Something went wrong. Please try again.';
   }
 
   Future<List<FeedbackEntity>> getProviderFeedbacks(String providerId) async {
