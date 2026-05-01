@@ -80,6 +80,19 @@ class Settings(BaseSettings):
     # Optional static fallback ICE servers as JSON array
     TURN_FALLBACK_ICE_SERVERS: str = os.getenv("TURN_FALLBACK_ICE_SERVERS", "")
     
+    @model_validator(mode='after')
+    def warn_empty_neo4j_password(self):
+        import logging as _logging
+        _log = _logging.getLogger(__name__)
+        if not self.NEO4J_PASSWORD or self.NEO4J_PASSWORD in ('password', ''):
+            _log.error(
+                "CRITICAL: NEO4J_PASSWORD is empty or is the placeholder 'password'. "
+                "Set NEO4J_PASSWORD correctly in Railway → Variables."
+            )
+        else:
+            _log.warning("[NEO4J CONFIG] NEO4J_PASSWORD is set (len=%d)", len(self.NEO4J_PASSWORD))
+        return self
+
     @model_validator(mode='before')
     @classmethod
     def strip_bad_prefixes(cls, values: dict) -> dict:
