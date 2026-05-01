@@ -196,10 +196,16 @@ class _ProviderTrackingScreenState extends State<ProviderTrackingScreen> {
       }
 
       if (status == AppConstants.statusCompleted && !_hasRedirectedToFeedback) {
-        await _redirectProviderToFeedback(
-          seekerId: seekerId.isNotEmpty ? seekerId : (_booking?.seekerId ?? ''),
-          seekerName: seekerName.isNotEmpty ? seekerName : (_booking?.seekerName ?? 'Customer'),
-        );
+        // Only redirect when this tracking screen is the foreground route.
+        // If the user has pushed chat / call / feedback on top, context.go()
+        // would replace the entire stack and yank them out of that screen.
+        final route = ModalRoute.of(context);
+        if (route?.isCurrent == true) {
+          await _redirectProviderToFeedback(
+            seekerId: seekerId.isNotEmpty ? seekerId : (_booking?.seekerId ?? ''),
+            seekerName: seekerName.isNotEmpty ? seekerName : (_booking?.seekerName ?? 'Customer'),
+          );
+        }
       }
     } catch (_) {
       // Keep existing UI during transient failures.

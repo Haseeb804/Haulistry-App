@@ -5,6 +5,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../../core/constants/app_constants.dart';
 import '../../../../core/services/api_service.dart';
+import '../../../../core/services/call_minimize_service.dart';
 import '../../../../core/services/notification_service.dart';
 import '../../../../core/services/realtime_socket_service.dart';
 import '../../../../core/services/webrtc_call_service.dart';
@@ -468,7 +469,19 @@ class CallBloc extends Bloc<CallEvent, CallState> {
     final callType = _currentCallType;
     final userId = _auth.currentUser?.uid;
 
-    // Emit terminal state FIRST so the UI pops immediately.
+    // Fire call_end to the remote user in PARALLEL with our own UI dismissal.
+    // Don't await — even if the socket is slow, our UI shouldn't wait on it.
+    if (otherUserId.isNotEmpty && event.callId.isNotEmpty && event.callId != 'pending') {
+      unawaited(
+        _socketService.send('call_end', {
+          'callId': event.callId,
+          'targetUserId': otherUserId,
+          'duration': event.duration,
+        }).catchError((_) {}),
+      );
+    }
+
+    // Emit terminal state so the UI pops immediately.
     emit(CallEnded(callId: event.callId, duration: event.duration, reason: 'normal'));
     _resetCallSession();
 
@@ -476,6 +489,9 @@ class CallBloc extends Bloc<CallEvent, CallState> {
     // (late ICE candidates, delayed offers from a restart, etc.) are ignored
     // before the async leaveChannel() runs.
     _callService.cancelSession();
+
+    // Make sure the minimize floating bar dismisses with the call.
+    CallMinimizeService.instance.restore();
 
     unawaited(_cleanupAfterEnd(event, otherUserId, bookingId, callType, userId));
   }
@@ -487,18 +503,7 @@ class CallBloc extends Bloc<CallEvent, CallState> {
     String callType,
     String? userId,
   ) async {
-    // Notify the remote user FIRST — before leaveChannel() which can take seconds.
-    // This ensures the other side gets the call_end signal immediately.
-    if (otherUserId.isNotEmpty && event.callId.isNotEmpty && event.callId != 'pending') {
-      try {
-        await _socketService.send('call_end', {
-          'callId': event.callId,
-          'targetUserId': otherUserId,
-          'duration': event.duration,
-        });
-      } catch (_) {}
-    }
-
+    // call_end socket event was fired in _onEndCallRequested already.
     try {
       await _callService.leaveChannel();
     } catch (_) {}
@@ -819,6 +824,8 @@ class CallBloc extends Bloc<CallEvent, CallState> {
     emit(CallEnded(callId: event.callId, duration: event.duration, reason: reason));
     _resetCallSession();
     _callService.cancelSession();
+    // Make sure the minimize floating bar dismisses with the call.
+    CallMinimizeService.instance.restore();
     unawaited(_callService.leaveChannel());
   }
 

@@ -73,6 +73,13 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> {
     return resolvedId;
   }
 
+  /// Minimize the call to the floating bar so the user can use other screens
+  /// (tracking, chat, etc.) while the call continues in the background.
+  void _minimizeAndPop(BuildContext context) {
+    CallMinimizeService.instance.minimize();
+    if (context.mounted && context.canPop()) context.pop();
+  }
+
   @override
   Widget build(BuildContext context) {
     return PopScope(
@@ -130,7 +137,7 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> {
                   return Column(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const SizedBox(height: 60),
+                      _CallTopBar(onMinimize: () => _minimizeAndPop(context)),
                       Column(
                         children: [
                           CircleAvatar(
@@ -252,7 +259,7 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> {
                 return Column(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const SizedBox(height: 60),
+                    _CallTopBar(onMinimize: () => _minimizeAndPop(context)),
                     // User Info
                     Column(
                       children: [
@@ -398,6 +405,29 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> {
         ),
       ),
     ),
+    );
+  }
+}
+
+class _CallTopBar extends StatelessWidget {
+  final VoidCallback onMinimize;
+  const _CallTopBar({required this.onMinimize});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(8, 8, 16, 0),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          IconButton(
+            tooltip: 'Minimize call',
+            icon: const Icon(Icons.expand_more, color: Colors.white, size: 28),
+            onPressed: onMinimize,
+          ),
+          const SizedBox.shrink(),
+        ],
+      ),
     );
   }
 }

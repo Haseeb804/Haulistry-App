@@ -96,6 +96,13 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
     };
   }
 
+  /// Minimize the video call to the floating bar so the user can use other
+  /// screens (tracking, chat, etc.) while the call continues.
+  void _minimizeAndPop(BuildContext context) {
+    CallMinimizeService.instance.minimize();
+    if (context.mounted && context.canPop()) context.pop();
+  }
+
   @override
   Widget build(BuildContext context) {
     return PopScope(
@@ -159,7 +166,18 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        const SizedBox(height: 60),
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(8, 8, 16, 0),
+                          child: Row(
+                            children: [
+                              IconButton(
+                                tooltip: 'Minimize call',
+                                icon: const Icon(Icons.expand_more, color: Colors.white, size: 28),
+                                onPressed: () => _minimizeAndPop(context),
+                              ),
+                            ],
+                          ),
+                        ),
                         Column(
                           children: [
                             CircleAvatar(
@@ -397,11 +415,29 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
                       ),
                     ),
                   ),
+                  // Minimize button — always visible (not toggled with controls)
+                  // so user can always escape to tracking screen during a call.
+                  Positioned(
+                    top: 40,
+                    left: 8,
+                    child: Material(
+                      color: Colors.black54,
+                      shape: const CircleBorder(),
+                      child: InkWell(
+                        customBorder: const CircleBorder(),
+                        onTap: () => _minimizeAndPop(context),
+                        child: const Padding(
+                          padding: EdgeInsets.all(10),
+                          child: Icon(Icons.expand_more, color: Colors.white, size: 24),
+                        ),
+                      ),
+                    ),
+                  ),
                   // Call Duration
                   if (_showControls)
                     Positioned(
                       top: 48,
-                      left: 16,
+                      left: 64,
                       child: Container(
                         padding: const EdgeInsets.symmetric(
                           horizontal: 16,

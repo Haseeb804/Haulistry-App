@@ -2,10 +2,13 @@
 Message Model
 Manages persisted chat messages between users
 """
+import logging
 from typing import Optional, Dict, Any, List
 from datetime import datetime
 from ..database.neo4j_driver import neo4j_driver
 from ..constants import LIVE_COMMUNICATION_STATUSES
+
+logger = logging.getLogger(__name__)
 
 
 class Message:
@@ -44,18 +47,79 @@ class Message:
         message_type: str = 'text',
         media_duration: Optional[int] = None,
     ) -> Optional[Dict[str, Any]]:
-        """Create a new message"""
+        """Create a new message.
+
+        Symmetric: works regardless of whether sender is the seeker or the
+        provider on the booking. Uses an OPTIONAL pre-flight check so the
+        Cypher engine doesn't silently return zero rows on the first match —
+        we can log exactly which precondition failed.
+        """
+        # Pre-flight: validate booking + participants separately so we can
+        # tell the caller what's wrong instead of silently returning None.
+        # WITH clauses make the variable scoping explicit and avoid Cypher
+        # parser ambiguity when WHERE follows OPTIONAL MATCH.
+        precheck_query = """
+        OPTIONAL MATCH (b:Booking {id: $bookingId})
+        WITH b
+        OPTIONAL MATCH (sender)
+            WHERE sender.id = $senderId
+              AND (sender:Seeker OR sender:Provider OR sender:User)
+        WITH b, sender
+        OPTIONAL MATCH (receiver)
+            WHERE receiver.id = $receiverId
+              AND (receiver:Seeker OR receiver:Provider OR receiver:User)
+        RETURN
+            b IS NOT NULL AS bookingExists,
+            sender IS NOT NULL AS senderExists,
+            receiver IS NOT NULL AS receiverExists,
+            coalesce(b.status, '') AS bookingStatus,
+            coalesce(b.seekerId, '') AS bookingSeekerId,
+            coalesce(b.providerId, '') AS bookingProviderId
+        """
+        precheck_params = {
+            "senderId": sender_id,
+            "receiverId": receiver_id,
+            "bookingId": booking_id,
+        }
+        try:
+            precheck = neo4j_driver.execute_read(precheck_query, precheck_params)
+        except Exception:
+            logger.exception("Message precheck query failed")
+            precheck = []
+
+        if precheck:
+            row = precheck[0]
+            booking_exists = row.get("bookingExists")
+            sender_exists = row.get("senderExists")
+            receiver_exists = row.get("receiverExists")
+            booking_status = (row.get("bookingStatus") or "").lower()
+            booking_seeker_id = row.get("bookingSeekerId") or ""
+            booking_provider_id = row.get("bookingProviderId") or ""
+
+            participants_match = (
+                (booking_seeker_id == sender_id and booking_provider_id == receiver_id)
+                or (booking_provider_id == sender_id and booking_seeker_id == receiver_id)
+            )
+            status_active = booking_status in LIVE_COMMUNICATION_STATUSES
+
+            if not (booking_exists and sender_exists and receiver_exists and participants_match and status_active):
+                logger.warning(
+                    "Message create_message blocked: bookingExists=%s senderExists=%s receiverExists=%s "
+                    "status=%r status_active=%s participants_match=%s "
+                    "(senderId=%s receiverId=%s bookingId=%s bookingSeekerId=%s bookingProviderId=%s)",
+                    booking_exists, sender_exists, receiver_exists,
+                    booking_status, status_active, participants_match,
+                    sender_id, receiver_id, booking_id,
+                    booking_seeker_id, booking_provider_id,
+                )
+                return None
+
         query = """
         MATCH (sender) WHERE (sender:Seeker OR sender:Provider OR sender:User) AND sender.id = $senderId
         MATCH (receiver) WHERE (receiver:Seeker OR receiver:Provider OR receiver:User) AND receiver.id = $receiverId
-                MATCH (b:Booking {id: $bookingId})
-                WHERE toLower(coalesce(b.status, '')) IN $activeStatuses
-                    AND (
-                        (b.seekerId = $senderId AND b.providerId = $receiverId)
-                        OR
-                        (b.providerId = $senderId AND b.seekerId = $receiverId)
-                    )
-        
+        MATCH (b:Booking {id: $bookingId})
+        WHERE toLower(coalesce(b.status, '')) IN $activeStatuses
+
         CREATE (m:Message {
             id: randomUUID(),
             senderId: $senderId,
@@ -67,11 +131,11 @@ class Message:
             isRead: false,
             createdAt: datetime()
         })
-        
+
         CREATE (m)-[:SENT_BY]->(sender)
         CREATE (m)-[:SENT_TO]->(receiver)
         CREATE (m)-[:FOR_BOOKING]->(b)
-        
+
          RETURN m,
              sender.name as senderName, sender.phone as senderPhone,
              sender.role as senderRole,
@@ -80,7 +144,7 @@ class Message:
              receiver.role as receiverRole,
              coalesce(receiver.profileImageUrl, receiver.profile_image_url, '') as receiverProfileImageUrl
         """
-        
+
         params = {
             "senderId": sender_id,
             "receiverId": receiver_id,
@@ -90,9 +154,16 @@ class Message:
             "mediaDuration": media_duration,
             "activeStatuses": list(LIVE_COMMUNICATION_STATUSES),
         }
-        
-        result = neo4j_driver.execute_write(query, params)
-        
+
+        try:
+            result = neo4j_driver.execute_write(query, params)
+        except Exception:
+            logger.exception(
+                "Message create_message write failed (senderId=%s receiverId=%s bookingId=%s)",
+                sender_id, receiver_id, booking_id,
+            )
+            return None
+
         if result and len(result) > 0:
             message_record = result[0].get('m')
             if message_record:
@@ -106,7 +177,12 @@ class Message:
                 message['receiverRole'] = result[0].get('receiverRole')
                 message['receiverProfileImageUrl'] = result[0].get('receiverProfileImageUrl') or None
                 return message
-        
+
+        logger.warning(
+            "Message create_message returned no rows despite precheck passing "
+            "(senderId=%s receiverId=%s bookingId=%s)",
+            sender_id, receiver_id, booking_id,
+        )
         return None
 
     @staticmethod
