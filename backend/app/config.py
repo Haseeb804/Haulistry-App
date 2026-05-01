@@ -1,10 +1,19 @@
 import os
+import sys
 import json
 from typing import List
 from pathlib import Path
 from pydantic_settings import BaseSettings
 from pydantic import field_validator, model_validator
 from dotenv import load_dotenv
+
+# ── Startup env dump (temporary diagnostic) ──────────────────────────────────
+# Print every env key that contains "NEO4J" so we can see the exact key names
+# as they exist in os.environ at process start (before any Pydantic processing).
+_neo4j_keys = {k: (v[:4] + '...' if len(v) >= 4 else repr(v))
+               for k, v in os.environ.items() if 'NEO4J' in k.upper()}
+print(f"[STARTUP ENV] NEO4J-related keys in os.environ: {_neo4j_keys}", file=sys.stderr, flush=True)
+print(f"[STARTUP ENV] NEO4J_PASSWORD len={len(os.environ.get('NEO4J_PASSWORD', ''))}", file=sys.stderr, flush=True)
 
 # Load .env from multiple possible locations.
 # override=True ensures .env file values always win over any blank/corrupt
@@ -14,10 +23,16 @@ env_paths = [
     Path(__file__).parent.parent / ".env",  # backend/.env
     Path(__file__).parent.parent.parent / ".env",  # root .env
 ]
+_found_env = False
 for env_path in env_paths:
     if env_path.exists():
         load_dotenv(env_path, override=True)
+        print(f"[STARTUP ENV] Loaded .env from {env_path}", file=sys.stderr, flush=True)
+        _found_env = True
         break
+if not _found_env:
+    print("[STARTUP ENV] No .env file found — relying on Railway env vars", file=sys.stderr, flush=True)
+print(f"[STARTUP ENV] NEO4J_PASSWORD len after dotenv={len(os.environ.get('NEO4J_PASSWORD', ''))}", file=sys.stderr, flush=True)
 
 
 _NEO4J_ENV_KEYS = {
