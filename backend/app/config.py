@@ -7,18 +7,63 @@ from pydantic_settings import BaseSettings
 from pydantic import field_validator, model_validator
 from dotenv import load_dotenv
 
+
+def _is_placeholder_value(v: str) -> bool:
+    """Treat literal quote-only strings ('', "", `''`, `""`) as empty.
+    Railway UI users sometimes type `''` thinking it means 'unset', but it's
+    saved as a 2-char string of two single quotes."""
+    if v is None:
+        return True
+    s = v.strip()
+    if not s:
+        return True
+    return s in ("''", '""', "``", "'", '"')
+
+
+def _normalize_environ_keys() -> None:
+    """Normalize os.environ keys that have leading/trailing whitespace.
+    Railway's variable editor sometimes captures a trailing tab/space in the
+    KEY NAME (e.g. 'NEO4J_PASSWORD\\t'), which makes os.environ['NEO4J_PASSWORD']
+    return empty even though the value is set under the dirty key. This function
+    copies values from dirty keys to their clean counterparts when the clean key
+    is missing, empty, or a quote-placeholder.
+    """
+    for key in list(os.environ.keys()):
+        clean = key.strip()
+        if clean == key or not clean:
+            continue
+        dirty_value = os.environ.get(key, '').strip()
+        if not dirty_value or _is_placeholder_value(dirty_value):
+            continue
+        clean_value = os.environ.get(clean, '')
+        if not clean_value or _is_placeholder_value(clean_value):
+            os.environ[clean] = dirty_value
+            print(
+                f"[STARTUP ENV] Recovered {clean!r} from dirty key {key!r} "
+                f"(clean key was empty/placeholder)",
+                file=sys.stderr, flush=True
+            )
+
+
+def _purge_placeholder_values() -> None:
+    """Replace literal '' / "" placeholder values in os.environ with truly empty
+    strings, so downstream code can treat them uniformly as 'not set'."""
+    for key, value in list(os.environ.items()):
+        if _is_placeholder_value(value) and value.strip() != '':
+            os.environ[key] = ''
+
+
+# Run normalization BEFORE Pydantic reads os.environ
+_normalize_environ_keys()
+_purge_placeholder_values()
+
 # ── Startup env dump (temporary diagnostic) ──────────────────────────────────
-# Print every env key that contains "NEO4J" so we can see the exact key names
-# as they exist in os.environ at process start (before any Pydantic processing).
 _neo4j_keys = {k: (v[:4] + '...' if len(v) >= 4 else repr(v))
                for k, v in os.environ.items() if 'NEO4J' in k.upper()}
-print(f"[STARTUP ENV] NEO4J-related keys in os.environ: {_neo4j_keys}", file=sys.stderr, flush=True)
+print(f"[STARTUP ENV] NEO4J keys after normalization: {_neo4j_keys}", file=sys.stderr, flush=True)
 print(f"[STARTUP ENV] NEO4J_PASSWORD len={len(os.environ.get('NEO4J_PASSWORD', ''))}", file=sys.stderr, flush=True)
 
 # Load .env from multiple possible locations.
-# override=True ensures .env file values always win over any blank/corrupt
-# environment variables that may have been injected by the platform (e.g.
-# Railway setting NEO4J_PASSWORD="" accidentally).
 env_paths = [
     Path(__file__).parent.parent / ".env",  # backend/.env
     Path(__file__).parent.parent.parent / ".env",  # root .env
@@ -27,12 +72,10 @@ _found_env = False
 for env_path in env_paths:
     if env_path.exists():
         load_dotenv(env_path, override=True)
-        print(f"[STARTUP ENV] Loaded .env from {env_path}", file=sys.stderr, flush=True)
         _found_env = True
         break
 if not _found_env:
     print("[STARTUP ENV] No .env file found — relying on Railway env vars", file=sys.stderr, flush=True)
-print(f"[STARTUP ENV] NEO4J_PASSWORD len after dotenv={len(os.environ.get('NEO4J_PASSWORD', ''))}", file=sys.stderr, flush=True)
 
 
 _NEO4J_ENV_KEYS = {
