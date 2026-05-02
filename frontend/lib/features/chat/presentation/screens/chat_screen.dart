@@ -45,6 +45,10 @@ class ChatScreen extends StatefulWidget {
 }
 
 class _ChatScreenState extends State<ChatScreen> {
+  // Global cache so messages survive screen dispose/push. Keyed by
+  // "$bookingId:$otherUserId". Populated after every successful API load.
+  static final Map<String, List<ChatMessage>> _messageCache = {};
+
   final RealtimeSocketService _socketService = RealtimeSocketService();
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
@@ -61,6 +65,8 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _isBackendMessagesLoading = false;
   String? _backendMessagesError;
   List<ChatMessage> _backendMessages = const [];
+
+  String get _cacheKey => '${widget.bookingId ?? ""}:${widget.otherUserId}';
 
   static const Set<String> _activeStatuses = {
     AppConstants.statusConfirmed,
@@ -124,6 +130,13 @@ class _ChatScreenState extends State<ChatScreen> {
         (_) => _checkCommunicationPermission(),
       );
 
+      // Show cached messages IMMEDIATELY — no loading state shown to user.
+      // Background refresh will merge any new messages silently.
+      final cached = _messageCache[_cacheKey];
+      if (cached != null && cached.isNotEmpty) {
+        _backendMessages = cached;
+      }
+
       _loadBackendMessages();
       unawaited(_setupRealtimeChat());
     }
@@ -153,15 +166,25 @@ class _ChatScreenState extends State<ChatScreen> {
           // Deduplicate: skip if we already have this id.
           final alreadyPresent = _backendMessages.any((m) => m.id.isNotEmpty && m.id == msg.id);
           if (!alreadyPresent) {
+            final updated = [..._backendMessages, msg];
+            // Keep cache current so the next screen open shows this message.
+            _messageCache[_cacheKey] = updated;
             setState(() {
               // Append so the list stays oldest-first (matching API ORDER BY createdAt ASC),
               // which is required by the length-1-index access in _buildBackendMessagesView.
-              _backendMessages = [..._backendMessages, msg];
+              _backendMessages = updated;
             });
             _scrollToBottom();
           }
+          // If message is already present (deduplication), no reload needed —
+          // the socket ACK path already confirmed delivery. A full reload here
+          // was triggering unnecessary setState() rebuilds ("auto-refresh").
         } else {
-          unawaited(_loadBackendMessages());
+          // messageMap is empty — backend sent a bare notification event.
+          // Only reload if we have no messages yet (initial load may have lost race).
+          if (_backendMessages.isEmpty) {
+            unawaited(_loadBackendMessages());
+          }
         }
       } else if (type == 'message_status') {
         // Update read receipts locally by marking matching messages as read.
@@ -355,6 +378,9 @@ class _ChatScreenState extends State<ChatScreen> {
           .where((m) => m.id.isNotEmpty && !parsed.any((p) => p.id == m.id))
           .toList();
       final merged = [...parsed, ...existingUnsaved];
+
+      // Persist to cache so next screen open is instant.
+      _messageCache[_cacheKey] = merged;
 
       setState(() {
         _backendMessages = merged;

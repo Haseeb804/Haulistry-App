@@ -154,6 +154,10 @@ class WebRTCCallService {
     // remoteRenderer.srcObject — even on Android where event.streams is empty.
     _remoteStream = await createLocalMediaStream('remote_${_callId ?? ""}');
 
+    // Capture peerUserId NOW so cancelSession() clearing _peerUserId doesn't
+    // prevent the RemoteUserState from being emitted if onTrack fires late.
+    final capturedPeerUserId = _peerUserId;
+
     _peerConnection!.onTrack = (RTCTrackEvent event) async {
       if (event.streams.isNotEmpty) {
         _remoteStream = event.streams.first;
@@ -166,8 +170,10 @@ class WebRTCCallService {
         } catch (_) {}
         remoteRenderer.srcObject = _remoteStream;
       }
-      final peer = _peerUserId;
-      if (peer != null) {
+      // Use the snapshotted peer ID — _peerUserId may be null if cancelSession()
+      // ran concurrently (e.g. user hung up while ICE was completing).
+      final peer = capturedPeerUserId ?? _peerUserId;
+      if (peer != null && peer.isNotEmpty) {
         final uid = peer.hashCode & 0x7fffffff;
         _remoteUserController.add(RemoteUserState(uid, true));
       }

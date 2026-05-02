@@ -805,9 +805,12 @@ class CallBloc extends Bloc<CallEvent, CallState> {
   ) async {
     _pendingRemoteUid = event.uid;
     if (state is CallConnected) {
+      // Remote video arrived — update remoteUid so the avatar overlay clears.
       final currentState = state as CallConnected;
       emit(currentState.copyWith(remoteUid: event.uid));
-    } else if (state is CallConnecting) {
+    } else if (state is CallConnecting || state is CallInitiated) {
+      // Attempt to transition to CallConnected if WebRTC also reports connected.
+      // Covers the case where onTrack fires before or after _onCallStateChanged.
       _emitConnectedIfReady(emit);
     }
   }

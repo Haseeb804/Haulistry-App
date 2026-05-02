@@ -42,6 +42,13 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
   // Set once on first CallConnected build; passed to timer so restore keeps correct elapsed time.
   Duration? _timerInitialDuration;
 
+  // Direct WebRTC subscriptions — bypass BLoC timing delays so the remote
+  // video appears the instant onTrack fires, regardless of bloc event queue.
+  StreamSubscription<RemoteUserState>? _remoteUserSub;
+  StreamSubscription<CallMediaState>? _callStateSub;
+  bool _hasRemoteVideo = false;
+  bool _isWebRTCConnected = false;
+
   @override
   void initState() {
     super.initState();
@@ -52,6 +59,26 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
     if (widget.otherUserName.isEmpty || widget.otherUserProfileImageUrl == null) {
       _resolveOtherUserIdentity();
     }
+    _subscribeToWebRTC();
+  }
+
+  void _subscribeToWebRTC() {
+    // If onTrack already fired before this screen was pushed (race between
+    // OutgoingCallScreen → VideoCallScreen navigation and ICE connection),
+    // show the remote stream immediately without waiting for a stream event.
+    if (_callService.remoteRenderer.srcObject != null) {
+      _hasRemoteVideo = true;
+    }
+
+    _remoteUserSub = _callService.remoteUserStream.listen((user) {
+      if (!mounted) return;
+      setState(() => _hasRemoteVideo = user.isJoined);
+    });
+
+    _callStateSub = _callService.callStateStream.listen((s) {
+      if (!mounted) return;
+      setState(() => _isWebRTCConnected = s == CallMediaState.connected);
+    });
   }
 
   Future<void> _resolveOtherUserIdentity() async {
@@ -84,6 +111,8 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
   @override
   void dispose() {
     _controlsTimer?.cancel();
+    _remoteUserSub?.cancel();
+    _callStateSub?.cancel();
     super.dispose();
   }
 
@@ -132,7 +161,12 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
           onTap: _resetControlsTimer,
           child: BlocBuilder<CallBloc, CallState>(
             builder: (context, state) {
-              if (state is! CallConnected) {
+              // Show the video stack as soon as WebRTC reports connected via the
+              // direct subscription (_isWebRTCConnected), OR when BLoC emits
+              // CallConnected — whichever fires first.
+              final showVideoStack = state is CallConnected || _isWebRTCConnected;
+
+              if (!showVideoStack) {
                 final cs = state is CallConnecting ? state as CallConnecting : null;
                 final displayName = CallIdentityResolver.resolveDisplayName(
                   preferredName: cs?.otherUserName,
@@ -289,8 +323,25 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
                 );
               }
 
+              // Extract per-state values so the video stack works in both
+              // CallConnected (normal) and the WebRTC-connected-but-BLoC-lagging case.
+              final bool isMuted = switch (state) {
+                CallConnected s => s.isMuted,
+                CallConnecting s => s.isMuted,
+                _ => false,
+              };
+              final bool isVideoOn = switch (state) {
+                CallConnected s => s.isVideoOn,
+                CallConnecting s => s.isVideoOn,
+                _ => true,
+              };
+              final bool isSpeakerOn = state is CallConnected ? (state as CallConnected).isSpeakerOn : true;
+              final DateTime connectedAt = state is CallConnected
+                  ? (state as CallConnected).connectedAt
+                  : DateTime.now();
+
               // Compute timer offset once so restore keeps the correct elapsed time.
-              _timerInitialDuration ??= DateTime.now().difference(state.connectedAt);
+              _timerInitialDuration ??= DateTime.now().difference(connectedAt);
 
               return Stack(
                 children: [
@@ -304,8 +355,9 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
                     ),
                   ),
                   // Avatar placeholder shown until remote stream is active.
-                  // Must be Positioned.fill so it covers the RTCVideoView beneath.
-                  if (state.remoteUid == null)
+                  // Uses the direct WebRTC subscription (_hasRemoteVideo) so it
+                  // disappears the instant onTrack fires — no BLoC timing delay.
+                  if (!_hasRemoteVideo)
                     Positioned.fill(
                     child: Builder(builder: (context) {
                       final remoteImageUrl = CallIdentityResolver.resolveProfileImageUrl(
@@ -402,7 +454,7 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
                       child: SizedBox(
                         width: 120,
                         height: 160,
-                        child: state.isVideoOn
+                        child: isVideoOn
                             ? RTCVideoView(_callService.localRenderer, mirror: true)
                             : Container(
                                 color: Colors.black87,
@@ -484,8 +536,8 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
                                 children: [
                                   // Mute Button
                                   _VideoCallControlButton(
-                                    icon: state.isMuted ? Icons.mic_off : Icons.mic,
-                                    isActive: state.isMuted,
+                                    icon: isMuted ? Icons.mic_off : Icons.mic,
+                                    isActive: isMuted,
                                     onPressed: () {
                                       context.read<CallBloc>().add(
                                             const ToggleMuteRequested(),
@@ -494,10 +546,10 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
                                   ),
                                   // Video Toggle Button
                                   _VideoCallControlButton(
-                                    icon: state.isVideoOn
+                                    icon: isVideoOn
                                         ? Icons.videocam
                                         : Icons.videocam_off,
-                                    isActive: !state.isVideoOn,
+                                    isActive: !isVideoOn,
                                     onPressed: () {
                                       context.read<CallBloc>().add(
                                             const ToggleVideoRequested(),
@@ -516,10 +568,10 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
                                   ),
                                   // Speaker Button
                                   _VideoCallControlButton(
-                                    icon: state.isSpeakerOn
+                                    icon: isSpeakerOn
                                         ? Icons.volume_up
                                         : Icons.volume_down,
-                                    isActive: state.isSpeakerOn,
+                                    isActive: isSpeakerOn,
                                     onPressed: () {
                                       context.read<CallBloc>().add(
                                             const ToggleSpeakerRequested(),
