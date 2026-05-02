@@ -339,6 +339,23 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
               final DateTime connectedAt = state is CallConnected
                   ? (state as CallConnected).connectedAt
                   : DateTime.now();
+              // These fields exist on both CallConnected and CallConnecting but not on
+              // the abstract CallState — extract with switch so Dart's type system is happy.
+              final String stateOtherUserName = switch (state) {
+                CallConnected s => s.otherUserName,
+                CallConnecting s => s.otherUserName,
+                _ => widget.otherUserName,
+              };
+              final String stateOtherUserRole = switch (state) {
+                CallConnected s => s.otherUserRole,
+                CallConnecting s => s.otherUserRole,
+                _ => widget.otherUserRole,
+              };
+              final String? stateOtherUserProfileImageUrl = switch (state) {
+                CallConnected s => s.otherUserProfileImageUrl,
+                CallConnecting s => s.otherUserProfileImageUrl,
+                _ => widget.otherUserProfileImageUrl,
+              };
 
               // Compute timer offset once so restore keeps the correct elapsed time.
               _timerInitialDuration ??= DateTime.now().difference(connectedAt);
@@ -361,11 +378,11 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
                     Positioned.fill(
                     child: Builder(builder: (context) {
                       final remoteImageUrl = CallIdentityResolver.resolveProfileImageUrl(
-                        preferredImageUrl: state.otherUserProfileImageUrl,
+                        preferredImageUrl: stateOtherUserProfileImageUrl,
                         fallbackImageUrl: _resolvedOtherUser?.profileImageUrl ?? widget.otherUserProfileImageUrl,
                       );
                       final remoteName = CallIdentityResolver.resolveDisplayName(
-                        preferredName: state.otherUserName,
+                        preferredName: stateOtherUserName,
                         fallbackName: _resolvedOtherUser?.displayName ?? widget.otherUserName,
                         defaultLabel: 'Video Call',
                       );
@@ -394,7 +411,7 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
                             const SizedBox(height: 16),
                             Text(
                               CallIdentityResolver.resolveDisplayName(
-                                preferredName: state.otherUserName,
+                                preferredName: stateOtherUserName,
                                 fallbackName: _resolvedOtherUser?.displayName ?? widget.otherUserName,
                                 defaultLabel: 'Waiting for other person...',
                               ),
@@ -405,7 +422,7 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
                               ),
                             ),
                             if (CallIdentityResolver.resolveRole(
-                                  preferredRole: state.otherUserRole,
+                                  preferredRole: stateOtherUserRole,
                                   fallbackRole: _resolvedOtherUser?.role ?? widget.otherUserRole,
                                 ) !=
                                 AppConstants.roleUser) ...[
@@ -419,7 +436,7 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
                                 child: Text(
                                   () {
                                     final role = CallIdentityResolver.resolveRole(
-                                      preferredRole: state.otherUserRole,
+                                      preferredRole: stateOtherUserRole,
                                       fallbackRole: _resolvedOtherUser?.role ?? widget.otherUserRole,
                                     );
                                     return role[0].toUpperCase() + role.substring(1);

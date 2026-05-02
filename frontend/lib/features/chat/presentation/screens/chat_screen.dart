@@ -374,8 +374,10 @@ class _ChatScreenState extends State<ChatScreen> {
       // Merge API response (oldest-first) with any socket-pushed messages that
       // haven't been confirmed by the server yet. Unsaved messages go at the end
       // to preserve oldest-first ordering used by _buildBackendMessagesView.
+      // Exclude optimistic placeholders (pending_*) — they will be removed when
+      // their ACK arrives and must not be baked into the cache mid-flight.
       final existingUnsaved = _backendMessages
-          .where((m) => m.id.isNotEmpty && !parsed.any((p) => p.id == m.id))
+          .where((m) => m.id.isNotEmpty && !m.id.startsWith('pending_') && !parsed.any((p) => p.id == m.id))
           .toList();
       final merged = [...parsed, ...existingUnsaved];
 
