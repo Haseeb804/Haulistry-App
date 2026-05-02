@@ -80,25 +80,18 @@ class _FloatingCallBarState extends State<FloatingCallBar> {
 
             return GestureDetector(
               onTap: () {
-                final callState = context.read<CallBloc>().state;
-                String callId = '';
-                String otherUserName = displayName;
-                String otherUserRole = AppConstants.roleUser;
-                String? otherUserProfileImageUrl;
+                // Read identity from CallMinimizeService — it was stored when
+                // _minimizeAndPop() was called, so it's always consistent and
+                // doesn't depend on BLoC state timing during restore.
+                final svc = CallMinimizeService.instance;
+                final callId = svc.callId;
+                final otherUserName = svc.otherUserName.isNotEmpty ? svc.otherUserName : displayName;
+                final otherUserRole = svc.otherUserRole.isNotEmpty ? svc.otherUserRole : AppConstants.roleUser;
+                final otherUserProfileImageUrl = svc.otherUserProfileImageUrl;
 
-                if (callState is CallConnected) {
-                  callId = callState.callId;
-                  otherUserName = callState.otherUserName.isNotEmpty ? callState.otherUserName : displayName;
-                  otherUserRole = callState.otherUserRole;
-                  otherUserProfileImageUrl = callState.otherUserProfileImageUrl;
-                } else if (callState is CallConnecting) {
-                  callId = callState.callId;
-                  otherUserName = callState.otherUserName.isNotEmpty ? callState.otherUserName : displayName;
-                  otherUserRole = callState.otherUserRole;
-                  otherUserProfileImageUrl = callState.otherUserProfileImageUrl;
-                }
-
-                CallMinimizeService.instance.restore();
+                // Push the call screen BEFORE calling restore() so the
+                // navigation context is still valid.  The call screen's own
+                // initState() calls restore(), hiding the bar at the right time.
                 context.push(
                   isVideo ? AppRoutes.callVideo : AppRoutes.callVoice,
                   extra: {

@@ -457,6 +457,30 @@ class WebRTCCallService {
     }
   }
 
+  // ── Synchronous state accessors ─────────────────────────────────────────────
+  // These let a newly-restored call screen read the current WebRTC state
+  // without waiting for a stream event (broadcast streams don't replay).
+
+  bool get isConnected =>
+      _peerConnection?.connectionState ==
+      RTCPeerConnectionState.RTCPeerConnectionStateConnected;
+
+  MediaStream? get remoteStream => _remoteStream;
+  MediaStream? get localStream => _localStream;
+
+  /// Re-emit current connection and remote-user state to all active listeners.
+  /// Call this from a new screen that was restored mid-call so it catches up
+  /// on state that was emitted before it subscribed.
+  void rebroadcastState() {
+    if (isConnected) {
+      _callStateController.add(CallMediaState.connected);
+    }
+    if (_remoteStream != null && _peerUserId != null && _peerUserId!.isNotEmpty) {
+      final uid = _peerUserId!.hashCode & 0x7fffffff;
+      _remoteUserController.add(RemoteUserState(uid, true));
+    }
+  }
+
   /// Immediately clears session identifiers so any in-flight socket events or
   /// native WebRTC callbacks (ICE restart, etc.) are ignored.  Call this
   /// synchronously before the async cleanup to prevent races.

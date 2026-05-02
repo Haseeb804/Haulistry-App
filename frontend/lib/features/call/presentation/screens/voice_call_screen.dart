@@ -76,7 +76,34 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> {
   /// Minimize the call to the floating bar so the user can use other screens
   /// (tracking, chat, etc.) while the call continues in the background.
   void _minimizeAndPop(BuildContext context) {
-    CallMinimizeService.instance.minimize();
+    final state = context.read<CallBloc>().state;
+    final callId = _resolveActiveCallId(state);
+    final callType = AppConstants.callTypeVoice;
+
+    // Snapshot identity from whichever source is most up-to-date.
+    final name = switch (state) {
+      CallConnected s when s.otherUserName.isNotEmpty => s.otherUserName,
+      CallConnecting s when s.otherUserName.isNotEmpty => s.otherUserName,
+      _ => _resolvedOtherUser?.displayName ?? widget.otherUserName,
+    };
+    final role = switch (state) {
+      CallConnected s => s.otherUserRole,
+      CallConnecting s => s.otherUserRole,
+      _ => _resolvedOtherUser?.role ?? widget.otherUserRole,
+    };
+    final imageUrl = switch (state) {
+      CallConnected s => s.otherUserProfileImageUrl,
+      CallConnecting s => s.otherUserProfileImageUrl,
+      _ => _resolvedOtherUser?.profileImageUrl ?? widget.otherUserProfileImageUrl,
+    };
+
+    CallMinimizeService.instance.minimize(
+      callId: callId,
+      callType: callType,
+      otherUserName: name,
+      otherUserRole: role,
+      otherUserProfileImageUrl: imageUrl,
+    );
     if (context.mounted && context.canPop()) context.pop();
   }
 
@@ -87,16 +114,15 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> {
       onPopInvokedWithResult: (didPop, result) {
         if (didPop) return;
         // Back gesture → minimize to floating bar instead of ending the call.
-        CallMinimizeService.instance.minimize();
-        if (context.mounted && context.canPop()) context.pop();
+        _minimizeAndPop(context);
       },
       child: BlocListener<CallBloc, CallState>(
         listener: (context, state) {
           if (state is CallEnded) {
-            CallMinimizeService.instance.restore();
+            CallMinimizeService.instance.clear();
             context.pop();
           } else if (state is CallError) {
-            CallMinimizeService.instance.restore();
+            CallMinimizeService.instance.clear();
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(content: Text(state.message)),
             );

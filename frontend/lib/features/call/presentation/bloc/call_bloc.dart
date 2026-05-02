@@ -543,7 +543,7 @@ class CallBloc extends Bloc<CallEvent, CallState> {
     _callService.cancelSession();
 
     // Make sure the minimize floating bar dismisses with the call.
-    CallMinimizeService.instance.restore();
+    CallMinimizeService.instance.clear();
 
     unawaited(_cleanupAfterEnd(event, otherUserId, bookingId, callType, userId));
   }
@@ -880,7 +880,7 @@ class CallBloc extends Bloc<CallEvent, CallState> {
     _resetCallSession();
     _callService.cancelSession();
     // Make sure the minimize floating bar dismisses with the call.
-    CallMinimizeService.instance.restore();
+    CallMinimizeService.instance.clear();
     unawaited(_callService.leaveChannel());
   }
 

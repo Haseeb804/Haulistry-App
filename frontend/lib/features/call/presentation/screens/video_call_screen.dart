@@ -63,12 +63,11 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
   }
 
   void _subscribeToWebRTC() {
-    // If onTrack already fired before this screen was pushed (race between
-    // OutgoingCallScreen → VideoCallScreen navigation and ICE connection),
-    // show the remote stream immediately without waiting for a stream event.
-    if (_callService.remoteRenderer.srcObject != null) {
-      _hasRemoteVideo = true;
-    }
+    // Read current WebRTC state synchronously so a restored screen immediately
+    // reflects the live connection rather than waiting for a stream replay
+    // (broadcast streams don't replay past events).
+    _hasRemoteVideo = _callService.remoteRenderer.srcObject != null;
+    _isWebRTCConnected = _callService.isConnected;
 
     _remoteUserSub = _callService.remoteUserStream.listen((user) {
       if (!mounted) return;
@@ -79,6 +78,29 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
       if (!mounted) return;
       setState(() => _isWebRTCConnected = s == CallMediaState.connected);
     });
+
+    // Re-bind renderer srcObjects after the first frame so the new RTCVideoView
+    // surfaces (created fresh on restore) actually receive frames.  When the
+    // previous call screen was popped its native SurfaceTexture was destroyed;
+    // the renderer still holds the stream reference but renders to a dead
+    // surface.  Setting srcObject = null then restoring it forces the renderer
+    // to bind to the new surface created by the fresh RTCVideoView widget.
+    if (_isWebRTCConnected || _hasRemoteVideo) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        final remote = _callService.remoteStream;
+        _callService.remoteRenderer.srcObject = null;
+        _callService.remoteRenderer.srcObject = remote;
+
+        final local = _callService.localStream;
+        _callService.localRenderer.srcObject = null;
+        _callService.localRenderer.srcObject = local;
+
+        // Re-broadcast so BLoC listeners (remoteUid, isMuted etc.) in the
+        // rebuilt screen also receive a fresh Connected event.
+        _callService.rebroadcastState();
+      });
+    }
   }
 
   Future<void> _resolveOtherUserIdentity() async {
@@ -128,7 +150,32 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
   /// Minimize the video call to the floating bar so the user can use other
   /// screens (tracking, chat, etc.) while the call continues.
   void _minimizeAndPop(BuildContext context) {
-    CallMinimizeService.instance.minimize();
+    final state = context.read<CallBloc>().state;
+    final callId = _resolveActiveCallId(state);
+
+    final name = switch (state) {
+      CallConnected s when s.otherUserName.isNotEmpty => s.otherUserName,
+      CallConnecting s when s.otherUserName.isNotEmpty => s.otherUserName,
+      _ => _resolvedOtherUser?.displayName ?? widget.otherUserName,
+    };
+    final role = switch (state) {
+      CallConnected s => s.otherUserRole,
+      CallConnecting s => s.otherUserRole,
+      _ => _resolvedOtherUser?.role ?? widget.otherUserRole,
+    };
+    final imageUrl = switch (state) {
+      CallConnected s => s.otherUserProfileImageUrl,
+      CallConnecting s => s.otherUserProfileImageUrl,
+      _ => _resolvedOtherUser?.profileImageUrl ?? widget.otherUserProfileImageUrl,
+    };
+
+    CallMinimizeService.instance.minimize(
+      callId: callId,
+      callType: AppConstants.callTypeVideo,
+      otherUserName: name,
+      otherUserRole: role,
+      otherUserProfileImageUrl: imageUrl,
+    );
     if (context.mounted && context.canPop()) context.pop();
   }
 
@@ -139,16 +186,15 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
       onPopInvokedWithResult: (didPop, result) {
         if (didPop) return;
         // Back gesture → minimize to floating bar instead of ending the call.
-        CallMinimizeService.instance.minimize();
-        if (context.mounted && context.canPop()) context.pop();
+        _minimizeAndPop(context);
       },
       child: BlocListener<CallBloc, CallState>(
         listener: (context, state) {
           if (state is CallEnded) {
-            CallMinimizeService.instance.restore();
+            CallMinimizeService.instance.clear();
             context.pop();
           } else if (state is CallError) {
-            CallMinimizeService.instance.restore();
+            CallMinimizeService.instance.clear();
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(content: Text(state.message)),
             );
