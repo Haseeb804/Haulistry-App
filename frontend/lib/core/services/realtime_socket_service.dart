@@ -210,6 +210,7 @@ class RealtimeSocketService {
       'fare_offer_updated',
       'counter_offer',
       'pong',
+      'notification',
       'error',
     ];
 

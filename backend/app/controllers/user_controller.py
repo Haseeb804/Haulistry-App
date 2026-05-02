@@ -124,8 +124,8 @@ class UserController:
         """Increment completed bookings count"""
         query = """
         MATCH (u:Provider {id: $provider_id})
-        SET u.completed_bookings = coalesce(u.completed_bookings, 0) + 1,
-            u.updated_at = datetime()
+        SET u.completedBookings = coalesce(u.completedBookings, 0) + 1,
+            u.updatedAt = datetime()
         RETURN u
         """
         

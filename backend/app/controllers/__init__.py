@@ -4,7 +4,7 @@ Complete API structure for seeker-provider platform
 """
 
 from fastapi import APIRouter
-from . import bookings, vehicles, auth, services, fare_offers, locations, feedback, calls, messages
+from . import bookings, vehicles, auth, services, fare_offers, locations, feedback, calls, messages, notifications
 
 # Create main API router
 api_router = APIRouter(prefix="/api")
@@ -19,6 +19,7 @@ api_router.include_router(locations.router, prefix="/locations", tags=["location
 api_router.include_router(feedback.router, tags=["feedback"])
 api_router.include_router(calls.router, tags=["calls"])
 api_router.include_router(messages.router, tags=["messages"])
+api_router.include_router(notifications.router)
 
 # Keep legacy controllers for GraphQL
 from .user_controller import UserController

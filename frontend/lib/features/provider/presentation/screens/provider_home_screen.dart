@@ -13,6 +13,8 @@ import '../../../feedback/data/datasources/feedback_remote_datasource.dart';
 import '../../../feedback/data/repositories/feedback_repository_impl.dart';
 import '../../../auth/presentation/bloc/auth_bloc.dart';
 import '../../../auth/presentation/bloc/auth_state.dart';
+import '../../../notifications/presentation/bloc/notification_bloc.dart';
+import '../../../notifications/presentation/bloc/notification_state.dart';
 import '../bloc/provider_bloc.dart';
 import '../bloc/provider_event.dart';
 import '../bloc/provider_state.dart';
@@ -355,10 +357,15 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen> {
       backgroundColor: AppTheme.primaryColor,
       automaticallyImplyLeading: false,
       actions: [
-        _buildAppBarAction(
-          icon: Icons.notifications_rounded,
-          onTap: () {},
-          badge: 3,
+        BlocBuilder<NotificationBloc, NotificationState>(
+          builder: (context, notifState) {
+            final unread = notifState is NotificationsLoaded ? notifState.unreadCount : 0;
+            return _buildAppBarAction(
+              icon: Icons.notifications_rounded,
+              onTap: () => context.push(AppRoutes.notifications),
+              badge: unread > 0 ? unread : null,
+            );
+          },
         ),
         const SizedBox(width: 8),
         _buildAppBarAction(
@@ -389,18 +396,19 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            'Hello, ${name.split(' ').first}!',
+                            'Good ${_getGreeting()}! 👋',
+                            style: TextStyle(
+                              color: Colors.white.withOpacity(0.85),
+                              fontSize: 14,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            name,
                             style: const TextStyle(
                               color: Colors.white,
                               fontSize: 24,
                               fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          Text(
-                            'Manage your bookings and services',
-                            style: TextStyle(
-                              color: Colors.white.withOpacity(0.85),
-                              fontSize: 14,
                             ),
                           ),
                         ],
@@ -1180,6 +1188,13 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen> {
       ),
       ),
     );
+  }
+
+  String _getGreeting() {
+    final hour = DateTime.now().hour;
+    if (hour < 12) return 'Morning';
+    if (hour < 17) return 'Afternoon';
+    return 'Evening';
   }
 
   void _showRejectDialog(BuildContext context, String bookingId) {

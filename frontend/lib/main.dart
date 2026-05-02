@@ -64,6 +64,9 @@ import 'features/call/presentation/screens/voice_call_screen.dart';
 import 'features/call/presentation/screens/video_call_screen.dart';
 import 'features/call/presentation/screens/call_history_screen.dart';
 import 'features/call/presentation/widgets/floating_call_bar.dart';
+import 'features/notifications/presentation/bloc/notification_bloc.dart';
+import 'features/notifications/presentation/bloc/notification_event.dart';
+import 'features/notifications/presentation/screens/notifications_screen.dart';
 import 'core/services/app_lifecycle_service.dart';
 import 'core/services/realtime_socket_service.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -434,6 +437,9 @@ class HaulistryApp extends StatelessWidget {
         BlocProvider<LocationTrackingBloc>(
           create: (context) => LocationTrackingBloc(),
         ),
+        BlocProvider<NotificationBloc>(
+          create: (context) => NotificationBloc(),
+        ),
       ],
       child: MaterialApp.router(
         builder: (context, child) {
@@ -489,11 +495,16 @@ class HaulistryApp extends StatelessWidget {
                   );
                 },
               ),
-              // Redirect to active tracking/feedback screen on login.
+              // Load notifications and subscribe to real-time events on login.
               BlocListener<AuthBloc, AuthState>(
                 listenWhen: (previous, current) =>
                     previous is! AuthAuthenticated && current is AuthAuthenticated,
                 listener: (context, state) {
+                  if (state is AuthAuthenticated) {
+                    final notifBloc = context.read<NotificationBloc>();
+                    notifBloc.subscribeToSocket(state.user.id);
+                    notifBloc.add(NotificationsLoadRequested(state.user.id));
+                  }
                   unawaited(_handleAppResume());
                 },
               ),
@@ -920,6 +931,15 @@ final _router = GoRouter(
       },
     ),
     
+    // Notifications Route
+    GoRoute(
+      path: AppRoutes.notifications,
+      builder: (context, state) => BlocProvider.value(
+        value: context.read<NotificationBloc>(),
+        child: const NotificationsScreen(),
+      ),
+    ),
+
     // Feedback Routes
     GoRoute(
       path: AppRoutes.feedbackSeeker,

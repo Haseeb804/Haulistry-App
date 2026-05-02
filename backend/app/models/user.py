@@ -193,16 +193,24 @@ class User:
         query = """
         MATCH (u {id: $userId})
         WHERE u:Seeker OR u:Provider OR u:User
-        RETURN u
+        OPTIONAL MATCH (b)
+        WHERE any(label IN labels(b) WHERE label STARTS WITH 'Booking')
+          AND b.providerId = $userId
+          AND b.status = 'completed'
+        RETURN u, count(b) AS completedBookingsCount
         """
-        
+
         result = neo4j_driver.execute_read(query, {"userId": user_id})
-        
+
         if result and len(result) > 0:
-            user_node = result[0].get('u') if hasattr(result[0], 'get') else result[0]['u']
+            row = result[0]
+            user_node = row.get('u') if hasattr(row, 'get') else row['u']
             if user_node:
-                return User._serialize_neo4j_data(dict(user_node))
-        
+                data = User._serialize_neo4j_data(dict(user_node))
+                count = row.get('completedBookingsCount') if hasattr(row, 'get') else row['completedBookingsCount']
+                data['completedBookings'] = int(count) if count is not None else 0
+                return data
+
         return None
     
     @staticmethod

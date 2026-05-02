@@ -62,6 +62,25 @@ def _to_camel_case(data: dict) -> dict:
 router = APIRouter()
 
 
+async def _notify(user_id: str, type: str, title: str, body: str, data: Optional[dict] = None) -> None:
+    """Create a Neo4j notification and emit it in real-time via Socket.IO."""
+    try:
+        from ..models.notification import Notification
+        from ..realtime.socketio_gateway import emit_to_user_event
+        import asyncio
+        notification = await asyncio.to_thread(
+            Notification.create, user_id, type, title, body, data or {}
+        )
+        if notification:
+            import json
+            payload = dict(notification)
+            raw = payload.get('data')
+            payload['data'] = json.loads(raw) if isinstance(raw, str) else (raw or {})
+            await emit_to_user_event(user_id, 'notification', payload)
+    except Exception:
+        pass  # notifications are non-critical
+
+
 # Additional schemas for this controller
 class BookingsListResponse(BaseModel):
     success: bool
@@ -182,6 +201,12 @@ async def create_booking(booking: BookingCreate):
             # NOTE: the gateway creates rooms named "user:{userId}", NOT "provider_{userId}".
             from ..realtime.socketio_gateway import emit_to_user_event
             await emit_to_user_event(booking_data['providerId'], 'new_booking_request', booking_payload)
+            asyncio.create_task(_notify(
+                booking_data['providerId'], 'new_booking_request',
+                'New Booking Request',
+                f"{booking_data.get('seekerName', 'Customer')} needs {booking.serviceType} service",
+                {'bookingId': booking_data['id']},
+            ))
         else:
             # Open request — broadcast to all connected clients (providers will handle it).
             await sio.emit('new_booking_request', booking_payload)
@@ -525,6 +550,15 @@ async def complete_booking(
                 detail="Booking not found"
             )
 
+        # Increment provider's completed bookings counter (fire-and-forget).
+        _provider_id_for_increment = booking_data.get('providerId')
+        if _provider_id_for_increment:
+            try:
+                from .user_controller import UserController
+                UserController().increment_completed_bookings(_provider_id_for_increment)
+            except Exception:
+                pass  # counter drift is acceptable; get_by_id() recomputes dynamically
+
         # Emit real-time booking_completed Socket.IO event to BOTH parties FIRST.
         # This is what drives the dual-review redirect, so it must fire before we return.
         from ..realtime.socketio_gateway import emit_to_user_event
@@ -555,7 +589,24 @@ async def complete_booking(
                 message="Service completed! Please rate your experience."
             ))
         asyncio.create_task(asyncio.to_thread(LocationUpdate.delete_booking_locations, booking_id))
-        
+
+        # Persist in-app notifications for both parties.
+        service_type = booking_data.get('serviceType', 'service')
+        if seeker_id:
+            asyncio.create_task(_notify(
+                seeker_id, 'booking_completed',
+                'Service Completed',
+                f'Your {service_type} booking is complete. Please rate your experience.',
+                {'bookingId': booking_id},
+            ))
+        if provider_id:
+            asyncio.create_task(_notify(
+                provider_id, 'booking_completed',
+                'Job Completed',
+                f'{service_type} job done. Great work!',
+                {'bookingId': booking_id},
+            ))
+
         return BookingResponse(
             success=True,
             message="Booking completed successfully",

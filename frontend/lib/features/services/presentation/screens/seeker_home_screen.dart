@@ -13,6 +13,8 @@ import '../../../auth/presentation/bloc/auth_bloc.dart';
 import '../../../auth/presentation/bloc/auth_state.dart';
 import '../../../feedback/data/datasources/feedback_remote_datasource.dart';
 import '../../../feedback/data/repositories/feedback_repository_impl.dart';
+import '../../../notifications/presentation/bloc/notification_bloc.dart';
+import '../../../notifications/presentation/bloc/notification_state.dart';
 import '../../domain/entities/service_entity.dart';
 import '../bloc/service_bloc.dart';
 import '../bloc/service_event.dart';
@@ -230,10 +232,17 @@ class _SeekerHomeScreenState extends State<SeekerHomeScreen>
                       ),
                       Row(
                         children: [
-                          _buildAppBarIcon(
-                            icon: Icons.notifications_rounded,
-                            badge: 2,
-                            onTap: () {},
+                          BlocBuilder<NotificationBloc, NotificationState>(
+                            builder: (context, notifState) {
+                              final unread = notifState is NotificationsLoaded
+                                  ? notifState.unreadCount
+                                  : 0;
+                              return _buildAppBarIcon(
+                                icon: Icons.notifications_rounded,
+                                badge: unread > 0 ? unread : null,
+                                onTap: () => context.push(AppRoutes.notifications),
+                              );
+                            },
                           ),
                           const SizedBox(width: 12),
                           _buildAppBarIcon(

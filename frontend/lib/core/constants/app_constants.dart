@@ -185,6 +185,9 @@ class AppRoutes {
   static const String callVideo = '/call/video';
   static const String callHistory = '/call/history';
 
+  // Notifications
+  static const String notifications = '/notifications';
+
   // Feedback
   static const String feedbackSeeker = '/feedback/seeker';
   static const String feedbackProvider = '/feedback/provider';
@@ -253,6 +256,11 @@ class ApiEndpoints {
   static String seekerFeedbacks(String seekerId) => '/api/feedback/seeker/$seekerId';
   static String feedbackExists(String bookingId, String reviewerType) =>
       '/api/feedback/check/$bookingId/$reviewerType';
+
+  static String notifications(String userId) => '/api/notifications/$userId';
+  static String notificationUnreadCount(String userId) => '/api/notifications/$userId/unread-count';
+  static String notificationMarkRead(String notificationId) => '/api/notifications/$notificationId/read';
+  static String notificationsMarkAllRead(String userId) => '/api/notifications/user/$userId/read-all';
 }
 
 class MapEndpoints {
