@@ -39,9 +39,21 @@ class WebRTCCallService {
   StreamSubscription<Map<String, dynamic>>? _socketSubscription;
   Timer? _connectionTimeoutTimer;
   final List<RTCIceCandidate> _pendingIceCandidates = [];
+  // Holds ICE candidates that arrive BEFORE the peer connection is created
+  // (camera init / ICE-server fetch window). Merged into _pendingIceCandidates
+  // right after createPeerConnection() so they are flushed with the SDP.
+  final List<RTCIceCandidate> _preConnectIceCandidates = [];
   // Holds a webrtc_offer that arrived before _joinCall() created the peer
   // connection (race: caller sends offer faster than receiver's camera init).
   RTCSessionDescription? _pendingOffer;
+  // Semaphore: non-null while getUserMedia is in-flight. Prevents a concurrent
+  // startLocalPreview() + joinVideoCall() from opening the camera twice on
+  // Android, which fails on the second call and leaves _localStream null.
+  Completer<void>? _mediaInitCompleter;
+  // ICE server list cached after first successful fetch. TURN credentials from
+  // Metered are long-lived; re-fetching on every call adds 500 ms–2 s of
+  // latency during which incoming ICE candidates would be dropped.
+  List<Map<String, dynamic>>? _cachedIceServers;
 
   Future<void> initialize() async {
     if (_initialized) return;
@@ -54,6 +66,10 @@ class WebRTCCallService {
     _socketSubscription = _socket.events.listen(_onSocketEvent);
 
     _initialized = true;
+
+    // Pre-warm the ICE server cache in the background so the first _joinCall()
+    // finds the list ready immediately (no extra 500 ms API round-trip).
+    unawaited(_resolveIceServers());
   }
 
   Future<void> configureSession({
@@ -79,6 +95,18 @@ class WebRTCCallService {
   /// connects.  Safe to call multiple times — a no-op if already running.
   Future<void> startLocalPreview() async {
     if (_localStream != null) return;
+
+    // If a getUserMedia call is already in flight (e.g. _joinCall() started
+    // concurrently), wait for it to finish instead of opening the camera again.
+    // Calling getUserMedia twice on Android while the first is still pending
+    // causes the second to fail, leaving _localStream null and the peer
+    // connection with no media tracks — the primary cause of first-call failure.
+    if (_mediaInitCompleter != null) {
+      await _mediaInitCompleter!.future;
+      return;
+    }
+
+    _mediaInitCompleter = Completer<void>();
     try {
       _localStream = await navigator.mediaDevices.getUserMedia({
         'audio': true,
@@ -93,6 +121,9 @@ class WebRTCCallService {
     } catch (_) {
       // Camera permission denied or unavailable — joinVideoCall() will surface
       // the error when the peer connection is actually created.
+    } finally {
+      _mediaInitCompleter!.complete();
+      _mediaInitCompleter = null;
     }
   }
 
@@ -115,7 +146,16 @@ class WebRTCCallService {
     _videoEnabled = videoEnabled;
     _remoteDescriptionSet = false;
     _isRestartingIce = false;
+
+    // Snapshot and clear the pre-connect buffer. Any ICE candidates that
+    // arrived between configureSession() and now (while camera was initialising
+    // or ICE servers were being fetched) would have been dropped without this.
+    // They are added to _pendingIceCandidates right after PC creation so they
+    // are flushed together with the regular candidates once SDP is set.
+    final preConnectCandidates = List<RTCIceCandidate>.from(_preConnectIceCandidates);
+    _preConnectIceCandidates.clear();
     _pendingIceCandidates.clear();
+
     _callStateController.add(CallMediaState.connecting);
 
     final mediaConstraints = {
@@ -130,14 +170,27 @@ class WebRTCCallService {
           : false,
     };
 
+    // If startLocalPreview() is still in flight (race with _joinCall), wait for
+    // it to finish before calling getUserMedia again — duplicate camera opens
+    // fail on Android and result in a stream with no tracks.
+    if (_mediaInitCompleter != null) {
+      await _mediaInitCompleter!.future;
+    }
+
     // Reuse the stream started by startLocalPreview() so we don't request
     // camera permission a second time and avoid a visible camera blink.
     if (_localStream == null) {
-      _localStream = await navigator.mediaDevices.getUserMedia(mediaConstraints);
-      localRenderer.srcObject = _localStream;
+      _mediaInitCompleter = Completer<void>();
+      try {
+        _localStream = await navigator.mediaDevices.getUserMedia(mediaConstraints);
+        localRenderer.srcObject = _localStream;
+      } finally {
+        _mediaInitCompleter!.complete();
+        _mediaInitCompleter = null;
+      }
     }
 
-    final iceServers = await _resolveIceServers();
+    final iceServers = await _resolveIceServers(); // returns immediately from cache
 
     final configuration = {
       'iceServers': iceServers,
@@ -226,6 +279,10 @@ class WebRTCCallService {
     });
 
     if (_isCaller) {
+      // Caller: seed the pending buffer with any pre-connect candidates (from
+      // the receiver) — they will be flushed once the remote answer's SDP is set.
+      _pendingIceCandidates.addAll(preConnectCandidates);
+
       final offer = await _peerConnection!.createOffer({
         'offerToReceiveAudio': true,
         'offerToReceiveVideo': videoEnabled,
@@ -240,10 +297,25 @@ class WebRTCCallService {
       });
     } else if (_pendingOffer != null) {
       // Receiver: an offer arrived before the peer connection was ready.
-      // Now that _peerConnection exists, process it immediately.
+      // _handleIncomingOffer calls _pendingIceCandidates.clear() internally
+      // (ICE restart reset), so we must NOT seed _pendingIceCandidates before
+      // calling it — the pre-connect candidates would be erased.
+      // Instead, process the offer first (which sets _remoteDescriptionSet=true
+      // and flushes the buffer), then add any pre-connect candidates directly
+      // to the now-ready peer connection.
       final queued = _pendingOffer!;
       _pendingOffer = null;
       await _handleIncomingOffer(queued.sdp!, null);
+      // At this point _remoteDescriptionSet == true.
+      for (final candidate in preConnectCandidates) {
+        try {
+          await _peerConnection!.addCandidate(candidate);
+        } catch (_) {}
+      }
+    } else {
+      // Receiver: no offer yet. Buffer pre-connect candidates; they will be
+      // flushed when the offer arrives via _onSocketEvent → _handleIncomingOffer.
+      _pendingIceCandidates.addAll(preConnectCandidates);
     }
   }
 
@@ -286,7 +358,6 @@ class WebRTCCallService {
     }
 
     if (type == 'webrtc_ice_candidate') {
-      if (_peerConnection == null) return;
       final candidate = data['candidate']?.toString();
       if (candidate == null || candidate.isEmpty) return;
 
@@ -297,6 +368,14 @@ class WebRTCCallService {
             ? data['sdpMLineIndex'] as int
             : int.tryParse(data['sdpMLineIndex']?.toString() ?? ''),
       );
+
+      if (_peerConnection == null) {
+        // Peer connection not yet created — buffer this candidate so it is not
+        // lost. _joinCall() will merge _preConnectIceCandidates into
+        // _pendingIceCandidates right after the PC is created.
+        _preConnectIceCandidates.add(incoming);
+        return;
+      }
 
       if (_remoteDescriptionSet) {
         await _peerConnection!.addCandidate(incoming);
@@ -349,6 +428,11 @@ class WebRTCCallService {
   }
 
   Future<List<Map<String, dynamic>>> _resolveIceServers() async {
+    // Return cached list immediately — avoids a 500 ms–2 s API round-trip on
+    // every call during which incoming ICE candidates would otherwise be queued
+    // (or, before this fix, dropped entirely when the PC didn't exist yet).
+    if (_cachedIceServers != null) return _cachedIceServers!;
+
     try {
       final response = await ApiService.instance.get(ApiEndpoints.turnCredentials);
       final rows = (response['iceServers'] as List<dynamic>? ?? const []);
@@ -359,6 +443,7 @@ class WebRTCCallService {
           .toList();
 
       if (servers.isNotEmpty) {
+        _cachedIceServers = servers;
         return servers;
       }
     } catch (_) {
@@ -367,7 +452,7 @@ class WebRTCCallService {
 
     // Hardcoded Metered TURN servers — TURN is required on symmetric NAT (mobile carriers).
     // STUN-only will silently fail on most Pakistani mobile networks.
-    return const [
+    _cachedIceServers = const [
       {'urls': 'stun:stun.relay.metered.ca:80'},
       {
         'urls': 'turn:global.relay.metered.ca:80',
@@ -390,6 +475,7 @@ class WebRTCCallService {
         'credential': 'WIir6zhTPXOiW156',
       },
     ];
+    return _cachedIceServers!;
   }
 
   Future<void> _attemptIceRestart() async {
@@ -511,6 +597,7 @@ class WebRTCCallService {
     _remoteDescriptionSet = false;
     _isRestartingIce = false;
     _pendingIceCandidates.clear();
+    _preConnectIceCandidates.clear();
     _pendingOffer = null;
     _remoteStream = null;
   }

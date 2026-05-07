@@ -39,8 +39,11 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
   bool _showControls = true;
   Timer? _controlsTimer;
   CallParticipantIdentity? _resolvedOtherUser;
-  // Set once on first CallConnected build; passed to timer so restore keeps correct elapsed time.
-  Duration? _timerInitialDuration;
+  // Authoritative call-start timestamp set once from BLoC's CallConnected state.
+  // Every time the timer widget is recreated (controls show/hide), initialDuration
+  // is computed as DateTime.now().difference(_callConnectedAt) so the timer
+  // always shows correct elapsed time — never resets to 00:00 on UI rebuilds.
+  DateTime? _callConnectedAt;
 
   // Direct WebRTC subscriptions — bypass BLoC timing delays so the remote
   // video appears the instant onTrack fires, regardless of bloc event queue.
@@ -243,7 +246,28 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
                     ),
                   ),
                   child: SafeArea(
-                    child: Column(
+                    child: Stack(
+                      children: [
+                        // Local camera preview — visible as soon as startLocalPreview()
+                        // completes, which now happens before CallConnecting is emitted.
+                        // Shows camera even while WebRTC negotiation is in progress.
+                        Positioned(
+                          top: 60,
+                          right: 16,
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(12),
+                            child: SizedBox(
+                              width: 100,
+                              height: 140,
+                              child: RTCVideoView(
+                                _callService.localRenderer,
+                                mirror: true,
+                                objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
+                              ),
+                            ),
+                          ),
+                        ),
+                    Column(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         Padding(
@@ -365,7 +389,9 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
                         ),
                       ],
                     ),
-                  ),
+                      ],  // close Stack children
+                    ),    // close Stack
+                  ),      // close SafeArea
                 );
               }
 
@@ -403,8 +429,11 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
                 _ => widget.otherUserProfileImageUrl,
               };
 
-              // Compute timer offset once so restore keeps the correct elapsed time.
-              _timerInitialDuration ??= DateTime.now().difference(connectedAt);
+              // Pin the authoritative call-start time once from the BLoC state.
+              // connectedAt is stable (never changes for the same call).
+              if (_callConnectedAt == null) {
+                _callConnectedAt = connectedAt;
+              }
 
               return Stack(
                 children: [
@@ -563,7 +592,14 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
                           borderRadius: BorderRadius.circular(20),
                         ),
                         child: _CallDurationTimer(
-                          initialDuration: _timerInitialDuration ?? Duration.zero,
+                          // Always compute elapsed time from the pinned wall-
+                          // clock timestamp. When controls hide/show, a new
+                          // _CallDurationTimer is created — this expression
+                          // gives it the CURRENT elapsed seconds, not the
+                          // offset at first render, so no reset occurs.
+                          initialDuration: _callConnectedAt != null
+                              ? DateTime.now().difference(_callConnectedAt!)
+                              : Duration.zero,
                           onTick: (d) => _callDuration = d,
                           textStyle: const TextStyle(
                             color: Colors.white,

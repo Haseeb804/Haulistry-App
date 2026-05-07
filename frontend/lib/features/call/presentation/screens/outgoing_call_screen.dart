@@ -52,6 +52,28 @@ class _OutgoingCallScreenState extends State<OutgoingCallScreen>
   }
 
   Future<void> _resolveReceiverIdentity() async {
+    // Immediately populate with whatever the caller already knows — name, role,
+    // and image URL from the booking / chat context. This ensures the outgoing
+    // screen always shows the receiver's DP and name the instant it appears,
+    // even when the API identity fetch hasn't completed yet (fixes the Provider
+    // → Seeker call where the Seeker's image URL isn't pre-cached).
+    if (mounted) {
+      setState(() {
+        _resolvedReceiver = CallParticipantIdentity(
+          userId: widget.receiverId,
+          displayName: widget.receiverName,
+          role: widget.receiverRole,
+          profileImageUrl: widget.receiverProfileImageUrl,
+        );
+      });
+    }
+
+    // If both name and image are already present there is nothing more to fetch.
+    final hasName = !CallIdentityResolver.isGenericDisplayName(widget.receiverName);
+    final hasImage = (widget.receiverProfileImageUrl?.trim() ?? '').isNotEmpty;
+    if (hasName && hasImage) return;
+
+    // Enhance asynchronously: fetch missing name / image from the backend.
     final resolved = await CallIdentityResolver.resolveParticipant(
       userId: widget.receiverId,
       fallbackName: widget.receiverName,

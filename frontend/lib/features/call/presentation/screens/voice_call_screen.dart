@@ -34,8 +34,10 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> {
   CallParticipantIdentity? _resolvedOtherUser;
   // Written by _CallDurationTimer callback; read by end-call buttons. No setState needed.
   Duration _callDuration = Duration.zero;
-  // Set once on first CallConnected build; passed to timer so restore keeps correct elapsed time.
-  Duration? _timerInitialDuration;
+  // Authoritative call-start timestamp — set once from BLoC's connectedAt.
+  // Timer initialDuration is computed as DateTime.now().difference(_callConnectedAt)
+  // each time the widget is created, so restore/rebuild never resets to 00:00.
+  DateTime? _callConnectedAt;
 
   @override
   void initState() {
@@ -263,8 +265,8 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> {
                   );
                 }
 
-                // Compute timer offset once so restore keeps the correct elapsed time.
-                _timerInitialDuration ??= DateTime.now().difference(state.connectedAt);
+                // Pin the authoritative call-start time once from BLoC state.
+                _callConnectedAt ??= state.connectedAt;
 
                 final displayName = state.otherUserName.isNotEmpty
                     ? state.otherUserName
@@ -334,7 +336,11 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> {
                         ],
                         const SizedBox(height: 8),
                         _CallDurationTimer(
-                          initialDuration: _timerInitialDuration ?? Duration.zero,
+                          // Compute current elapsed time from the pinned start
+                          // timestamp so re-created widgets never show 00:00.
+                          initialDuration: _callConnectedAt != null
+                              ? DateTime.now().difference(_callConnectedAt!)
+                              : Duration.zero,
                           onTick: (d) => _callDuration = d,
                         ),
                         const SizedBox(height: 24),

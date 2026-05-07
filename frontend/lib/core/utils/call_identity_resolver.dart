@@ -123,7 +123,12 @@ class CallIdentityResolver {
   }) {
     final trimmedId = userId.trim();
     if (trimmedId.isEmpty) return;
-    if ((profileImageUrl?.trim() ?? '').isEmpty) return;
+    // Cache even when profileImageUrl is null/empty. The identity resolver will
+    // return the name and role immediately from cache — the avatar placeholder
+    // (first letter) appears instantly, and the real image loads if available.
+    // Previously, Provider → Seeker calls skipped caching when the Seeker's
+    // image URL was absent, causing the outgoing screen to wait for an API
+    // round-trip before showing any identity at all.
     _identityCache[trimmedId] = Future.value(CallParticipantIdentity(
       userId: trimmedId,
       displayName: displayName,

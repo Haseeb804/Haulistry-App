@@ -468,7 +468,15 @@ class CallBloc extends Bloc<CallEvent, CallState> {
         _otherUserId = fallbackCallerId;
       }
 
-      // Emit UI state immediately so receiver sees the call screen without delay.
+      // For video calls: start camera NOW — before emitting CallConnecting — so
+      // the local preview is already running when the video screen appears.
+      // The _mediaInitCompleter semaphore inside the service prevents a
+      // concurrent _joinCall() from opening the camera a second time.
+      if (_currentCallType == AppConstants.callTypeVideo) {
+        await _callService.startLocalPreview();
+      }
+
+      // Emit UI state so receiver sees the call screen.
       emit(CallConnecting(
         callId: event.callId,
         callType: _currentCallType,
