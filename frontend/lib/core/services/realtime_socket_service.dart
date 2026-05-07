@@ -29,6 +29,22 @@ class RealtimeSocketService {
 
   final List<_PendingEmit> _pending = [];
 
+  // Event types that MUST NOT be replayed from the pending queue.
+  // WebRTC signaling (offer/answer/ICE) and call control messages are
+  // time-sensitive: replaying a stale offer or ICE candidate into a new call
+  // session corrupts the SDP negotiation. Call control messages (accept/reject/
+  // end) replayed out of order cause ghost call states on the server.
+  static const _noReplayTypes = {
+    'webrtc_offer',
+    'webrtc_answer',
+    'webrtc_ice_candidate',
+    'call_request',
+    'call_accept',
+    'call_reject',
+    'call_end',
+    'chat_send', // has its own optimistic-UI error path
+  };
+
   // Completer that resolves once the socket transitions to connected.
   // Avoids the 150ms busy-poll loop that the previous implementation used.
   Completer<bool>? _connectCompleter;
@@ -147,7 +163,11 @@ class RealtimeSocketService {
     }
 
     _emitLocalError('Realtime send failed for $type: $lastError');
-    _pending.add(_PendingEmit(type: type, data: data));
+    // Do not queue time-sensitive events — they would arrive stale and corrupt
+    // the next call session or duplicate a previous call control action.
+    if (!_noReplayTypes.contains(type)) {
+      _pending.add(_PendingEmit(type: type, data: data));
+    }
     return null;
   }
 
@@ -260,10 +280,8 @@ class RealtimeSocketService {
     _pending.clear();
 
     for (final item in snapshot) {
-      // Chat messages are excluded from flush: they use optimistic UI and
-      // have explicit failure handling in the chat screen (show error, re-type).
-      // Re-sending them here risks duplicate DB writes if the server already saved.
-      if (item.type == 'chat_send') continue;
+      // Skip all time-sensitive or non-replayable event types.
+      if (_noReplayTypes.contains(item.type)) continue;
       await sendWithAck(item.type, item.data, retries: 1);
     }
   }

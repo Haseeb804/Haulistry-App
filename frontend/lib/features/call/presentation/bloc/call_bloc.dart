@@ -179,6 +179,7 @@ class CallBloc extends Bloc<CallEvent, CallState> {
         callerProfileImageUrl: data['callerProfileImageUrl']?.toString(),
         callType: data['callType']?.toString() ?? AppConstants.callTypeVoice,
         signalData: signalData,
+        bookingId: data['bookingId']?.toString() ?? '',
       ));
     });
   }
@@ -264,6 +265,17 @@ class CallBloc extends Bloc<CallEvent, CallState> {
     InitiateCallRequested event,
     Emitter<CallState> emit,
   ) async {
+    // Prevent multiple simultaneous call sessions. If there is already an
+    // active or pending call, silently ignore new initiation requests.
+    // The UI should disable the call button while a call is active, but this
+    // guard is the safety net for any bypass path (rapid double-tap, etc.).
+    if (state is CallInitiated ||
+        state is CallRinging ||
+        state is CallConnecting ||
+        state is CallConnected) {
+      return;
+    }
+
     try {
       final user = _auth.currentUser;
       if (user == null) {
@@ -336,6 +348,27 @@ class CallBloc extends Bloc<CallEvent, CallState> {
         return;
       }
 
+      // Guard: receiver accepted the call faster than the API responded.
+      // State is already CallConnecting or CallConnected — the real call ID
+      // arrives via the call_accept socket event and was set in
+      // _onCallAnswerAcceptedByReceiver. Update identity cache but do NOT
+      // re-emit CallInitiated, which would regress the state machine.
+      if (state is CallConnecting || state is CallConnected) {
+        final call = response['call'] as Map<String, dynamic>? ?? const {};
+        // Confirm the real call ID in case it wasn't set yet via the accept path.
+        final confirmedId = call['id']?.toString() ?? '';
+        if (confirmedId.isNotEmpty && _currentCallId == 'pending') {
+          _currentCallId = confirmedId;
+        }
+        CallIdentityResolver.preCacheIdentity(
+          userId: event.receiverId,
+          displayName: _otherUserName,
+          role: _otherUserRole,
+          profileImageUrl: _otherUserProfileImageUrl,
+        );
+        return;
+      }
+
       final call = response['call'] as Map<String, dynamic>;
       final signalData = (response['signalData'] is Map<String, dynamic>)
           ? response['signalData'] as Map<String, dynamic>
@@ -403,6 +436,10 @@ class CallBloc extends Bloc<CallEvent, CallState> {
     AnswerCallRequested event,
     Emitter<CallState> emit,
   ) async {
+    // Guard: if already connecting or connected (e.g., user tapped Accept twice
+    // rapidly, or a stale duplicate event arrived), do nothing.
+    if (state is CallConnecting || state is CallConnected) return;
+
     try {
       _currentCallId = event.callId;
       // Preserve _currentCallType (set by _onIncomingCallReceived) when signalData
@@ -483,6 +520,13 @@ class CallBloc extends Bloc<CallEvent, CallState> {
     if (state is CallConnecting || state is CallConnected) return;
 
     try {
+      // Update _currentCallId with the real ID from the accept event.
+      // At this point it might still be 'pending' (API response not yet received).
+      // Setting it here ensures call_end uses the correct ID if the API is slow.
+      if (event.callId.isNotEmpty) {
+        _currentCallId = event.callId;
+      }
+
       emit(CallConnecting(
         callId: event.callId,
         callType: event.callType,
@@ -604,41 +648,54 @@ class CallBloc extends Bloc<CallEvent, CallState> {
     RejectCallRequested event,
     Emitter<CallState> emit,
   ) async {
+    // Snapshot context BEFORE reset — cleanup is fire-and-forget after UI pops.
+    final otherUserId = _otherUserId;
+    final bookingId = _currentBookingId;
+    final userId = _auth.currentUser?.uid;
+
+    // Emit terminal state FIRST (consistent with _onEndCallRequested) so the
+    // UI pops immediately even when the network is slow. Never await network
+    // calls before popping an incoming call screen.
+    unawaited(NotificationService().cancelCallNotification(event.callId));
+    emit(CallEnded(callId: event.callId, duration: 0, reason: 'rejected'));
+    _resetCallSession();
+
+    unawaited(_rejectCallCleanup(event.callId, otherUserId, bookingId, userId));
+  }
+
+  Future<void> _rejectCallCleanup(
+    String callId,
+    String otherUserId,
+    String? bookingId,
+    String? userId,
+  ) async {
     try {
-      final otherUserId = _otherUserId;
-      final bookingId = _currentBookingId;
-
-      await NotificationService().cancelCallNotification(event.callId);
-
       await _apiService.post(ApiEndpoints.callUpdateStatus, {
-        'callId': event.callId,
+        'callId': callId,
         'status': 'rejected',
-        if (_auth.currentUser != null) 'userId': _auth.currentUser!.uid,
+        if (userId != null) 'userId': userId,
       });
+    } catch (_) {}
 
-      if (otherUserId.isNotEmpty) {
+    if (otherUserId.isNotEmpty) {
+      try {
         await _socketService.send('call_reject', {
-          'callId': event.callId,
+          'callId': callId,
           'targetUserId': otherUserId,
         });
-      }
+      } catch (_) {}
+    }
 
-      emit(CallEnded(callId: event.callId, duration: 0, reason: 'rejected'));
-      _resetCallSession();
-
-      if (bookingId != null && bookingId.isNotEmpty && otherUserId.isNotEmpty) {
-        try {
-          await _socketService.send('chat_send', {
-            'receiverId': otherUserId,
-            'bookingId': bookingId,
-            'messageText': 'Missed call',
-            'messageType': 'call',
-            'clientMessageId': '${event.callId}_call_log',
-          });
-        } catch (_) {}
-      }
-    } catch (e) {
-      emit(CallError(message: 'Failed to reject call: $e'));
+    if (bookingId != null && bookingId.isNotEmpty && otherUserId.isNotEmpty) {
+      try {
+        await _socketService.send('chat_send', {
+          'receiverId': otherUserId,
+          'bookingId': bookingId,
+          'messageText': 'Missed call',
+          'messageType': 'call',
+          'clientMessageId': '${callId}_call_log',
+        });
+      } catch (_) {}
     }
   }
 
@@ -830,6 +887,20 @@ class CallBloc extends Bloc<CallEvent, CallState> {
     IncomingCallReceived event,
     Emitter<CallState> emit,
   ) async {
+    // Busy-line guard: if already in an active call, silently drop this new
+    // incoming call. Overwriting _currentCallId/_otherUserId here would corrupt
+    // the active session, and showing an IncomingCallScreen over an active
+    // voice/video screen creates an invisible "ghost" connection beneath it.
+    if (state is CallConnecting || state is CallConnected) return;
+
+    // Deduplicate: both the Socket.IO event and the FCM push notification can
+    // deliver the same call. A second IncomingCallReceived for the same callId
+    // must not overwrite session state already set by the first.
+    if (_currentCallId == event.callId &&
+        (state is CallRinging || state is CallConnecting || state is CallConnected)) {
+      return;
+    }
+
     await NotificationService().cancelCallNotification(event.callId);
 
     _currentCallId = event.callId;

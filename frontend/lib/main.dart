@@ -123,6 +123,15 @@ void _setupNotificationHandling() {
           (type == 'booking_accepted' ||
               bookingStatus == AppConstants.statusActive ||
               bookingStatus == AppConstants.statusAccepted)) {
+        // Never let a booking notification navigate over an active call screen.
+        final ctx = _rootNavigatorKey.currentContext;
+        if (ctx != null && ctx.mounted) {
+          final cs = ctx.read<CallBloc>().state;
+          if (cs is CallInitiated || cs is CallRinging ||
+              cs is CallConnecting || cs is CallConnected) {
+            return;
+          }
+        }
         unawaited(_navigateToTrackingFromBooking(bookingId));
       }
     }
@@ -212,6 +221,19 @@ Future<void> _handleAppResume() async {
     final authState = context.read<AuthBloc>().state;
     if (authState is! AuthAuthenticated) return;
 
+    // ── Critical guard ─────────────────────────────────────────────────────────
+    // _router.go() replaces the ENTIRE navigation stack. If a call is active,
+    // navigating here would silently close the call screens while the WebRTC
+    // peer connection keeps running invisibly — creating a "ghost" background
+    // call. This is the root cause of "outgoing screen disappears after 5-6s".
+    final callState = context.read<CallBloc>().state;
+    if (callState is CallInitiated ||
+        callState is CallRinging ||
+        callState is CallConnecting ||
+        callState is CallConnected) {
+      return;
+    }
+
     final user = authState.user;
     final bookingRepository = BookingRepositoryImpl(
       remoteDataSource: BookingRemoteDataSource(
@@ -231,6 +253,18 @@ Future<void> _handleAppResume() async {
       ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
 
     if (activeBookings.isNotEmpty) {
+      // Re-check call state: the user may have initiated a call while the
+      // booking fetch was in-flight. A second guard here prevents _router.go()
+      // from replacing the navigation stack over an in-progress call screen.
+      if (!context.mounted) return;
+      final callStateNow = context.read<CallBloc>().state;
+      if (callStateNow is CallInitiated ||
+          callStateNow is CallRinging ||
+          callStateNow is CallConnecting ||
+          callStateNow is CallConnected) {
+        return;
+      }
+
       final booking = activeBookings.first;
       if (user.role == AppConstants.roleProvider) {
         _router.go(
@@ -288,6 +322,11 @@ Future<void> _handleAppResume() async {
         final exists = await feedbackRepository.checkFeedbackExists(booking.id, AppConstants.roleProvider);
         if (!context.mounted || exists) return;
 
+        // Same call-state guard before any _router.go() call.
+        final cs2 = context.read<CallBloc>().state;
+        if (cs2 is CallInitiated || cs2 is CallRinging ||
+            cs2 is CallConnecting || cs2 is CallConnected) return;
+
         _router.go(AppRoutes.feedbackProvider, extra: {
           'bookingId': booking.id,
           'seekerId': booking.seekerId,
@@ -298,6 +337,10 @@ Future<void> _handleAppResume() async {
         if (booking.providerId == null || booking.providerId!.isEmpty) continue;
         final exists = await feedbackRepository.checkFeedbackExists(booking.id, AppConstants.roleSeeker);
         if (!context.mounted || exists) return;
+
+        final cs3 = context.read<CallBloc>().state;
+        if (cs3 is CallInitiated || cs3 is CallRinging ||
+            cs3 is CallConnecting || cs3 is CallConnected) return;
 
         _router.go(AppRoutes.feedbackSeeker, extra: {
           'bookingId': booking.id,
@@ -493,6 +536,17 @@ class HaulistryApp extends StatelessWidget {
                       behavior: SnackBarBehavior.floating,
                     ),
                   );
+                },
+              ),
+              // Clean up the seen-calls deduplication set when a call ends so
+              // the same callId cannot prevent a future incoming screen from showing.
+              BlocListener<CallBloc, CallState>(
+                listenWhen: (previous, current) =>
+                    current is CallEnded && previous is! CallEnded,
+                listener: (context, state) {
+                  if (state is CallEnded && state.callId.isNotEmpty) {
+                    _shownIncomingCallIds.remove(state.callId);
+                  }
                 },
               ),
               // Load notifications and subscribe to real-time events on login.

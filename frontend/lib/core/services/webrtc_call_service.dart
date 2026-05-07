@@ -217,6 +217,8 @@ class WebRTCCallService {
 
     _connectionTimeoutTimer?.cancel();
     _connectionTimeoutTimer = Timer(const Duration(seconds: 30), () {
+      // Guard: if cancelSession() already ran (call ended), discard the timeout.
+      if (_callId == null) return;
       final state = _peerConnection?.connectionState;
       if (state != RTCPeerConnectionState.RTCPeerConnectionStateConnected) {
         _callStateController.add(CallMediaState.error);
@@ -246,6 +248,10 @@ class WebRTCCallService {
   }
 
   Future<void> _onSocketEvent(Map<String, dynamic> event) async {
+    // No active call — discard all WebRTC events. This prevents stale offers/
+    // ICE candidates from a previous call being processed after cleanup.
+    if (_callId == null) return;
+
     final type = event['type']?.toString() ?? '';
     final data = (event['data'] is Map<String, dynamic>)
         ? event['data'] as Map<String, dynamic>
@@ -321,6 +327,11 @@ class WebRTCCallService {
   Future<void> _handleIncomingOffer(String sdp, String? fromUserId) async {
     if (_peerConnection == null) return;
 
+    // Reset ICE candidate buffering before each new offer — handles both the
+    // initial offer and ICE restart re-offers (which establish a fresh exchange).
+    _remoteDescriptionSet = false;
+    _pendingIceCandidates.clear();
+
     await _setRemoteDescription(RTCSessionDescription(sdp, 'offer'));
 
     final answer = await _peerConnection!.createAnswer({
@@ -382,6 +393,10 @@ class WebRTCCallService {
   }
 
   Future<void> _attemptIceRestart() async {
+    // ICE restart sends a re-offer. Only the original caller (offerer) may
+    // initiate this — if both sides attempt simultaneously (glare), the
+    // signaling layer deadlocks and the connection never recovers.
+    if (!_isCaller) return;
     if (_peerConnection == null || _peerUserId == null || _callId == null) return;
     if (_isRestartingIce) return;
 
@@ -485,6 +500,12 @@ class WebRTCCallService {
   /// native WebRTC callbacks (ICE restart, etc.) are ignored.  Call this
   /// synchronously before the async cleanup to prevent races.
   void cancelSession() {
+    // Cancel the timeout timer immediately so it cannot fire an error event
+    // after the call has already ended (a call ending before 30 s would
+    // otherwise surface a spurious error state to the UI).
+    _connectionTimeoutTimer?.cancel();
+    _connectionTimeoutTimer = null;
+
     _callId = null;
     _peerUserId = null;
     _remoteDescriptionSet = false;
@@ -510,6 +531,11 @@ class WebRTCCallService {
     _remoteStream = null;
 
     try {
+      // Stop each track explicitly before disposing — ensures the hardware
+      // microphone and camera are released immediately on Android/iOS.
+      for (final track in _localStream?.getTracks() ?? const <MediaStreamTrack>[]) {
+        try { track.stop(); } catch (_) {}
+      }
       await _localStream?.dispose();
     } catch (_) {}
     _localStream = null;
