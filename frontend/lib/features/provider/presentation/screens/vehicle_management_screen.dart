@@ -5,7 +5,6 @@ import 'package:image_picker/image_picker.dart';
 import 'dart:convert';
 import 'dart:typed_data';
 import '../../../../core/theme/app_theme.dart';
-import '../../../../core/constants/app_constants.dart';
 import '../../../../core/widgets/modern_widgets.dart';
 import '../bloc/provider_bloc.dart';
 import '../bloc/provider_event.dart';
@@ -717,18 +716,19 @@ class _VehicleManagementScreenState extends State<VehicleManagementScreen> {
                           ),
                           prefixIcon: const Icon(Icons.local_shipping_rounded),
                         ),
-                        items: AppConstants.serviceTypes
-                            .map((type) => DropdownMenuItem(
-                                  value: type,
-                                  child: Row(
-                                    children: [
-                                      Text(_getVehicleEmoji(type)),
-                                      const SizedBox(width: 8),
-                                      Text(type),
-                                    ],
-                                  ),
-                                ))
-                            .toList(),
+                        items: const [
+                                  DropdownMenuItem(value: 'sand_trolley',    child: Text('🏜️ Sand Trolley')),
+                                  DropdownMenuItem(value: 'bricks_trolley',  child: Text('🧱 Bricks Trolley')),
+                                  DropdownMenuItem(value: 'harvester',       child: Text('🌾 Harvester')),
+                                  DropdownMenuItem(value: 'crane',           child: Text('🏗️ Crane')),
+                                  DropdownMenuItem(value: 'tractor',         child: Text('🚜 Tractor')),
+                                  DropdownMenuItem(value: 'loader',          child: Text('🚛 Loader')),
+                                  DropdownMenuItem(value: 'dumper',          child: Text('🚚 Dumper')),
+                                  DropdownMenuItem(value: 'excavator',       child: Text('⛏️ Excavator')),
+                                  DropdownMenuItem(value: 'concrete_mixer',  child: Text('🔄 Concrete Mixer')),
+                                  DropdownMenuItem(value: 'water_tanker',    child: Text('💧 Water Tanker')),
+                                  DropdownMenuItem(value: 'other',           child: Text('📦 Other')),
+                                ],
                         onChanged: (value) => selectedServiceType = value,
                         validator: (value) =>
                             value == null ? 'Please select vehicle type' : null,
