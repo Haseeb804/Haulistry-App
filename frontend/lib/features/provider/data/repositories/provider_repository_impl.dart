@@ -134,6 +134,7 @@ class ProviderRepositoryImpl implements ProviderRepository {
     required double pricePerKm,
     required double pricePerHour,
     required String category,
+    String? extraFields,
   }) async {
     try {
       final serviceData = {
@@ -146,6 +147,7 @@ class ProviderRepositoryImpl implements ProviderRepository {
         'pricePerKm': pricePerKm,
         'pricePerHour': pricePerHour,
         'category': category,
+        if (extraFields != null) 'extraFields': extraFields,
       };
 
       return await remoteDataSource.createService(serviceData);

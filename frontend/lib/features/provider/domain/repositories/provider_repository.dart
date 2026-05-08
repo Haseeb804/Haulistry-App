@@ -36,6 +36,7 @@ abstract class ProviderRepository {
     required double pricePerKm,
     required double pricePerHour,
     required String category,
+    String? extraFields,
   });
   Future<ServiceEntity> updateService(String serviceId, Map<String, dynamic> updates);
   Future<void> deleteService(String serviceId);

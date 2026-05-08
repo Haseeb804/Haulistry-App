@@ -17,6 +17,7 @@ class ServiceCreate(BaseModel):
     pricePerKm: float = Field(default=0.0, description="Price per kilometer")
     pricePerHour: float = Field(default=0.0, description="Price per hour")
     category: str = Field(default="general", description="Service category")
+    extraFields: Optional[str] = Field(None, description="JSON string of service-specific extra fields")
 
     class Config:
         json_schema_extra = {
@@ -43,6 +44,7 @@ class ServiceUpdate(BaseModel):
     pricePerHour: Optional[float] = Field(None, description="Price per hour")
     category: Optional[str] = Field(None, description="Service category")
     isActive: Optional[bool] = Field(None, description="Service availability")
+    extraFields: Optional[str] = Field(None, description="JSON string of service-specific extra fields")
 
 
 class ServiceResponse(BaseModel):

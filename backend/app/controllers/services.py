@@ -9,8 +9,28 @@ from ..schemas.service_schema import (
     ServiceCreate, ServiceUpdate, ServiceResponse, ServicesListResponse
 )
 from ..models.service import Service
+from ..config.service_form_configs import get_form_config, list_service_types
 
 router = APIRouter()
+
+
+@router.get("/form-config/all", tags=["Service Forms"])
+async def get_all_form_configs():
+    """Return form field configs for all known service types."""
+    from ..config.service_form_configs import SERVICE_FORM_CONFIGS
+    return {"success": True, "configs": SERVICE_FORM_CONFIGS, "serviceTypes": list_service_types()}
+
+
+@router.get("/form-config/{service_type}", tags=["Service Forms"])
+async def get_service_form_config(service_type: str):
+    """Return dynamic form field configuration for a given service type."""
+    config = get_form_config(service_type)
+    if config is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"No form config found for service type: {service_type}",
+        )
+    return {"success": True, "serviceType": service_type, "config": config}
 
 
 @router.post("", response_model=ServiceResponse, status_code=status.HTTP_201_CREATED)

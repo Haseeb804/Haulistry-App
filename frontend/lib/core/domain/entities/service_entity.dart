@@ -19,6 +19,8 @@ class ServiceEntity {
   final double? providerLongitude;
   final DateTime createdAt;
   final DateTime updatedAt;
+  /// JSON-encoded string of service-specific extra fields (stored in Neo4j).
+  final String? extraFields;
 
   const ServiceEntity({
     required this.id,
@@ -40,6 +42,7 @@ class ServiceEntity {
     this.providerLongitude,
     required this.createdAt,
     required this.updatedAt,
+    this.extraFields,
   });
 
   factory ServiceEntity.fromJson(Map<String, dynamic> json) {
@@ -63,6 +66,7 @@ class ServiceEntity {
       providerLongitude: (json['providerLongitude'] as num?)?.toDouble(),
       createdAt: DateTime.parse(json['createdAt'] as String),
       updatedAt: DateTime.parse(json['updatedAt'] as String),
+      extraFields: json['extraFields'] as String?,
     );
   }
 
@@ -81,6 +85,7 @@ class ServiceEntity {
       'isActive': isActive,
       'createdAt': createdAt.toIso8601String(),
       'updatedAt': updatedAt.toIso8601String(),
+      'extraFields': extraFields,
     };
   }
 
@@ -104,6 +109,7 @@ class ServiceEntity {
     double? providerLongitude,
     DateTime? createdAt,
     DateTime? updatedAt,
+    String? extraFields,
   }) {
     return ServiceEntity(
       id: id ?? this.id,
@@ -125,6 +131,7 @@ class ServiceEntity {
       providerLongitude: providerLongitude ?? this.providerLongitude,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
+      extraFields: extraFields ?? this.extraFields,
     );
   }
 }

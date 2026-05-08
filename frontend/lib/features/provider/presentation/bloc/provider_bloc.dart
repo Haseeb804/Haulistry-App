@@ -627,6 +627,7 @@ class ProviderBloc extends Bloc<ProviderEvent, ProviderState> {
         pricePerKm: event.pricePerKm,
         pricePerHour: event.pricePerHour,
         category: event.category,
+        extraFields: event.extraFields,
       );
 
       emit(const ProviderServiceActionSuccess(

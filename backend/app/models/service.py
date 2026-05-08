@@ -116,6 +116,7 @@ class Service:
             pricePerKm: $pricePerKm,
             pricePerHour: $pricePerHour,
             category: $category,
+            extraFields: $extraFields,
             isActive: true,
             createdAt: datetime(),
             updatedAt: datetime()
@@ -135,6 +136,7 @@ class Service:
             'pricePerKm': service_data.get('pricePerKm', 0.0),
             'pricePerHour': service_data.get('pricePerHour', 0.0),
             'category': service_data.get('category', 'general'),
+            'extraFields': service_data.get('extraFields'),
         }
         
         result = neo4j_driver.execute_write(query, params)
@@ -277,6 +279,7 @@ class Service:
             'pricePerHour': 'pricePerHour',
             'category': 'category',
             'isActive': 'isActive',
+            'extraFields': 'extraFields',
         }
         
         for key, neo4j_key in field_mapping.items():

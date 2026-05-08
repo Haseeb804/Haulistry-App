@@ -8,6 +8,7 @@ import '../../../../core/widgets/modern_widgets.dart';
 import '../bloc/provider_bloc.dart';
 import '../bloc/provider_event.dart';
 import '../bloc/provider_state.dart';
+import '../widgets/dynamic_service_fields.dart';
 
 class ServiceManagementScreen extends StatefulWidget {
   const ServiceManagementScreen({super.key});
@@ -705,21 +706,30 @@ class _ServiceManagementScreenState extends State<ServiceManagementScreen> {
     final isEditing = existingService != null;
     final nameController = TextEditingController(text: existingService?.name ?? '');
     final descriptionController = TextEditingController(text: existingService?.description ?? '');
-    final imageUrlController = TextEditingController(text: existingService?.imageUrl ?? '');
     final basePriceController = TextEditingController(
-      text: existingService?.basePrice.toString() ?? '500',
+      text: existingService != null ? existingService.basePrice.toString() : '500',
     );
     final pricePerKmController = TextEditingController(
-      text: existingService?.pricePerKm.toString() ?? '50',
+      text: existingService != null ? existingService.pricePerKm.toString() : '0',
     );
     final pricePerHourController = TextEditingController(
-      text: existingService?.pricePerHour.toString() ?? '500',
+      text: existingService != null ? existingService.pricePerHour.toString() : '0',
     );
 
     String selectedCategory = existingService?.category ?? 'sand_trolley';
     String? selectedVehicleId = existingService?.vehicleId;
     if (selectedVehicleId == null && vehicles.isNotEmpty) {
       selectedVehicleId = vehicles.first.id;
+    }
+
+    // Parse existing extraFields JSON into a map for pre-population.
+    Map<String, dynamic> extraFieldValues = {};
+    if (existingService?.extraFields != null) {
+      try {
+        extraFieldValues = Map<String, dynamic>.from(
+          jsonDecode(existingService!.extraFields!),
+        );
+      } catch (_) {}
     }
 
     final formKey = GlobalKey<FormState>();
@@ -738,9 +748,9 @@ class _ServiceManagementScreenState extends State<ServiceManagementScreen> {
                 borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
               ),
               child: DraggableScrollableSheet(
-                initialChildSize: 0.9,
+                initialChildSize: 0.92,
                 minChildSize: 0.5,
-                maxChildSize: 0.95,
+                maxChildSize: 0.97,
                 expand: false,
                 builder: (context, scrollController) {
                   return SingleChildScrollView(
@@ -795,7 +805,7 @@ class _ServiceManagementScreenState extends State<ServiceManagementScreen> {
                                         style: Theme.of(context).textTheme.titleLarge,
                                       ),
                                       Text(
-                                        isEditing 
+                                        isEditing
                                             ? 'Update your service details'
                                             : 'Create a new service offering',
                                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
@@ -827,9 +837,7 @@ class _ServiceManagementScreenState extends State<ServiceManagementScreen> {
                                 decoration: BoxDecoration(
                                   color: AppTheme.errorColor.withOpacity(0.1),
                                   borderRadius: BorderRadius.circular(12),
-                                  border: Border.all(
-                                    color: AppTheme.errorColor.withOpacity(0.3),
-                                  ),
+                                  border: Border.all(color: AppTheme.errorColor.withOpacity(0.3)),
                                 ),
                                 child: const Row(
                                   children: [
@@ -846,7 +854,7 @@ class _ServiceManagementScreenState extends State<ServiceManagementScreen> {
                               )
                             else
                               DropdownButtonFormField<String>(
-                                initialValue: selectedVehicleId,
+                                value: selectedVehicleId,
                                 decoration: InputDecoration(
                                   labelText: 'Select Vehicle',
                                   prefixIcon: Container(
@@ -872,12 +880,9 @@ class _ServiceManagementScreenState extends State<ServiceManagementScreen> {
                                 onChanged: (value) {
                                   setDialogState(() => selectedVehicleId = value);
                                 },
-                                validator: (value) {
-                                  if (value == null || value.isEmpty) {
-                                    return 'Please select a vehicle';
-                                  }
-                                  return null;
-                                },
+                                validator: (value) => (value == null || value.isEmpty)
+                                    ? 'Please select a vehicle'
+                                    : null,
                               ),
                             const SizedBox(height: 20),
 
@@ -901,18 +906,15 @@ class _ServiceManagementScreenState extends State<ServiceManagementScreen> {
                                   ),
                                 ),
                               ),
-                              validator: (value) {
-                                if (value == null || value.isEmpty) {
-                                  return 'Please enter service name';
-                                }
-                                return null;
-                              },
+                              validator: (value) => (value == null || value.isEmpty)
+                                  ? 'Please enter service name'
+                                  : null,
                             ),
                             const SizedBox(height: 20),
 
-                            // Category
+                            // Category — changing this rebuilds the dynamic fields below
                             DropdownButtonFormField<String>(
-                              initialValue: selectedCategory,
+                              value: selectedCategory,
                               decoration: InputDecoration(
                                 labelText: 'Service Category',
                                 prefixIcon: Container(
@@ -930,20 +932,24 @@ class _ServiceManagementScreenState extends State<ServiceManagementScreen> {
                                 ),
                               ),
                               items: const [
-                                DropdownMenuItem(value: 'sand_trolley', child: Text('🏜️ Sand Trolley')),
-                                DropdownMenuItem(value: 'bricks_trolley', child: Text('🧱 Bricks Trolley')),
-                                DropdownMenuItem(value: 'harvester', child: Text('🌾 Harvester')),
-                                DropdownMenuItem(value: 'crane', child: Text('🏗️ Crane')),
-                                DropdownMenuItem(value: 'tractor', child: Text('🚜 Tractor')),
-                                DropdownMenuItem(value: 'loader', child: Text('🚛 Loader')),
-                                DropdownMenuItem(value: 'dumper', child: Text('🚚 Dumper')),
-                                DropdownMenuItem(value: 'excavator', child: Text('⛏️ Excavator')),
-                                DropdownMenuItem(value: 'concrete_mixer', child: Text('🔄 Concrete Mixer')),
-                                DropdownMenuItem(value: 'water_tanker', child: Text('💧 Water Tanker')),
-                                DropdownMenuItem(value: 'other', child: Text('📦 Other')),
+                                DropdownMenuItem(value: 'sand_trolley', child: Text('Sand Trolley')),
+                                DropdownMenuItem(value: 'bricks_trolley', child: Text('Bricks Trolley')),
+                                DropdownMenuItem(value: 'harvester', child: Text('Harvester')),
+                                DropdownMenuItem(value: 'crane', child: Text('Crane')),
+                                DropdownMenuItem(value: 'tractor', child: Text('Tractor')),
+                                DropdownMenuItem(value: 'loader', child: Text('Loader')),
+                                DropdownMenuItem(value: 'dumper', child: Text('Dumper')),
+                                DropdownMenuItem(value: 'excavator', child: Text('Excavator')),
+                                DropdownMenuItem(value: 'concrete_mixer', child: Text('Concrete Mixer')),
+                                DropdownMenuItem(value: 'water_tanker', child: Text('Water Tanker')),
+                                DropdownMenuItem(value: 'other', child: Text('Other')),
                               ],
                               onChanged: (value) {
-                                setDialogState(() => selectedCategory = value ?? 'sand_trolley');
+                                setDialogState(() {
+                                  selectedCategory = value ?? 'sand_trolley';
+                                  // Reset extra fields when category changes.
+                                  extraFieldValues = {};
+                                });
                               },
                             ),
                             const SizedBox(height: 20),
@@ -959,6 +965,16 @@ class _ServiceManagementScreenState extends State<ServiceManagementScreen> {
                               ),
                             ),
                             const SizedBox(height: 24),
+
+                            // ── Dynamic service-specific fields ──────────────────
+                            DynamicServiceFields(
+                              key: ValueKey(selectedCategory),
+                              category: selectedCategory,
+                              initialValues: extraFieldValues,
+                              onChanged: (values) {
+                                extraFieldValues = values;
+                              },
+                            ),
 
                             // Pricing Section
                             Container(
@@ -989,14 +1005,21 @@ class _ServiceManagementScreenState extends State<ServiceManagementScreen> {
                                       ),
                                       const SizedBox(width: 12),
                                       Text(
-                                        'Pricing Details',
+                                        'Base Pricing',
                                         style: Theme.of(context).textTheme.titleMedium?.copyWith(
                                               fontWeight: FontWeight.w600,
                                             ),
                                       ),
                                     ],
                                   ),
-                                  const SizedBox(height: 20),
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    'Used for fare estimation. Set 0 if not applicable.',
+                                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                          color: AppTheme.textSecondary,
+                                        ),
+                                  ),
+                                  const SizedBox(height: 16),
                                   TextFormField(
                                     controller: basePriceController,
                                     keyboardType: TextInputType.number,
@@ -1064,42 +1087,41 @@ class _ServiceManagementScreenState extends State<ServiceManagementScreen> {
                               onPressed: vehicles.isEmpty
                                   ? null
                                   : () {
-                                      if (formKey.currentState!.validate()) {
-                                        Navigator.pop(context);
+                                      if (!formKey.currentState!.validate()) return;
+                                      final encodedExtra = extraFieldValues.isNotEmpty
+                                          ? jsonEncode(extraFieldValues)
+                                          : null;
 
-                                        if (isEditing) {
-                                          context.read<ProviderBloc>().add(
-                                                ProviderUpdateServiceRequested(
-                                                  serviceId: existingService.id,
-                                                  updates: {
-                                                    'name': nameController.text.trim(),
-                                                    'description': descriptionController.text.trim(),
-                                                    'imageUrl': imageUrlController.text.trim().isEmpty
-                                                        ? null
-                                                        : imageUrlController.text.trim(),
-                                                    'basePrice': double.parse(basePriceController.text),
-                                                    'pricePerKm': double.parse(pricePerKmController.text),
-                                                    'pricePerHour': double.parse(pricePerHourController.text),
-                                                    'category': selectedCategory,
-                                                  },
-                                                ),
-                                              );
-                                        } else {
-                                          context.read<ProviderBloc>().add(
-                                                ProviderAddServiceRequested(
-                                                  vehicleId: selectedVehicleId!,
-                                                  name: nameController.text.trim(),
-                                                  description: descriptionController.text.trim(),
-                                                  imageUrl: imageUrlController.text.trim().isEmpty
-                                                      ? null
-                                                      : imageUrlController.text.trim(),
-                                                  basePrice: double.parse(basePriceController.text),
-                                                  pricePerKm: double.parse(pricePerKmController.text),
-                                                  pricePerHour: double.parse(pricePerHourController.text),
-                                                  category: selectedCategory,
-                                                ),
-                                              );
-                                        }
+                                      Navigator.pop(context);
+
+                                      if (isEditing) {
+                                        context.read<ProviderBloc>().add(
+                                              ProviderUpdateServiceRequested(
+                                                serviceId: existingService.id,
+                                                updates: {
+                                                  'name': nameController.text.trim(),
+                                                  'description': descriptionController.text.trim(),
+                                                  'basePrice': double.parse(basePriceController.text),
+                                                  'pricePerKm': double.parse(pricePerKmController.text),
+                                                  'pricePerHour': double.parse(pricePerHourController.text),
+                                                  'category': selectedCategory,
+                                                  if (encodedExtra != null) 'extraFields': encodedExtra,
+                                                },
+                                              ),
+                                            );
+                                      } else {
+                                        context.read<ProviderBloc>().add(
+                                              ProviderAddServiceRequested(
+                                                vehicleId: selectedVehicleId!,
+                                                name: nameController.text.trim(),
+                                                description: descriptionController.text.trim(),
+                                                basePrice: double.parse(basePriceController.text),
+                                                pricePerKm: double.parse(pricePerKmController.text),
+                                                pricePerHour: double.parse(pricePerHourController.text),
+                                                category: selectedCategory,
+                                                extraFields: encodedExtra,
+                                              ),
+                                            );
                                       }
                                     },
                             ),
