@@ -30,7 +30,6 @@ class _ProviderDocumentsScreenState extends State<ProviderDocumentsScreen> {
   final _vehicleNumberController = TextEditingController();
   final _vehicleModelController = TextEditingController();
   final _vehicleYearController = TextEditingController();
-  final _vehicleCapacityController = TextEditingController();
   String? _selectedVehicleType;
 
   Map<String, dynamic> _extraFieldValues = {};
@@ -46,7 +45,6 @@ class _ProviderDocumentsScreenState extends State<ProviderDocumentsScreen> {
     _vehicleNumberController.dispose();
     _vehicleModelController.dispose();
     _vehicleYearController.dispose();
-    _vehicleCapacityController.dispose();
     super.dispose();
   }
 
@@ -254,7 +252,7 @@ class _ProviderDocumentsScreenState extends State<ProviderDocumentsScreen> {
               vehicleType: _selectedVehicleType!,
               vehicleModel: _vehicleModelController.text.trim(),
               vehicleYear: _vehicleYearController.text.trim(),
-              vehicleCapacity: double.tryParse(_vehicleCapacityController.text.trim()) ?? 0,
+              vehicleCapacity: 0,
               cnicFrontImageBase64: cnicFrontBase64,
               cnicBackImageBase64: cnicBackBase64,
               licenseImageBase64: licenseBase64,
@@ -278,7 +276,7 @@ class _ProviderDocumentsScreenState extends State<ProviderDocumentsScreen> {
               vehicleType: _selectedVehicleType!,
               vehicleModel: _vehicleModelController.text.trim(),
               vehicleYear: _vehicleYearController.text.trim(),
-              vehicleCapacity: double.tryParse(_vehicleCapacityController.text.trim()) ?? 0,
+              vehicleCapacity: 0,
               cnicFrontImageBytes: _cnicFrontImage!.bytes,
               cnicBackImageBytes: _cnicBackImage!.bytes,
               licenseImageBytes: _licenseImage!.bytes,
@@ -628,42 +626,19 @@ class _ProviderDocumentsScreenState extends State<ProviderDocumentsScreen> {
                         ),
                         const SizedBox(height: 16),
                         
-                        Row(
-                          children: [
-                            Expanded(
-                              child: _buildModernTextField(
-                                controller: _vehicleYearController,
-                                label: 'Year *',
-                                hint: '2020',
-                                icon: Icons.calendar_month_rounded,
-                                keyboardType: TextInputType.number,
-                                validator: (value) {
-                                  if (value == null || value.isEmpty) {
-                                    return 'Year required';
-                                  }
-                                  return null;
-                                },
-                                enabled: !isLoading,
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: _buildModernTextField(
-                                controller: _vehicleCapacityController,
-                                label: 'Capacity (Tons) *',
-                                hint: '5',
-                                icon: Icons.scale_rounded,
-                                keyboardType: TextInputType.number,
-                                validator: (value) {
-                                  if (value == null || value.isEmpty) {
-                                    return 'Capacity required';
-                                  }
-                                  return null;
-                                },
-                                enabled: !isLoading,
-                              ),
-                            ),
-                          ],
+                        _buildModernTextField(
+                          controller: _vehicleYearController,
+                          label: 'Year *',
+                          hint: '2020',
+                          icon: Icons.calendar_month_rounded,
+                          keyboardType: TextInputType.number,
+                          validator: (value) {
+                            if (value == null || value.isEmpty) {
+                              return 'Year required';
+                            }
+                            return null;
+                          },
+                          enabled: !isLoading,
                         ),
                         const SizedBox(height: 32),
 

@@ -842,7 +842,7 @@ class _SeekerHomeScreenState extends State<SeekerHomeScreen>
                         _buildPriceItem(
                           'Base',
                           'Rs. ${service.basePrice.toStringAsFixed(0)}',
-                          Icons.attach_money_rounded,
+                          Icons.currency_rupee,
                         ),
                         Container(
                           height: 30,

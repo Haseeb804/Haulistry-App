@@ -10,6 +10,7 @@ import '../../../../core/widgets/modern_widgets.dart';
 import '../bloc/provider_bloc.dart';
 import '../bloc/provider_event.dart';
 import '../bloc/provider_state.dart';
+import '../widgets/dynamic_service_fields.dart';
 
 class VehicleManagementScreen extends StatefulWidget {
   const VehicleManagementScreen({super.key});
@@ -617,10 +618,10 @@ class _VehicleManagementScreenState extends State<VehicleManagementScreen> {
   void _showAddVehicleDialog(BuildContext context) {
     final formKey = GlobalKey<FormState>();
     String? selectedServiceType;
+    Map<String, dynamic> extraFieldValues = {};
     final numberController = TextEditingController();
     final modelController = TextEditingController();
     final yearController = TextEditingController();
-    final capacityController = TextEditingController();
     final ImagePicker picker = ImagePicker();
     String? vehicleImageBase64;
     XFile? selectedImage;
@@ -705,29 +706,52 @@ class _VehicleManagementScreenState extends State<VehicleManagementScreen> {
                     children: [
                       _buildFormSectionHeader('Vehicle Type', Icons.category_rounded),
                       const SizedBox(height: 12),
-                      DropdownButtonFormField<String>(
-                        initialValue: selectedServiceType,
-                        decoration: InputDecoration(
-                          hintText: 'Select vehicle type',
-                          filled: true,
-                          fillColor: AppTheme.backgroundColor,
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(14),
-                            borderSide: BorderSide.none,
-                          ),
-                          prefixIcon: const Icon(Icons.local_shipping_rounded),
+                      StatefulBuilder(
+                        builder: (context, setFieldState) => Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            DropdownButtonFormField<String>(
+                              value: selectedServiceType,
+                              decoration: InputDecoration(
+                                hintText: 'Select vehicle type',
+                                filled: true,
+                                fillColor: AppTheme.backgroundColor,
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(14),
+                                  borderSide: BorderSide.none,
+                                ),
+                                prefixIcon: const Icon(Icons.local_shipping_rounded),
+                              ),
+                              items: AppConstants.serviceCategories
+                                  .map((cat) => DropdownMenuItem(
+                                        value: cat.value,
+                                        child: Text('${cat.emoji} ${cat.label}'),
+                                      ))
+                                  .toList(),
+                              onChanged: (value) {
+                                setFieldState(() {
+                                  selectedServiceType = value;
+                                  extraFieldValues = {};
+                                });
+                              },
+                              validator: (value) =>
+                                  value == null ? 'Please select vehicle type' : null,
+                            ),
+                            if (selectedServiceType != null) ...[
+                              const SizedBox(height: 16),
+                              DynamicServiceFields(
+                                key: ValueKey(selectedServiceType),
+                                category: selectedServiceType!,
+                                initialValues: const {},
+                                onChanged: (values) {
+                                  extraFieldValues = values;
+                                },
+                              ),
+                            ],
+                          ],
                         ),
-                        items: AppConstants.serviceCategories
-                                .map((cat) => DropdownMenuItem(
-                                      value: cat.value,
-                                      child: Text('${cat.emoji} ${cat.label}'),
-                                    ))
-                                .toList(),
-                        onChanged: (value) => selectedServiceType = value,
-                        validator: (value) =>
-                            value == null ? 'Please select vehicle type' : null,
                       ),
-                      
+
                       const SizedBox(height: 24),
                       _buildFormSectionHeader('Vehicle Details', Icons.info_rounded),
                       const SizedBox(height: 12),
@@ -749,30 +773,14 @@ class _VehicleManagementScreenState extends State<VehicleManagementScreen> {
                             value?.isEmpty ?? true ? 'Required' : null,
                       ),
                       const SizedBox(height: 16),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: _buildModernTextField(
-                              controller: yearController,
-                              label: 'Year',
-                              hint: '2023',
-                              icon: Icons.calendar_today_rounded,
-                              keyboardType: TextInputType.number,
-                              validator: (value) =>
-                                  value?.isEmpty ?? true ? 'Required' : null,
-                            ),
-                          ),
-                          const SizedBox(width: 16),
-                          Expanded(
-                            child: _buildModernTextField(
-                              controller: capacityController,
-                              label: 'Capacity (tons)',
-                              hint: '10',
-                              icon: Icons.scale_rounded,
-                              keyboardType: TextInputType.number,
-                            ),
-                          ),
-                        ],
+                      _buildModernTextField(
+                        controller: yearController,
+                        label: 'Year',
+                        hint: '2023',
+                        icon: Icons.calendar_today_rounded,
+                        keyboardType: TextInputType.number,
+                        validator: (value) =>
+                            value?.isEmpty ?? true ? 'Required' : null,
                       ),
                       const SizedBox(height: 24),
                       _buildFormSectionHeader('Vehicle Image', Icons.image_rounded),
@@ -897,11 +905,14 @@ class _VehicleManagementScreenState extends State<VehicleManagementScreen> {
                                     vehicleModel: modelController.text,
                                     vehicleYear: yearController.text,
                                     licensePlate: numberController.text,
-                                    capacity: double.tryParse(capacityController.text) ?? 0.0,
+                                    capacity: 0.0,
                                     pricePerHour: 0.0,
                                     pricePerKm: 0.0,
                                     imageUrls: const [],
                                     vehicleImageBase64: vehicleImageBase64,
+                                    vehicleExtraFields: extraFieldValues.isNotEmpty
+                                        ? jsonEncode(extraFieldValues)
+                                        : null,
                                   ),
                                 );
                           }
@@ -972,9 +983,6 @@ class _VehicleManagementScreenState extends State<VehicleManagementScreen> {
     final formKey = GlobalKey<FormState>();
     final modelController = TextEditingController(text: vehicle.vehicleModel ?? '');
     final yearController = TextEditingController(text: vehicle.vehicleYear ?? '');
-    final capacityController = TextEditingController(
-      text: vehicle.capacity?.toString() ?? '',
-    );
     final ImagePicker picker = ImagePicker();
     String? vehicleImageBase64 = vehicle.vehicleImageBase64;
     XFile? selectedImage;
@@ -1100,28 +1108,12 @@ class _VehicleManagementScreenState extends State<VehicleManagementScreen> {
                         icon: Icons.directions_car_rounded,
                       ),
                       const SizedBox(height: 16),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: _buildModernTextField(
-                              controller: yearController,
-                              label: 'Year',
-                              hint: '2023',
-                              icon: Icons.calendar_today_rounded,
-                              keyboardType: TextInputType.number,
-                            ),
-                          ),
-                          const SizedBox(width: 16),
-                          Expanded(
-                            child: _buildModernTextField(
-                              controller: capacityController,
-                              label: 'Capacity (tons)',
-                              hint: '10',
-                              icon: Icons.scale_rounded,
-                              keyboardType: TextInputType.number,
-                            ),
-                          ),
-                        ],
+                      _buildModernTextField(
+                        controller: yearController,
+                        label: 'Year',
+                        hint: '2023',
+                        icon: Icons.calendar_today_rounded,
+                        keyboardType: TextInputType.number,
                       ),
                       const SizedBox(height: 24),
                       _buildFormSectionHeader('Vehicle Image', Icons.image_rounded),
@@ -1249,10 +1241,9 @@ class _VehicleManagementScreenState extends State<VehicleManagementScreen> {
                         gradient: AppTheme.secondaryGradient,
                         onPressed: () {
                           Navigator.pop(dialogContext);
-                          final updates = {
+                          final Map<String, dynamic> updates = {
                             'vehicleModel': modelController.text,
                             'vehicleYear': yearController.text,
-                            'capacity': double.tryParse(capacityController.text),
                           };
                           if (vehicleImageBase64 != null && vehicleImageBase64 != vehicle.vehicleImageBase64) {
                             updates['vehicleImageBase64'] = vehicleImageBase64;

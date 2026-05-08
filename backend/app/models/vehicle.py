@@ -122,7 +122,8 @@ class Vehicle:
         vehicle_data['vehicleNumberParam'] = vehicle_data.get('vehicleNumber') or vehicle_data.get('licensePlate', '')
         vehicle_data['vehicleImageBase64'] = vehicle_data.get('vehicleImageBase64') or vehicle_data.get('vehicleImageUrl') or ''
         vehicle_data['capacityParam'] = vehicle_data.get('capacity') or 0.0
-            
+        vehicle_data['extraFieldsParam'] = vehicle_data.get('extraFields') or None
+
         query = """
         MATCH (p)
         WHERE (p:Provider OR p:User OR p:Seeker) AND p.id = $providerId
@@ -135,6 +136,7 @@ class Vehicle:
             vehicleYear: $vehicleYear,
             vehicleImageBase64: $vehicleImageBase64,
             capacity: $capacityParam,
+            extraFields: $extraFieldsParam,
             isAvailable: $isAvailable,
             createdAt: datetime(),
             updatedAt: datetime()

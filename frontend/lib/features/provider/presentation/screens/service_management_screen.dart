@@ -462,7 +462,7 @@ class _ServiceManagementScreenState extends State<ServiceManagementScreen> {
                 // Pricing Row
                 Row(
                   children: [
-                    Expanded(child: _buildPriceCard(context, 'Base', service.basePrice, Icons.attach_money_rounded)),
+                    Expanded(child: _buildPriceCard(context, 'Base', service.basePrice, Icons.currency_rupee)),
                     const SizedBox(width: 10),
                     Expanded(child: _buildPriceCard(context, 'Per Km', service.pricePerKm, Icons.route_rounded)),
                     const SizedBox(width: 10),
@@ -1019,7 +1019,7 @@ class _ServiceManagementScreenState extends State<ServiceManagementScreen> {
                                     keyboardType: TextInputType.number,
                                     decoration: const InputDecoration(
                                       labelText: 'Base Price (Rs)',
-                                      prefixIcon: Icon(Icons.attach_money_rounded),
+                                      prefixIcon: Icon(Icons.currency_rupee),
                                       filled: true,
                                       fillColor: Colors.white,
                                     ),

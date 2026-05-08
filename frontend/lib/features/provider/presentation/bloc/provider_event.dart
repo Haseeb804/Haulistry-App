@@ -105,6 +105,7 @@ class ProviderAddVehicleRequested extends ProviderEvent {
   final double pricePerKm;
   final List<String> imageUrls;
   final String? vehicleImageBase64;
+  final String? vehicleExtraFields;
 
   const ProviderAddVehicleRequested({
     required this.vehicleType,
@@ -116,10 +117,11 @@ class ProviderAddVehicleRequested extends ProviderEvent {
     required this.pricePerKm,
     required this.imageUrls,
     this.vehicleImageBase64,
+    this.vehicleExtraFields,
   });
 
   @override
-  List<Object?> get props => [vehicleType, vehicleModel, vehicleYear, licensePlate, capacity, pricePerHour, pricePerKm, imageUrls, vehicleImageBase64];
+  List<Object?> get props => [vehicleType, vehicleModel, vehicleYear, licensePlate, capacity, pricePerHour, pricePerKm, imageUrls, vehicleImageBase64, vehicleExtraFields];
 }
 
 class ProviderUpdateVehicleRequested extends ProviderEvent {
