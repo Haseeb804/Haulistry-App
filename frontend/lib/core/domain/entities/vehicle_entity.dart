@@ -11,7 +11,8 @@ class VehicleEntity extends Equatable {
   final String? vehicleImageUrl;
   final String? vehicleImageBase64; // Base64 encoded image
   final bool isAvailable;
-  final double? capacity; // in tons or relevant unit
+  final double? capacity;
+  final String? extraFields; // JSON-encoded dynamic form fields (e.g. capacityTons, materialType)
   final DateTime createdAt;
   final DateTime updatedAt;
 
@@ -26,6 +27,7 @@ class VehicleEntity extends Equatable {
     this.vehicleImageBase64,
     this.isAvailable = true,
     this.capacity,
+    this.extraFields,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -42,6 +44,7 @@ class VehicleEntity extends Equatable {
         vehicleImageBase64,
         isAvailable,
         capacity,
+        extraFields,
         createdAt,
         updatedAt,
       ];
@@ -57,6 +60,7 @@ class VehicleEntity extends Equatable {
     String? vehicleImageBase64,
     bool? isAvailable,
     double? capacity,
+    String? extraFields,
     DateTime? createdAt,
     DateTime? updatedAt,
   }) {
@@ -71,6 +75,7 @@ class VehicleEntity extends Equatable {
       vehicleImageBase64: vehicleImageBase64 ?? this.vehicleImageBase64,
       isAvailable: isAvailable ?? this.isAvailable,
       capacity: capacity ?? this.capacity,
+      extraFields: extraFields ?? this.extraFields,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
     );
@@ -88,6 +93,7 @@ class VehicleEntity extends Equatable {
       'vehicleImageBase64': vehicleImageBase64,
       'isAvailable': isAvailable,
       'capacity': capacity,
+      'extraFields': extraFields,
       'createdAt': createdAt.toIso8601String(),
       'updatedAt': updatedAt.toIso8601String(),
     };
@@ -105,6 +111,7 @@ class VehicleEntity extends Equatable {
       vehicleImageBase64: (json['vehicleImageBase64'] ?? json['vehicle_image_base64']) as String?,
       isAvailable: (json['isAvailable'] ?? json['is_available']) as bool? ?? true,
       capacity: (json['capacity'] as num?)?.toDouble(),
+      extraFields: json['extraFields'] as String?,
       createdAt: DateTime.parse((json['createdAt'] ?? json['created_at']) as String),
       updatedAt: DateTime.parse((json['updatedAt'] ?? json['updated_at']) as String),
     );

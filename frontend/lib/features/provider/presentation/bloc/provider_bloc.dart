@@ -179,7 +179,10 @@ class ProviderBloc extends Bloc<ProviderEvent, ProviderState> {
     ProviderLoadDashboardRequested event,
     Emitter<ProviderState> emit,
   ) async {
-    emit(const ProviderLoading());
+    // Don't blank the UI when we already have data — do a silent background refresh.
+    if (state is! ProviderLoaded) {
+      emit(const ProviderLoading());
+    }
 
     try {
       final user = _auth.currentUser;
@@ -447,15 +450,14 @@ class ProviderBloc extends Bloc<ProviderEvent, ProviderState> {
     ProviderAddVehicleRequested event,
     Emitter<ProviderState> emit,
   ) async {
+    final prevLoaded = state is ProviderLoaded ? state as ProviderLoaded : null;
     emit(const ProviderVehicleActionInProgress());
 
     try {
       final user = _auth.currentUser;
-      if (user == null) {
-        throw Exception('User not authenticated');
-      }
+      if (user == null) throw Exception('User not authenticated');
 
-      await _repository.createVehicle(
+      final newVehicle = await _repository.createVehicle(
         providerId: user.uid,
         vehicleType: event.vehicleType,
         vehicleModel: event.vehicleModel,
@@ -469,12 +471,14 @@ class ProviderBloc extends Bloc<ProviderEvent, ProviderState> {
         vehicleExtraFields: event.vehicleExtraFields,
       );
 
-      emit(const ProviderVehicleActionSuccess(
-        message: 'Vehicle added successfully',
-      ));
+      emit(const ProviderVehicleActionSuccess(message: 'Vehicle added successfully'));
 
-      // Reload data
-      add(const ProviderLoadBookingsRequested());
+      // Optimistic: append new vehicle to existing list — no full reload needed.
+      if (prevLoaded != null) {
+        emit(prevLoaded.copyWith(vehicles: [...prevLoaded.vehicles, newVehicle]));
+      } else {
+        add(const ProviderLoadDashboardRequested());
+      }
     } catch (e) {
       emit(ProviderError(message: 'Error adding vehicle: ${e.toString()}'));
     }
@@ -484,17 +488,24 @@ class ProviderBloc extends Bloc<ProviderEvent, ProviderState> {
     ProviderUpdateVehicleRequested event,
     Emitter<ProviderState> emit,
   ) async {
+    final prevLoaded = state is ProviderLoaded ? state as ProviderLoaded : null;
     emit(const ProviderVehicleActionInProgress());
 
     try {
-      await _repository.updateVehicle(event.vehicleId, event.updates);
+      final updatedVehicle = await _repository.updateVehicle(event.vehicleId, event.updates);
 
-      emit(const ProviderVehicleActionSuccess(
-        message: 'Vehicle updated successfully',
-      ));
+      emit(const ProviderVehicleActionSuccess(message: 'Vehicle updated successfully'));
 
-      // Reload data
-      add(const ProviderLoadBookingsRequested());
+      // Optimistic: replace the vehicle in the list in-place.
+      if (prevLoaded != null) {
+        emit(prevLoaded.copyWith(
+          vehicles: prevLoaded.vehicles
+              .map((v) => v.id == event.vehicleId ? updatedVehicle : v)
+              .toList(),
+        ));
+      } else {
+        add(const ProviderLoadDashboardRequested());
+      }
     } catch (e) {
       emit(ProviderError(message: 'Error updating vehicle: ${e.toString()}'));
     }
@@ -504,17 +515,22 @@ class ProviderBloc extends Bloc<ProviderEvent, ProviderState> {
     ProviderDeleteVehicleRequested event,
     Emitter<ProviderState> emit,
   ) async {
+    final prevLoaded = state is ProviderLoaded ? state as ProviderLoaded : null;
     emit(const ProviderVehicleActionInProgress());
 
     try {
       await _repository.deleteVehicle(event.vehicleId);
 
-      emit(const ProviderVehicleActionSuccess(
-        message: 'Vehicle deleted successfully',
-      ));
+      emit(const ProviderVehicleActionSuccess(message: 'Vehicle deleted successfully'));
 
-      // Reload data
-      add(const ProviderLoadBookingsRequested());
+      // Optimistic: remove the vehicle from the list immediately.
+      if (prevLoaded != null) {
+        emit(prevLoaded.copyWith(
+          vehicles: prevLoaded.vehicles.where((v) => v.id != event.vehicleId).toList(),
+        ));
+      } else {
+        add(const ProviderLoadDashboardRequested());
+      }
     } catch (e) {
       emit(ProviderError(message: 'Error deleting vehicle: ${e.toString()}'));
     }
@@ -524,17 +540,34 @@ class ProviderBloc extends Bloc<ProviderEvent, ProviderState> {
     ProviderToggleVehicleAvailability event,
     Emitter<ProviderState> emit,
   ) async {
+    // Optimistic: flip availability immediately so the toggle feels instant.
+    if (state is ProviderLoaded) {
+      final current = state as ProviderLoaded;
+      emit(current.copyWith(
+        vehicles: current.vehicles
+            .map((v) => v.id == event.vehicleId
+                ? v.copyWith(isAvailable: event.isAvailable)
+                : v)
+            .toList(),
+      ));
+    }
+
     try {
-      await _repository.updateVehicle(
+      final updated = await _repository.updateVehicle(
         event.vehicleId,
         {'isAvailable': event.isAvailable},
       );
-
-      // Reload data
-      add(const ProviderLoadBookingsRequested());
+      // Confirm with server response (replaces the optimistic placeholder).
+      if (state is ProviderLoaded) {
+        final current = state as ProviderLoaded;
+        emit(current.copyWith(
+          vehicles: current.vehicles
+              .map((v) => v.id == event.vehicleId ? updated : v)
+              .toList(),
+        ));
+      }
     } catch (e) {
-      emit(ProviderError(
-          message: 'Error toggling vehicle availability: ${e.toString()}'));
+      emit(ProviderError(message: 'Error toggling vehicle availability: ${e.toString()}'));
     }
   }
 
@@ -610,15 +643,14 @@ class ProviderBloc extends Bloc<ProviderEvent, ProviderState> {
     ProviderAddServiceRequested event,
     Emitter<ProviderState> emit,
   ) async {
+    final prevLoaded = state is ProviderLoaded ? state as ProviderLoaded : null;
     emit(const ProviderServiceActionInProgress());
 
     try {
       final user = _auth.currentUser;
-      if (user == null) {
-        throw Exception('User not authenticated');
-      }
+      if (user == null) throw Exception('User not authenticated');
 
-      await _repository.createService(
+      final newService = await _repository.createService(
         providerId: user.uid,
         vehicleId: event.vehicleId,
         name: event.name,
@@ -631,12 +663,14 @@ class ProviderBloc extends Bloc<ProviderEvent, ProviderState> {
         extraFields: event.extraFields,
       );
 
-      emit(const ProviderServiceActionSuccess(
-        message: 'Service added successfully',
-      ));
+      emit(const ProviderServiceActionSuccess(message: 'Service added successfully'));
 
-      // Reload services
-      add(const ProviderLoadServicesRequested());
+      // Optimistic: prepend the new service so it appears at top of list instantly.
+      if (prevLoaded != null) {
+        emit(prevLoaded.copyWith(services: [newService, ...prevLoaded.services]));
+      } else {
+        add(const ProviderLoadServicesRequested());
+      }
     } catch (e) {
       emit(ProviderError(message: 'Error adding service: ${e.toString()}'));
     }
@@ -646,17 +680,24 @@ class ProviderBloc extends Bloc<ProviderEvent, ProviderState> {
     ProviderUpdateServiceRequested event,
     Emitter<ProviderState> emit,
   ) async {
+    final prevLoaded = state is ProviderLoaded ? state as ProviderLoaded : null;
     emit(const ProviderServiceActionInProgress());
 
     try {
-      await _repository.updateService(event.serviceId, event.updates);
+      final updatedService = await _repository.updateService(event.serviceId, event.updates);
 
-      emit(const ProviderServiceActionSuccess(
-        message: 'Service updated successfully',
-      ));
+      emit(const ProviderServiceActionSuccess(message: 'Service updated successfully'));
 
-      // Reload services
-      add(const ProviderLoadServicesRequested());
+      // Optimistic: replace the service in-place.
+      if (prevLoaded != null) {
+        emit(prevLoaded.copyWith(
+          services: prevLoaded.services
+              .map((s) => s.id == event.serviceId ? updatedService : s)
+              .toList(),
+        ));
+      } else {
+        add(const ProviderLoadServicesRequested());
+      }
     } catch (e) {
       emit(ProviderError(message: 'Error updating service: ${e.toString()}'));
     }
@@ -666,17 +707,22 @@ class ProviderBloc extends Bloc<ProviderEvent, ProviderState> {
     ProviderDeleteServiceRequested event,
     Emitter<ProviderState> emit,
   ) async {
+    final prevLoaded = state is ProviderLoaded ? state as ProviderLoaded : null;
     emit(const ProviderServiceActionInProgress());
 
     try {
       await _repository.deleteService(event.serviceId);
 
-      emit(const ProviderServiceActionSuccess(
-        message: 'Service deleted successfully',
-      ));
+      emit(const ProviderServiceActionSuccess(message: 'Service deleted successfully'));
 
-      // Reload services
-      add(const ProviderLoadServicesRequested());
+      // Optimistic: remove the service from the list immediately.
+      if (prevLoaded != null) {
+        emit(prevLoaded.copyWith(
+          services: prevLoaded.services.where((s) => s.id != event.serviceId).toList(),
+        ));
+      } else {
+        add(const ProviderLoadServicesRequested());
+      }
     } catch (e) {
       emit(ProviderError(message: 'Error deleting service: ${e.toString()}'));
     }

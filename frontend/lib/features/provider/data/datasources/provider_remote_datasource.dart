@@ -28,6 +28,7 @@ class ProviderRemoteDataSource {
           vehicleImageBase64
           isAvailable
           capacity
+          extraFields
           createdAt
           updatedAt
         }

@@ -996,12 +996,23 @@ class _VehicleManagementScreenState extends State<VehicleManagementScreen> {
     String? vehicleImageBase64 = vehicle.vehicleImageBase64;
     XFile? selectedImage;
 
+    // Pre-populate dynamic fields from stored extraFields JSON.
+    Map<String, dynamic> extraFieldValues = {};
+    if (vehicle.extraFields != null && (vehicle.extraFields as String).isNotEmpty) {
+      try {
+        extraFieldValues = Map<String, dynamic>.from(
+          jsonDecode(vehicle.extraFields as String),
+        );
+      } catch (_) {}
+    }
+    Map<String, dynamic> updatedExtraFields = Map.from(extraFieldValues);
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (dialogContext) => Container(
-        height: MediaQuery.of(context).size.height * 0.7,
+        height: MediaQuery.of(context).size.height * 0.92,
         decoration: const BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
@@ -1046,7 +1057,7 @@ class _VehicleManagementScreenState extends State<VehicleManagementScreen> {
                           ),
                         ),
                         Text(
-                          vehicle.vehicleNumber,
+                          vehicle.vehicleNumber as String,
                           style: const TextStyle(
                             color: AppTheme.textSecondary,
                             fontSize: 13,
@@ -1071,7 +1082,7 @@ class _VehicleManagementScreenState extends State<VehicleManagementScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // Read-only fields
+                      // Read-only vehicle type chip
                       Container(
                         padding: const EdgeInsets.all(16),
                         decoration: BoxDecoration(
@@ -1081,33 +1092,64 @@ class _VehicleManagementScreenState extends State<VehicleManagementScreen> {
                         child: Row(
                           children: [
                             Text(
-                              _getVehicleEmoji(vehicle.vehicleType),
+                              _getVehicleEmoji(vehicle.vehicleType as String),
                               style: const TextStyle(fontSize: 32),
                             ),
                             const SizedBox(width: 16),
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  _vehicleTypeLabel(vehicle.vehicleType),
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 16,
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    _vehicleTypeLabel(vehicle.vehicleType as String),
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 16,
+                                    ),
                                   ),
-                                ),
-                                Text(
-                                  vehicle.vehicleNumber,
-                                  style: const TextStyle(
-                                    color: AppTheme.textSecondary,
-                                    fontSize: 13,
+                                  Text(
+                                    vehicle.vehicleNumber as String,
+                                    style: const TextStyle(
+                                      color: AppTheme.textSecondary,
+                                      fontSize: 13,
+                                    ),
                                   ),
+                                ],
+                              ),
+                            ),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: AppTheme.primaryColor.withOpacity(0.1),
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: const Text(
+                                'Type fixed',
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  color: AppTheme.primaryColor,
+                                  fontWeight: FontWeight.w500,
                                 ),
-                              ],
+                              ),
                             ),
                           ],
                         ),
                       ),
-                      const SizedBox(height: 24),
+                      const SizedBox(height: 20),
+
+                      // Dynamic fields for this vehicle type (fully pre-populated)
+                      _buildFormSectionHeader('Service-Specific Details', Icons.tune_rounded),
+                      const SizedBox(height: 12),
+                      DynamicServiceFields(
+                        key: ValueKey(vehicle.vehicleType),
+                        category: vehicle.vehicleType as String,
+                        initialValues: extraFieldValues,
+                        onChanged: (values) {
+                          updatedExtraFields = values;
+                        },
+                      ),
+                      const SizedBox(height: 8),
+
                       _buildFormSectionHeader('Editable Details', Icons.edit_note_rounded),
                       const SizedBox(height: 12),
                       _buildModernTextField(
@@ -1254,12 +1296,16 @@ class _VehicleManagementScreenState extends State<VehicleManagementScreen> {
                             'vehicleModel': modelController.text,
                             'vehicleYear': yearController.text,
                           };
-                          if (vehicleImageBase64 != null && vehicleImageBase64 != vehicle.vehicleImageBase64) {
+                          if (vehicleImageBase64 != null &&
+                              vehicleImageBase64 != vehicle.vehicleImageBase64) {
                             updates['vehicleImageBase64'] = vehicleImageBase64;
+                          }
+                          if (updatedExtraFields.isNotEmpty) {
+                            updates['extraFields'] = jsonEncode(updatedExtraFields);
                           }
                           context.read<ProviderBloc>().add(
                                 ProviderUpdateVehicleRequested(
-                                  vehicleId: vehicle.id,
+                                  vehicleId: vehicle.id as String,
                                   updates: updates,
                                 ),
                               );

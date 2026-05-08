@@ -169,7 +169,8 @@ class Vehicle:
             'vehicleImageUrl': 'vehicleImageUrl',
             'vehicleImageBase64': 'vehicleImageBase64',
             'imageUrls': 'vehicleImageUrl',
-            'isAvailable': 'isAvailable'
+            'isAvailable': 'isAvailable',
+            'extraFields': 'extraFields',
         }
         
         for key, neo4j_key in field_mapping.items():
