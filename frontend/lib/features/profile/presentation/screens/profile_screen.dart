@@ -656,7 +656,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 // Vehicle Image
                 Builder(builder: (ctx) {
                   final bytes = ImageHelper.safeDecodeBytes(vehicle.vehicleImageBase64);
-                  if (bytes == null) return const SizedBox.shrink();
+                  if (bytes == null) {
+                    return Container(
+                      height: 150,
+                      decoration: BoxDecoration(
+                        color: AppTheme.primaryColor.withOpacity(0.1),
+                        borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+                      ),
+                      child: const Center(
+                        child: Icon(Icons.local_shipping_rounded, size: 50, color: AppTheme.primaryColor),
+                      ),
+                    );
+                  }
                   return ClipRRect(
                     borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
                     child: Image.memory(
@@ -673,18 +684,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       ),
                     ),
                   );
-                })
-                else
-                  Container(
-                    height: 150,
-                    decoration: BoxDecoration(
-                      color: AppTheme.primaryColor.withOpacity(0.1),
-                      borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
-                    ),
-                    child: const Center(
-                      child: Icon(Icons.local_shipping_rounded, size: 50, color: AppTheme.primaryColor),
-                    ),
-                  ),
+                }),
                 
                 Padding(
                   padding: const EdgeInsets.all(16),
