@@ -32,20 +32,25 @@ class AppConstants {
   static const String roleProvider = 'provider';
   static const String roleUser = 'user';
   
-  // Service Categories (for service offerings)
-  static const List<String> serviceTypes = [
-    'Sand Trolley',
-    'Bricks Trolley',
-    'Harvester',
-    'Crane',
-    'Tractor',
-    'Loader',
-    'Dumper',
-    'Excavator',
-    'Concrete Mixer',
-    'Water Tanker',
-    'Other',
+  // Service / vehicle categories — single source of truth used by all dropdowns.
+  // [value] is the snake_case key stored in Neo4j; [label] is the display name.
+  static const List<ServiceCategory> serviceCategories = [
+    ServiceCategory(value: 'sand_trolley',   label: 'Sand Trolley',    emoji: '🏜️'),
+    ServiceCategory(value: 'bricks_trolley', label: 'Bricks Trolley',  emoji: '🧱'),
+    ServiceCategory(value: 'harvester',      label: 'Harvester',       emoji: '🌾'),
+    ServiceCategory(value: 'crane',          label: 'Crane',           emoji: '🏗️'),
+    ServiceCategory(value: 'tractor',        label: 'Tractor',         emoji: '🚜'),
+    ServiceCategory(value: 'loader',         label: 'Loader',          emoji: '🚛'),
+    ServiceCategory(value: 'dumper',         label: 'Dumper',          emoji: '🚚'),
+    ServiceCategory(value: 'excavator',      label: 'Excavator',       emoji: '⛏️'),
+    ServiceCategory(value: 'concrete_mixer', label: 'Concrete Mixer',  emoji: '🔄'),
+    ServiceCategory(value: 'water_tanker',   label: 'Water Tanker',    emoji: '💧'),
+    ServiceCategory(value: 'other',          label: 'Other',           emoji: '📦'),
   ];
+
+  // Legacy list kept for screens that still reference it (e.g. service detail filter chips).
+  static List<String> get serviceTypes =>
+      serviceCategories.map((c) => c.label).toList();
   
   // Vehicle/Equipment Types (for registration)
   static const List<String> vehicleTypes = [
@@ -141,6 +146,23 @@ class AppConstants {
   static const int maxPasswordLength = 32;
   static const String phonePattern = r'^[0-9]{11}$';
   static const String cnicPattern = r'^[0-9]{5}-[0-9]{7}-[0-9]{1}$';
+}
+
+/// Represents one service / vehicle category with a stable [value] key,
+/// a human-readable [label], and an [emoji] for UI decoration.
+class ServiceCategory {
+  final String value; // snake_case — stored in Neo4j
+  final String label; // display name
+  final String emoji;
+
+  const ServiceCategory({
+    required this.value,
+    required this.label,
+    required this.emoji,
+  });
+
+  @override
+  String toString() => label;
 }
 
 class AppRoutes {

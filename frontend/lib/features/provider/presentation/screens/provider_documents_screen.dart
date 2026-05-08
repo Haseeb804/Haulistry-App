@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
+import '../../../../core/constants/app_constants.dart';
 import '../../../../core/utils/validators.dart';
 import '../../../../core/utils/cross_platform_image_picker.dart';
 import '../../../../core/theme/app_theme.dart';
@@ -559,19 +560,12 @@ class _ProviderDocumentsScreenState extends State<ProviderDocumentsScreen> {
                                 borderSide: BorderSide.none,
                               ),
                             ),
-                            items: const [
-                              DropdownMenuItem(value: 'sand_trolley', child: Text('🏜️ Sand Trolley')),
-                              DropdownMenuItem(value: 'bricks_trolley', child: Text('🧱 Bricks Trolley')),
-                              DropdownMenuItem(value: 'harvester', child: Text('🌾 Harvester')),
-                              DropdownMenuItem(value: 'crane', child: Text('🏗️ Crane')),
-                              DropdownMenuItem(value: 'tractor', child: Text('🚜 Tractor')),
-                              DropdownMenuItem(value: 'loader', child: Text('🚛 Loader')),
-                              DropdownMenuItem(value: 'dumper', child: Text('🚚 Dumper')),
-                              DropdownMenuItem(value: 'excavator', child: Text('⛏️ Excavator')),
-                              DropdownMenuItem(value: 'concrete_mixer', child: Text('🔄 Concrete Mixer')),
-                              DropdownMenuItem(value: 'water_tanker', child: Text('💧 Water Tanker')),
-                              DropdownMenuItem(value: 'other', child: Text('📦 Other')),
-                            ],
+                            items: AppConstants.serviceCategories
+                                .map((cat) => DropdownMenuItem(
+                                      value: cat.value,
+                                      child: Text('${cat.emoji} ${cat.label}'),
+                                    ))
+                                .toList(),
                             onChanged: isLoading ? null : (value) {
                               setState(() {
                                 _selectedVehicleType = value;
