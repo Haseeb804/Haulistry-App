@@ -127,7 +127,7 @@ class ProviderRemoteDataSource {
       final response = await http.delete(
         Uri.parse('$baseUrl/vehicles/$vehicleId'),
         headers: {'Content-Type': 'application/json'},
-      );
+      ).timeout(const Duration(seconds: 30));
 
       if (response.statusCode == 200 || response.statusCode == 204) {
         return;
@@ -325,7 +325,7 @@ class ProviderRemoteDataSource {
         Uri.parse('$baseUrl/services'),
         headers: {'Content-Type': 'application/json'},
         body: json.encode(serviceData),
-      );
+      ).timeout(const Duration(seconds: 60));
 
       if (response.statusCode == 200 || response.statusCode == 201) {
         final data = json.decode(response.body);
@@ -348,7 +348,7 @@ class ProviderRemoteDataSource {
         Uri.parse('$baseUrl/services/$serviceId'),
         headers: {'Content-Type': 'application/json'},
         body: json.encode(updates),
-      );
+      ).timeout(const Duration(seconds: 30));
 
       if (response.statusCode == 200 || response.statusCode == 201) {
         final data = json.decode(response.body);
@@ -370,7 +370,7 @@ class ProviderRemoteDataSource {
       final response = await http.delete(
         Uri.parse('$baseUrl/services/$serviceId'),
         headers: {'Content-Type': 'application/json'},
-      );
+      ).timeout(const Duration(seconds: 30));
 
       if (response.statusCode == 200 || response.statusCode == 204) {
         return;

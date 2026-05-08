@@ -6,6 +6,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 import '../../../../core/constants/app_constants.dart';
 import '../../../../core/theme/app_theme.dart';
+import '../../../../core/utils/image_helper.dart';
 import '../../../../core/widgets/modern_widgets.dart';
 import '../bloc/provider_bloc.dart';
 import '../bloc/provider_event.dart';
@@ -20,6 +21,11 @@ class VehicleManagementScreen extends StatefulWidget {
 }
 
 class _VehicleManagementScreenState extends State<VehicleManagementScreen> {
+  // Cache the last ProviderLoaded state so the builder never shows a blank
+  // screen during ProviderVehicleActionInProgress / ProviderVehicleActionSuccess
+  // transitions — those intermediate states carry no data of their own.
+  ProviderLoaded? _lastLoaded;
+
   @override
   void initState() {
     super.initState();
@@ -32,6 +38,10 @@ class _VehicleManagementScreenState extends State<VehicleManagementScreen> {
       backgroundColor: AppTheme.backgroundColor,
       body: BlocConsumer<ProviderBloc, ProviderState>(
         listener: (context, state) {
+          // Keep cache in sync whenever we get a fresh data state.
+          if (state is ProviderLoaded) {
+            _lastLoaded = state;
+          }
           if (state is ProviderVehicleActionSuccess) {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
@@ -67,7 +77,20 @@ class _VehicleManagementScreenState extends State<VehicleManagementScreen> {
           }
         },
         builder: (context, state) {
-          if (state is ProviderLoading || state is ProviderVehicleActionInProgress) {
+          // During vehicle CRUD actions, fall back to the last known loaded
+          // state instead of a blank/loading screen.
+          final effectiveState = (state is ProviderVehicleActionInProgress ||
+                  state is ProviderVehicleActionSuccess)
+              ? (_lastLoaded ?? state)
+              : state;
+
+          // Update cache immediately when the real state is ProviderLoaded.
+          if (effectiveState is ProviderLoaded) {
+            _lastLoaded = effectiveState;
+          }
+
+          // Only show full-screen spinner on initial dashboard load.
+          if (effectiveState is ProviderLoading) {
             return Center(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -93,7 +116,7 @@ class _VehicleManagementScreenState extends State<VehicleManagementScreen> {
             );
           }
 
-          if (state is ProviderInitial) {
+          if (effectiveState is ProviderInitial) {
             // Trigger loading when screen first shows
             WidgetsBinding.instance.addPostFrameCallback((_) {
               context.read<ProviderBloc>().add(const ProviderLoadVehiclesRequested());
@@ -103,12 +126,12 @@ class _VehicleManagementScreenState extends State<VehicleManagementScreen> {
             );
           }
 
-          if (state is ProviderError) {
+          if (effectiveState is ProviderError) {
             return Center(
               child: EmptyStateWidget(
                 icon: Icons.error_outline_rounded,
                 title: 'Something went wrong',
-                subtitle: state.message,
+                subtitle: effectiveState.message,
                 buttonText: 'Retry',
                 onButtonPressed: () {
                   context.read<ProviderBloc>().add(const ProviderLoadVehiclesRequested());
@@ -117,133 +140,151 @@ class _VehicleManagementScreenState extends State<VehicleManagementScreen> {
             );
           }
 
-          if (state is ProviderLoaded) {
-            return CustomScrollView(
-              slivers: [
-                // Modern App Bar
-                SliverAppBar(
-                  expandedHeight: 180,
-                  pinned: true,
-                  backgroundColor: Colors.transparent,
-                  elevation: 0,
-                  leading: Container(
-                    margin: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.2),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: IconButton(
-                      icon: const Icon(Icons.chevron_left_rounded, color: Colors.white),
-                      onPressed: () => context.pop(),
-                    ),
-                  ),
-                  flexibleSpace: FlexibleSpaceBar(
-                    background: Container(
-                      decoration: const BoxDecoration(
-                        gradient: AppTheme.primaryGradient,
-                        borderRadius: BorderRadius.vertical(
-                          bottom: Radius.circular(32),
+          if (effectiveState is ProviderLoaded) {
+            final loadedState = effectiveState;
+            final isActionInProgress = state is ProviderVehicleActionInProgress;
+            return Stack(
+              children: [
+                CustomScrollView(
+                  slivers: [
+                    // Modern App Bar
+                    SliverAppBar(
+                      expandedHeight: 180,
+                      pinned: true,
+                      backgroundColor: Colors.transparent,
+                      elevation: 0,
+                      leading: Container(
+                        margin: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.2),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: IconButton(
+                          icon: const Icon(Icons.chevron_left_rounded, color: Colors.white),
+                          onPressed: () => context.pop(),
                         ),
                       ),
-                      child: Stack(
-                        children: [
-                          // Pattern background
-                          Positioned.fill(
-                            child: CustomPaint(
-                              painter: VehiclePatternPainter(
-                                color: Colors.white.withOpacity(0.05),
-                              ),
-                            ),
-                          ),
-                          SafeArea(
-                            child: Padding(
-                              padding: const EdgeInsets.fromLTRB(20, 60, 20, 20),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  const Text(
-                                    'My Vehicles',
-                                    style: TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 28,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 8),
-                                  Text(
-                                    'Manage your fleet of ${state.vehicles.length} vehicles',
-                                    style: const TextStyle(
-                                      color: Colors.white70,
-                                      fontSize: 14,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-
-                // Stats Section
-                SliverToBoxAdapter(
-                  child: Padding(
-                    padding: const EdgeInsets.all(20),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: _buildStatCard(
-                            icon: Icons.local_shipping_rounded,
-                            value: state.vehicles.length.toString(),
-                            label: 'Total Vehicles',
+                      flexibleSpace: FlexibleSpaceBar(
+                        background: Container(
+                          decoration: const BoxDecoration(
                             gradient: AppTheme.primaryGradient,
+                            borderRadius: BorderRadius.vertical(
+                              bottom: Radius.circular(32),
+                            ),
+                          ),
+                          child: Stack(
+                            children: [
+                              // Pattern background
+                              Positioned.fill(
+                                child: CustomPaint(
+                                  painter: VehiclePatternPainter(
+                                    color: Colors.white.withOpacity(0.05),
+                                  ),
+                                ),
+                              ),
+                              SafeArea(
+                                child: Padding(
+                                  padding: const EdgeInsets.fromLTRB(20, 60, 20, 20),
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      const Text(
+                                        'My Vehicles',
+                                        style: TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 28,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 8),
+                                      Text(
+                                        'Manage your fleet of ${loadedState.vehicles.length} vehicles',
+                                        style: const TextStyle(
+                                          color: Colors.white70,
+                                          fontSize: 14,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
                         ),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: _buildStatCard(
-                            icon: Icons.check_circle_rounded,
-                            value: state.activeVehicles.toString(),
-                            label: 'Available',
-                            gradient: AppTheme.secondaryGradient,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-
-                // Vehicles List
-                if (state.vehicles.isEmpty)
-                  SliverFillRemaining(
-                    child: _buildEmptyState(),
-                  )
-                else
-                  SliverPadding(
-                    padding: const EdgeInsets.symmetric(horizontal: 20),
-                    sliver: SliverList(
-                      delegate: SliverChildBuilderDelegate(
-                        (context, index) {
-                          final vehicle = state.vehicles[index];
-                          return Padding(
-                            padding: const EdgeInsets.only(bottom: 16),
-                            child: _buildVehicleCard(context, vehicle),
-                          );
-                        },
-                        childCount: state.vehicles.length,
                       ),
                     ),
-                  ),
 
-                // Bottom padding
-                const SliverPadding(padding: EdgeInsets.only(bottom: 100)),
+                    // Stats Section
+                    SliverToBoxAdapter(
+                      child: Padding(
+                        padding: const EdgeInsets.all(20),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: _buildStatCard(
+                                icon: Icons.local_shipping_rounded,
+                                value: loadedState.vehicles.length.toString(),
+                                label: 'Total Vehicles',
+                                gradient: AppTheme.primaryGradient,
+                              ),
+                            ),
+                            const SizedBox(width: 16),
+                            Expanded(
+                              child: _buildStatCard(
+                                icon: Icons.check_circle_rounded,
+                                value: loadedState.activeVehicles.toString(),
+                                label: 'Available',
+                                gradient: AppTheme.secondaryGradient,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+
+                    // Vehicles List
+                    if (loadedState.vehicles.isEmpty)
+                      SliverFillRemaining(
+                        child: _buildEmptyState(),
+                      )
+                    else
+                      SliverPadding(
+                        padding: const EdgeInsets.symmetric(horizontal: 20),
+                        sliver: SliverList(
+                          delegate: SliverChildBuilderDelegate(
+                            (context, index) {
+                              final vehicle = loadedState.vehicles[index];
+                              return Padding(
+                                padding: const EdgeInsets.only(bottom: 16),
+                                child: _buildVehicleCard(context, vehicle),
+                              );
+                            },
+                            childCount: loadedState.vehicles.length,
+                          ),
+                        ),
+                      ),
+
+                    // Bottom padding
+                    const SliverPadding(padding: EdgeInsets.only(bottom: 100)),
+                  ],
+                ),
+                // Subtle action-in-progress overlay (non-blocking)
+                if (isActionInProgress)
+                  Positioned(
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    child: LinearProgressIndicator(
+                      backgroundColor: AppTheme.primaryColor.withOpacity(0.1),
+                      color: AppTheme.primaryColor,
+                      minHeight: 3,
+                    ),
+                  ),
               ],
             );
           }
 
-          // Fallback for any unhandled state
+          // Fallback — should not normally be reached.
           return Center(
             child: EmptyStateWidget(
               icon: Icons.refresh_rounded,
@@ -568,18 +609,18 @@ class _VehicleManagementScreenState extends State<VehicleManagementScreen> {
       child: ClipRRect(
         borderRadius: BorderRadius.circular(16),
         child: hasImage
-            ? Image.memory(
-                base64Decode(vehicle.vehicleImageBase64),
-                fit: BoxFit.cover,
-                errorBuilder: (context, error, stackTrace) {
-                  return Center(
-                    child: Text(
-                      emoji,
-                      style: const TextStyle(fontSize: 28),
-                    ),
-                  );
-                },
-              )
+            ? Builder(builder: (ctx) {
+                final bytes = ImageHelper.safeDecodeBytes(vehicle.vehicleImageBase64);
+                if (bytes == null) {
+                  return Center(child: Text(emoji, style: const TextStyle(fontSize: 28)));
+                }
+                return Image.memory(
+                  bytes,
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, __, ___) =>
+                      Center(child: Text(emoji, style: const TextStyle(fontSize: 28))),
+                );
+              })
             : Center(
                 child: Text(
                   emoji,
@@ -1271,12 +1312,16 @@ class _VehicleManagementScreenState extends State<VehicleManagementScreen> {
                                             },
                                           )
                                         else if (vehicleImageBase64 != null)
-                                          Image.memory(
-                                            base64Decode(vehicleImageBase64!),
-                                            width: double.infinity,
-                                            height: double.infinity,
-                                            fit: BoxFit.cover,
-                                          ),
+                                          Builder(builder: (_) {
+                                            final bytes = ImageHelper.safeDecodeBytes(vehicleImageBase64);
+                                            if (bytes == null) return const SizedBox.shrink();
+                                            return Image.memory(
+                                              bytes,
+                                              width: double.infinity,
+                                              height: double.infinity,
+                                              fit: BoxFit.cover,
+                                            );
+                                          }),
                                         Positioned(
                                           top: 8,
                                           right: 8,

@@ -206,14 +206,16 @@ class Vehicle:
     @staticmethod
     def delete(vehicle_id: str) -> bool:
         """Delete a vehicle from the database"""
+        # Use RETURN 1 instead of count(v) — after DETACH DELETE the node is
+        # out of scope and count(v) always returns 0, causing a false 404.
+        # When MATCH finds nothing, no rows are returned so result is [].
         query = """
         MATCH (v:Vehicle {id: $vehicleId})
         DETACH DELETE v
-        RETURN count(v) as deleted
+        RETURN 1 as deleted
         """
-        
+
         params = {"vehicleId": vehicle_id}
         result = neo4j_driver.execute_write(query, params)
-        
-        deleted = result and result[0]['deleted'] > 0 if result else False
-        return deleted
+
+        return bool(result)

@@ -7,6 +7,7 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/constants/app_constants.dart';
+import '../../../../core/utils/image_helper.dart';
 import '../../../../core/widgets/modern_widgets.dart';
 import '../../../services/domain/entities/service_entity.dart';
 import '../bloc/booking_bloc.dart';
@@ -810,22 +811,27 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
                         ),
                         child: ClipRRect(
                           borderRadius: BorderRadius.circular(12),
-                          child: service?.vehicleImageBase64 != null &&
-                                  service!.vehicleImageBase64!.isNotEmpty
-                              ? Image.memory(
-                                  base64Decode(service.vehicleImageBase64!),
-                                  fit: BoxFit.cover,
-                                  errorBuilder: (_, __, ___) => const Icon(
-                                    Icons.local_shipping_rounded,
-                                    size: 32,
-                                    color: AppTheme.primaryColor,
-                                  ),
-                                )
-                              : const Icon(
+                          child: Builder(builder: (ctx) {
+                            final bytes = ImageHelper.safeDecodeBytes(
+                              service?.vehicleImageBase64,
+                            );
+                            if (bytes != null) {
+                              return Image.memory(
+                                bytes,
+                                fit: BoxFit.cover,
+                                errorBuilder: (_, __, ___) => const Icon(
                                   Icons.local_shipping_rounded,
                                   size: 32,
                                   color: AppTheme.primaryColor,
                                 ),
+                              );
+                            }
+                            return const Icon(
+                              Icons.local_shipping_rounded,
+                              size: 32,
+                              color: AppTheme.primaryColor,
+                            );
+                          }),
                         ),
                       ),
                       const SizedBox(width: 16),

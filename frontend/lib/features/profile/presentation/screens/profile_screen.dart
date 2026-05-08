@@ -654,15 +654,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 // Vehicle Image
-                if (vehicle.vehicleImageBase64 != null && vehicle.vehicleImageBase64!.isNotEmpty)
-                  ClipRRect(
+                Builder(builder: (ctx) {
+                  final bytes = ImageHelper.safeDecodeBytes(vehicle.vehicleImageBase64);
+                  if (bytes == null) return const SizedBox.shrink();
+                  return ClipRRect(
                     borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
                     child: Image.memory(
-                      base64Decode(vehicle.vehicleImageBase64!),
+                      bytes,
                       height: 150,
                       width: double.infinity,
                       fit: BoxFit.cover,
-                      errorBuilder: (context, error, stackTrace) => Container(
+                      errorBuilder: (_, __, ___) => Container(
                         height: 150,
                         color: AppTheme.primaryColor.withOpacity(0.1),
                         child: const Center(
@@ -670,7 +672,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         ),
                       ),
                     ),
-                  )
+                  );
+                })
                 else
                   Container(
                     height: 150,

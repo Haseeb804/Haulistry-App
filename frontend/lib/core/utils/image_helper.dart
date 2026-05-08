@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 
 /// Utility helpers for displaying user profile images that may be stored
@@ -40,6 +41,18 @@ class ImageHelper {
       backgroundColor: Colors.transparent,
       child: fallback,
     );
+  }
+
+  /// Safely decode a base64 image string or data-URI to raw bytes.
+  /// Returns null when the input is empty or cannot be decoded.
+  static Uint8List? safeDecodeBytes(String? imageData) {
+    if (imageData == null || imageData.isEmpty) return null;
+    try {
+      final b64 = imageData.contains(',') ? imageData.split(',').last : imageData;
+      return base64Decode(b64);
+    } catch (_) {
+      return null;
+    }
   }
 
   /// Builds an image widget from a URL or base64 string, sized to [width] x [height].

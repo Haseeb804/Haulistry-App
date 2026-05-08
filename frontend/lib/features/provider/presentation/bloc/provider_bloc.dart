@@ -432,17 +432,23 @@ class ProviderBloc extends Bloc<ProviderEvent, ProviderState> {
       }
 
       final vehicles = await _repository.getProviderVehicles(user.uid);
-      
-      // Update current state with vehicles if it's ProviderLoaded
+
       final currentState = state;
       if (currentState is ProviderLoaded) {
-        emit(currentState.copyWith(vehicles: vehicles));
+        // Guard: never overwrite a non-empty vehicle list with an empty one.
+        // An empty GraphQL response on a cold query is far more likely to be a
+        // transient network/DB issue than genuine "the user deleted all vehicles"
+        // (that case is handled optimistically already and won't race here).
+        final effective = (vehicles.isEmpty && currentState.vehicles.isNotEmpty)
+            ? currentState.vehicles
+            : vehicles;
+        emit(currentState.copyWith(vehicles: effective));
       } else {
         // Trigger full dashboard load
         add(const ProviderLoadDashboardRequested());
       }
     } catch (e) {
-      // Don't emit error state, just log it
+      // Don't emit error state — preserve current state silently.
     }
   }
 
@@ -583,6 +589,11 @@ class ProviderBloc extends Bloc<ProviderEvent, ProviderState> {
       emit(const ProviderLoading());
     }
 
+    // Capture existing vehicles now so we can fall back to them on GraphQL failure.
+    final existingVehicles = currentState is ProviderLoaded
+        ? currentState.vehicles
+        : <VehicleEntity>[];
+
     try {
       final user = _auth.currentUser;
       if (user == null) {
@@ -594,8 +605,10 @@ class ProviderBloc extends Bloc<ProviderEvent, ProviderState> {
         _repository.getProviderServices(user.uid).catchError((e) {
           return <ServiceEntity>[];
         }),
+        // On failure, preserve the existing vehicle list so the edit-service
+        // dialog never sees an empty list due to a transient GraphQL error.
         _repository.getProviderVehicles(user.uid).catchError((e) {
-          return <VehicleEntity>[];
+          return existingVehicles;
         }),
       ]);
 

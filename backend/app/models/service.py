@@ -301,11 +301,12 @@ class Service:
     @staticmethod
     def delete(service_id: str) -> bool:
         """Delete a service"""
+        # Use RETURN 1 instead of count(s) — after DETACH DELETE the node is
+        # out of scope and count(s) always returns 0, causing a false 404.
         query = """
         MATCH (s:Service {id: $serviceId})
         DETACH DELETE s
-        RETURN count(s) as deleted
+        RETURN 1 as deleted
         """
         result = neo4j_driver.execute_write(query, {'serviceId': service_id})
-        deleted = result is not None and result[0]['deleted'] > 0
-        return deleted
+        return bool(result)

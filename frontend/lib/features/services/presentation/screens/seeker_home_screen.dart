@@ -632,25 +632,30 @@ class _SeekerHomeScreenState extends State<SeekerHomeScreen>
                   ),
                   // Vehicle image or emoji
                   Center(
-                    child: service.vehicleImageBase64 != null &&
-                            service.vehicleImageBase64!.isNotEmpty
-                        ? ClipRRect(
-                            borderRadius: BorderRadius.circular(12),
-                            child: Image.memory(
-                              base64Decode(service.vehicleImageBase64!),
-                              width: 120,
-                              height: 100,
-                              fit: BoxFit.cover,
-                              errorBuilder: (_, __, ___) => Text(
-                                categoryData['emoji'] as String,
-                                style: const TextStyle(fontSize: 56),
-                              ),
-                            ),
-                          )
-                        : Text(
+                    child: Builder(builder: (ctx) {
+                      final bytes = ImageHelper.safeDecodeBytes(
+                        service.vehicleImageBase64,
+                      );
+                      if (bytes == null) {
+                        return Text(
+                          categoryData['emoji'] as String,
+                          style: const TextStyle(fontSize: 56),
+                        );
+                      }
+                      return ClipRRect(
+                        borderRadius: BorderRadius.circular(12),
+                        child: Image.memory(
+                          bytes,
+                          width: 120,
+                          height: 100,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) => Text(
                             categoryData['emoji'] as String,
                             style: const TextStyle(fontSize: 56),
                           ),
+                        ),
+                      );
+                    }),
                   ),
                   // Rating badge
                   if (service.providerRating != null)

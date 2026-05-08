@@ -556,6 +556,61 @@ const _configs = <String, List<ServiceFormSection>>{
     ]),
   ],
 
+  // ── Generic fallback ──────────────────────────────────────────────────────
+  'other': [
+    ServiceFormSection(title: 'Pricing Model', fields: [
+      ServiceFieldConfig(
+        key: 'pricingModel',
+        label: 'Pricing Mode',
+        type: ServiceFieldType.radio,
+        radioOptions: [
+          RadioOption(value: 'per_trip', label: 'Per Trip'),
+          RadioOption(value: 'per_hour', label: 'Per Hour'),
+          RadioOption(value: 'per_day', label: 'Per Day'),
+        ],
+        defaultValue: 'per_trip',
+        required: true,
+      ),
+      ServiceFieldConfig(
+        key: 'pricePerTrip',
+        label: 'Price Per Trip',
+        type: ServiceFieldType.number,
+        hint: 'Flat fare for one trip',
+        unit: 'Rs',
+        required: true,
+        showWhen: 'pricingModel',
+        showWhenValue: 'per_trip',
+      ),
+      ServiceFieldConfig(
+        key: 'pricePerHour',
+        label: 'Hourly Rate',
+        type: ServiceFieldType.number,
+        hint: 'Charge per hour of work',
+        unit: 'Rs/hr',
+        required: true,
+        showWhen: 'pricingModel',
+        showWhenValue: 'per_hour',
+      ),
+      ServiceFieldConfig(
+        key: 'pricePerDay',
+        label: 'Daily Rate',
+        type: ServiceFieldType.number,
+        hint: 'Full day (8 hrs) charge',
+        unit: 'Rs/day',
+        required: true,
+        showWhen: 'pricingModel',
+        showWhenValue: 'per_day',
+      ),
+      ServiceFieldConfig(
+        key: 'extraKmCharge',
+        label: 'Extra KM Charge',
+        type: ServiceFieldType.number,
+        hint: 'Beyond included distance',
+        unit: 'Rs/km',
+      ),
+    ]),
+  ],
+
   'water_tanker': [
     ServiceFormSection(title: 'Tanker Specs', fields: [
       ServiceFieldConfig(

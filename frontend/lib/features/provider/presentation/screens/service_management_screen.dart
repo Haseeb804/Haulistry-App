@@ -6,6 +6,8 @@ import '../../../../core/domain/entities/vehicle_entity.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/widgets/modern_widgets.dart';
 import '../../../../core/constants/app_constants.dart';
+import '../../../../core/utils/image_helper.dart';
+import '../../../../core/utils/service_pricing_deriver.dart';
 import '../bloc/provider_bloc.dart';
 import '../bloc/provider_event.dart';
 import '../bloc/provider_state.dart';
@@ -19,11 +21,14 @@ class ServiceManagementScreen extends StatefulWidget {
 }
 
 class _ServiceManagementScreenState extends State<ServiceManagementScreen> {
+  // Cache the last ProviderLoaded state so the builder never shows an empty
+  // list during ProviderServiceActionInProgress / ProviderServiceActionSuccess.
+  ProviderLoaded? _lastLoaded;
+
   @override
   void initState() {
     super.initState();
     context.read<ProviderBloc>().add(const ProviderLoadServicesRequested());
-    context.read<ProviderBloc>().add(const ProviderLoadVehiclesRequested());
   }
 
   @override
@@ -32,6 +37,9 @@ class _ServiceManagementScreenState extends State<ServiceManagementScreen> {
       backgroundColor: AppTheme.backgroundColor,
       body: BlocConsumer<ProviderBloc, ProviderState>(
         listener: (context, state) {
+          if (state is ProviderLoaded) {
+            _lastLoaded = state;
+          }
           if (state is ProviderServiceActionSuccess) {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
@@ -71,16 +79,24 @@ class _ServiceManagementScreenState extends State<ServiceManagementScreen> {
           }
         },
         builder: (context, state) {
+          // During service CRUD, resolve to the last known ProviderLoaded data
+          // so the list doesn't flash empty between action states.
+          final resolvedState = (state is ProviderServiceActionInProgress ||
+                  state is ProviderServiceActionSuccess)
+              ? (_lastLoaded ?? state)
+              : state;
+
           List<ServiceEntity> services = [];
           List<VehicleEntity> vehicles = [];
-          bool isLoading = state is ProviderLoading || state is ProviderServiceActionInProgress;
+          final bool isLoading = resolvedState is ProviderLoading;
+          final bool isActionInProgress = state is ProviderServiceActionInProgress;
 
-          if (state is ProviderLoaded) {
-            services = state.services;
-            vehicles = state.vehicles;
-          } else if (state is ProviderServicesLoaded) {
-            services = state.services;
-            // Vehicles not available in this state, try to get from bloc
+          if (resolvedState is ProviderLoaded) {
+            _lastLoaded = resolvedState;
+            services = resolvedState.services;
+            vehicles = resolvedState.vehicles;
+          } else if (resolvedState is ProviderServicesLoaded) {
+            services = resolvedState.services;
           }
 
           return CustomScrollView(
@@ -161,6 +177,16 @@ class _ServiceManagementScreenState extends State<ServiceManagementScreen> {
                 actions: const [],
               ),
 
+              // Thin progress bar during CRUD actions (non-blocking).
+              if (isActionInProgress)
+                SliverToBoxAdapter(
+                  child: LinearProgressIndicator(
+                    backgroundColor: AppTheme.primaryColor.withOpacity(0.1),
+                    color: AppTheme.primaryColor,
+                    minHeight: 3,
+                  ),
+                ),
+
               // Content
               if (isLoading)
                 const SliverFillRemaining(
@@ -195,11 +221,10 @@ class _ServiceManagementScreenState extends State<ServiceManagementScreen> {
       ),
       floatingActionButton: BlocBuilder<ProviderBloc, ProviderState>(
         builder: (context, state) {
-          List<VehicleEntity> vehicles = [];
-          if (state is ProviderLoaded) {
-            vehicles = state.vehicles;
-          }
-          
+          // Use cached vehicles so the FAB always opens with a populated list.
+          final vehicles = _lastLoaded?.vehicles ??
+              (state is ProviderLoaded ? state.vehicles : <VehicleEntity>[]);
+
           return FloatingActionButton.extended(
             onPressed: () => _showAddServiceDialog(context, vehicles),
             backgroundColor: AppTheme.primaryColor,
@@ -460,16 +485,8 @@ class _ServiceManagementScreenState extends State<ServiceManagementScreen> {
                 ),
                 const SizedBox(height: 16),
 
-                // Pricing Row
-                Row(
-                  children: [
-                    Expanded(child: _buildPriceCard(context, 'Base', service.basePrice, Icons.payments_rounded)),
-                    const SizedBox(width: 10),
-                    Expanded(child: _buildPriceCard(context, 'Per Km', service.pricePerKm, Icons.route_rounded)),
-                    const SizedBox(width: 10),
-                    Expanded(child: _buildPriceCard(context, 'Per Hour', service.pricePerHour, Icons.schedule_rounded)),
-                  ],
-                ),
+                // Pricing Row — shows only the metrics relevant to this category
+                _buildCategoryPricingRow(context, service),
                 const SizedBox(height: 16),
 
                 // Action Buttons
@@ -546,6 +563,77 @@ class _ServiceManagementScreenState extends State<ServiceManagementScreen> {
           ),
         ],
       ),
+    );
+  }
+
+  /// Returns the pricing chips to display for a given service based on category.
+  List<_PriceChip> _getPricingChips(ServiceEntity service) {
+    final chips = <_PriceChip>[];
+    final base = service.basePrice;
+    final km = service.pricePerKm;
+    final hr = service.pricePerHour;
+
+    switch (service.category) {
+      case 'sand_trolley':
+      case 'water_tanker':
+        if (base > 0) chips.add(_PriceChip('Per Trip', base, Icons.local_shipping_rounded));
+        if (km > 0) chips.add(_PriceChip('Extra KM', km, Icons.route_rounded));
+        break;
+      case 'bricks_trolley':
+        if (base > 0) chips.add(_PriceChip('1k Bricks', base, Icons.grid_view_rounded));
+        if (km > 0) chips.add(_PriceChip('Per KM', km, Icons.route_rounded));
+        break;
+      case 'tractor':
+      case 'harvester':
+        if (base > 0) chips.add(_PriceChip('Per Acre', base, Icons.agriculture_rounded));
+        if (hr > 0) chips.add(_PriceChip('Per Hour', hr, Icons.schedule_rounded));
+        if (km > 0) chips.add(_PriceChip('Mobilization', km, Icons.directions_rounded));
+        break;
+      case 'crane':
+      case 'loader':
+      case 'excavator':
+      case 'concrete_mixer':
+        if (hr > 0) chips.add(_PriceChip('Per Hour', hr, Icons.schedule_rounded));
+        if (km > 0) chips.add(_PriceChip('Mobilization', km, Icons.directions_rounded));
+        break;
+      case 'dumper':
+        if (base > 0) {
+          chips.add(_PriceChip('Per Trip', base, Icons.local_shipping_rounded));
+        } else if (hr > 0) {
+          chips.add(_PriceChip('Per Hour', hr, Icons.schedule_rounded));
+        }
+        if (km > 0) chips.add(_PriceChip('Extra KM', km, Icons.route_rounded));
+        break;
+      default:
+        if (base > 0) chips.add(_PriceChip('Base', base, Icons.payments_rounded));
+        if (km > 0) chips.add(_PriceChip('Per KM', km, Icons.route_rounded));
+        if (hr > 0) chips.add(_PriceChip('Per Hour', hr, Icons.schedule_rounded));
+    }
+
+    // Fallback: service exists but pricing not yet set
+    if (chips.isEmpty) {
+      chips.add(_PriceChip('Price', 0, Icons.payments_rounded));
+    }
+
+    return chips;
+  }
+
+  Widget _buildCategoryPricingRow(BuildContext context, ServiceEntity service) {
+    final chips = _getPricingChips(service);
+    return Row(
+      children: [
+        for (var i = 0; i < chips.length; i++) ...[
+          if (i > 0) const SizedBox(width: 10),
+          Expanded(
+            child: _buildPriceCard(
+              context,
+              chips[i].label,
+              chips[i].value,
+              chips[i].icon,
+            ),
+          ),
+        ],
+      ],
     );
   }
 
@@ -642,9 +730,8 @@ class _ServiceManagementScreenState extends State<ServiceManagementScreen> {
   }
 
   Widget _buildVehicleImage(VehicleEntity vehicle) {
-    final hasImage = vehicle.vehicleImageBase64 != null && 
-                     vehicle.vehicleImageBase64!.isNotEmpty;
-    
+    final imageBytes = ImageHelper.safeDecodeBytes(vehicle.vehicleImageBase64);
+
     return Container(
       width: 50,
       height: 50,
@@ -657,13 +744,12 @@ class _ServiceManagementScreenState extends State<ServiceManagementScreen> {
         ),
       ),
       child: ClipOval(
-        child: hasImage
+        child: imageBytes != null
             ? Image.memory(
-                base64Decode(vehicle.vehicleImageBase64!),
+                imageBytes,
                 fit: BoxFit.cover,
-                errorBuilder: (context, error, stackTrace) {
-                  return _buildVehicleIcon(vehicle.vehicleType);
-                },
+                errorBuilder: (_, __, ___) =>
+                    _buildVehicleIcon(vehicle.vehicleType),
               )
             : _buildVehicleIcon(vehicle.vehicleType),
       ),
@@ -708,15 +794,6 @@ class _ServiceManagementScreenState extends State<ServiceManagementScreen> {
     final isEditing = existingService != null;
     final nameController = TextEditingController(text: existingService?.name ?? '');
     final descriptionController = TextEditingController(text: existingService?.description ?? '');
-    final basePriceController = TextEditingController(
-      text: existingService != null ? existingService.basePrice.toString() : '500',
-    );
-    final pricePerKmController = TextEditingController(
-      text: existingService != null ? existingService.pricePerKm.toString() : '0',
-    );
-    final pricePerHourController = TextEditingController(
-      text: existingService != null ? existingService.pricePerHour.toString() : '0',
-    );
 
     String selectedCategory = existingService?.category ?? 'sand_trolley';
     String? selectedVehicleId = existingService?.vehicleId;
@@ -1053,113 +1130,6 @@ class _ServiceManagementScreenState extends State<ServiceManagementScreen> {
                                 extraFieldValues = values;
                               },
                             ),
-
-                            // Pricing Section
-                            Container(
-                              padding: const EdgeInsets.all(20),
-                              decoration: BoxDecoration(
-                                color: AppTheme.backgroundColor,
-                                borderRadius: BorderRadius.circular(16),
-                                border: Border.all(
-                                  color: AppTheme.primaryColor.withOpacity(0.1),
-                                ),
-                              ),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Row(
-                                    children: [
-                                      Container(
-                                        padding: const EdgeInsets.all(8),
-                                        decoration: BoxDecoration(
-                                          gradient: AppTheme.secondaryGradient,
-                                          borderRadius: BorderRadius.circular(10),
-                                        ),
-                                        child: const Icon(
-                                          Icons.payments_rounded,
-                                          color: Colors.white,
-                                          size: 20,
-                                        ),
-                                      ),
-                                      const SizedBox(width: 12),
-                                      Text(
-                                        'Base Pricing',
-                                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                                              fontWeight: FontWeight.w600,
-                                            ),
-                                      ),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 8),
-                                  Text(
-                                    'Used for fare estimation. Set 0 if not applicable.',
-                                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                          color: AppTheme.textSecondary,
-                                        ),
-                                  ),
-                                  const SizedBox(height: 16),
-                                  TextFormField(
-                                    controller: basePriceController,
-                                    keyboardType: TextInputType.number,
-                                    decoration: InputDecoration(
-                                      labelText: 'Base Price (Rs)',
-                                      prefixText: 'Rs ',
-                                      prefixStyle: const TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        color: AppTheme.textPrimary,
-                                      ),
-                                      filled: true,
-                                      fillColor: Colors.white,
-                                    ),
-                                    validator: (value) {
-                                      if (value == null || value.isEmpty) return 'Required';
-                                      if (double.tryParse(value) == null) return 'Invalid amount';
-                                      return null;
-                                    },
-                                  ),
-                                  const SizedBox(height: 16),
-                                  Row(
-                                    children: [
-                                      Expanded(
-                                        child: TextFormField(
-                                          controller: pricePerKmController,
-                                          keyboardType: TextInputType.number,
-                                          decoration: const InputDecoration(
-                                            labelText: 'Per Km (Rs)',
-                                            prefixIcon: Icon(Icons.route_rounded),
-                                            filled: true,
-                                            fillColor: Colors.white,
-                                          ),
-                                          validator: (value) {
-                                            if (value == null || value.isEmpty) return 'Required';
-                                            if (double.tryParse(value) == null) return 'Invalid';
-                                            return null;
-                                          },
-                                        ),
-                                      ),
-                                      const SizedBox(width: 16),
-                                      Expanded(
-                                        child: TextFormField(
-                                          controller: pricePerHourController,
-                                          keyboardType: TextInputType.number,
-                                          decoration: const InputDecoration(
-                                            labelText: 'Per Hour (Rs)',
-                                            prefixIcon: Icon(Icons.schedule_rounded),
-                                            filled: true,
-                                            fillColor: Colors.white,
-                                          ),
-                                          validator: (value) {
-                                            if (value == null || value.isEmpty) return 'Required';
-                                            if (double.tryParse(value) == null) return 'Invalid';
-                                            return null;
-                                          },
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ],
-                              ),
-                            ),
                             const SizedBox(height: 28),
 
                             // Submit Button
@@ -1170,9 +1140,18 @@ class _ServiceManagementScreenState extends State<ServiceManagementScreen> {
                                   ? null
                                   : () {
                                       if (!formKey.currentState!.validate()) return;
+
                                       final encodedExtra = extraFieldValues.isNotEmpty
                                           ? jsonEncode(extraFieldValues)
                                           : null;
+
+                                      // Derive canonical pricing from the
+                                      // category-specific extraFields so there
+                                      // is a single source of truth for pricing.
+                                      final derived = ServicePricingDeriver.derive(
+                                        selectedCategory,
+                                        extraFieldValues,
+                                      );
 
                                       Navigator.pop(context);
 
@@ -1183,9 +1162,9 @@ class _ServiceManagementScreenState extends State<ServiceManagementScreen> {
                                                 updates: {
                                                   'name': nameController.text.trim(),
                                                   'description': descriptionController.text.trim(),
-                                                  'basePrice': double.parse(basePriceController.text),
-                                                  'pricePerKm': double.parse(pricePerKmController.text),
-                                                  'pricePerHour': double.parse(pricePerHourController.text),
+                                                  'basePrice': derived['basePrice'],
+                                                  'pricePerKm': derived['pricePerKm'],
+                                                  'pricePerHour': derived['pricePerHour'],
                                                   'category': selectedCategory,
                                                   if (encodedExtra != null) 'extraFields': encodedExtra,
                                                 },
@@ -1197,9 +1176,9 @@ class _ServiceManagementScreenState extends State<ServiceManagementScreen> {
                                                 vehicleId: selectedVehicleId!,
                                                 name: nameController.text.trim(),
                                                 description: descriptionController.text.trim(),
-                                                basePrice: double.parse(basePriceController.text),
-                                                pricePerKm: double.parse(pricePerKmController.text),
-                                                pricePerHour: double.parse(pricePerHourController.text),
+                                                basePrice: derived['basePrice']!,
+                                                pricePerKm: derived['pricePerKm']!,
+                                                pricePerHour: derived['pricePerHour']!,
                                                 category: selectedCategory,
                                                 extraFields: encodedExtra,
                                               ),
@@ -1279,6 +1258,17 @@ class _ServiceManagementScreenState extends State<ServiceManagementScreen> {
       ),
     );
   }
+}
+
+// ---------------------------------------------------------------------------
+// Internal data class for pricing chip display
+// ---------------------------------------------------------------------------
+
+class _PriceChip {
+  final String label;
+  final double value;
+  final IconData icon;
+  const _PriceChip(this.label, this.value, this.icon);
 }
 
 /// Custom Painter for pattern overlay
