@@ -102,6 +102,7 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> {
     CallMinimizeService.instance.minimize(
       callId: callId,
       callType: callType,
+      otherUserId: widget.otherUserId,
       otherUserName: name,
       otherUserRole: role,
       otherUserProfileImageUrl: imageUrl,

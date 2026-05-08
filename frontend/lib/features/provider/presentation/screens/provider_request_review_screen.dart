@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:flutter_rating_bar/flutter_rating_bar.dart';
 import 'package:go_router/go_router.dart';
 import 'package:latlong2/latlong.dart';
 import '../../../../core/services/api_service.dart';
 import '../../../../core/domain/entities/booking_entity.dart';
 import '../../../../core/theme/app_theme.dart';
+import '../../../../core/utils/image_helper.dart';
 import '../bloc/provider_bloc.dart';
 import '../bloc/provider_event.dart';
 import '../bloc/provider_state.dart';
@@ -227,7 +229,20 @@ class _ProviderRequestReviewScreenState extends State<ProviderRequestReviewScree
                       CircleAvatar(
                         radius: 26,
                         backgroundColor: AppTheme.primaryColor.withValues(alpha: 0.12),
-                        child: const Icon(Icons.person_rounded, color: AppTheme.primaryColor),
+                        foregroundImage: ImageHelper.providerFor(booking.seekerProfileImageUrl),
+                        onForegroundImageError: booking.seekerProfileImageUrl != null
+                            ? (_, __) {}
+                            : null,
+                        child: Text(
+                          (booking.seekerName?.isNotEmpty == true)
+                              ? booking.seekerName![0].toUpperCase()
+                              : 'C',
+                          style: const TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                            color: AppTheme.primaryColor,
+                          ),
+                        ),
                       ),
                       const SizedBox(width: 14),
                       Expanded(
@@ -239,10 +254,35 @@ class _ProviderRequestReviewScreenState extends State<ProviderRequestReviewScree
                               style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
                             ),
                             const SizedBox(height: 4),
-                            Text(
-                              'Service request received',
-                              style: TextStyle(color: Colors.grey.shade600),
-                            ),
+                            if (booking.seekerRating != null && booking.seekerRating! > 0) ...[
+                              Row(
+                                children: [
+                                  RatingBarIndicator(
+                                    rating: booking.seekerRating!,
+                                    itemBuilder: (_, __) => const Icon(
+                                      Icons.star_rounded,
+                                      color: Colors.amber,
+                                    ),
+                                    itemCount: 5,
+                                    itemSize: 16,
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    booking.seekerRating!.toStringAsFixed(1),
+                                    style: const TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w600,
+                                      color: AppTheme.textSecondary,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ] else ...[
+                              Text(
+                                'Service request received',
+                                style: TextStyle(color: Colors.grey.shade600),
+                              ),
+                            ],
                           ],
                         ),
                       ),

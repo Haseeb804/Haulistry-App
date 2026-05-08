@@ -8,6 +8,7 @@ import '../../../../core/services/api_service.dart';
 import '../../../../core/services/call_minimize_service.dart';
 import '../../../../core/services/notification_service.dart';
 import '../../../../core/services/realtime_socket_service.dart';
+import '../../../../core/services/ringtone_service.dart';
 import '../../../../core/services/webrtc_call_service.dart';
 import '../../../../core/utils/call_identity_resolver.dart';
 import 'call_event.dart';
@@ -18,6 +19,8 @@ class CallBloc extends Bloc<CallEvent, CallState> {
   final RealtimeSocketService _socketService;
   final ApiService _apiService;
   final FirebaseAuth _auth;
+
+  final RingtoneService _ringtoneService = RingtoneService.instance;
 
   StreamSubscription? _callStateSubscription;
   StreamSubscription? _remoteUserSubscription;
@@ -322,6 +325,9 @@ class CallBloc extends Bloc<CallEvent, CallState> {
         signalData: const {},
       ));
 
+      // Play ringback tone so caller hears feedback while waiting for answer.
+      unawaited(_ringtoneService.playOutgoing());
+
       // ── Step 2: API call (UI is already showing) ──
       final response = await _apiService.post(ApiEndpoints.callInitiate, {
         'callerId': user.uid,
@@ -440,6 +446,9 @@ class CallBloc extends Bloc<CallEvent, CallState> {
     // rapidly, or a stale duplicate event arrived), do nothing.
     if (state is CallConnecting || state is CallConnected) return;
 
+    // User accepted — stop incoming ringtone immediately.
+    unawaited(_ringtoneService.stop());
+
     try {
       _currentCallId = event.callId;
       // Preserve _currentCallType (set by _onIncomingCallReceived) when signalData
@@ -527,6 +536,9 @@ class CallBloc extends Bloc<CallEvent, CallState> {
     // Guard: ignore duplicate call_accept events once we're already connecting/connected.
     if (state is CallConnecting || state is CallConnected) return;
 
+    // Receiver accepted — stop outgoing ringback immediately.
+    unawaited(_ringtoneService.stop());
+
     try {
       // Update _currentCallId with the real ID from the accept event.
       // At this point it might still be 'pending' (API response not yet received).
@@ -572,6 +584,9 @@ class CallBloc extends Bloc<CallEvent, CallState> {
     final bookingId = _currentBookingId;
     final callType = _currentCallType;
     final userId = _auth.currentUser?.uid;
+
+    // Stop any active ringtone before ending.
+    unawaited(_ringtoneService.stop());
 
     // Fire call_end to the remote user in PARALLEL with our own UI dismissal.
     // Don't await — even if the socket is slow, our UI shouldn't wait on it.
@@ -664,6 +679,7 @@ class CallBloc extends Bloc<CallEvent, CallState> {
     // Emit terminal state FIRST (consistent with _onEndCallRequested) so the
     // UI pops immediately even when the network is slow. Never await network
     // calls before popping an incoming call screen.
+    unawaited(_ringtoneService.stop());
     unawaited(NotificationService().cancelCallNotification(event.callId));
     emit(CallEnded(callId: event.callId, duration: 0, reason: 'rejected'));
     _resetCallSession();
@@ -711,6 +727,7 @@ class CallBloc extends Bloc<CallEvent, CallState> {
     MissedCallReported event,
     Emitter<CallState> emit,
   ) async {
+    unawaited(_ringtoneService.stop());
     try {
       final otherUserId = _otherUserId;
       final bookingId = _currentBookingId;
@@ -932,6 +949,9 @@ class CallBloc extends Bloc<CallEvent, CallState> {
       profileImageUrl: _otherUserProfileImageUrl,
     );
 
+    // Play incoming ringtone so the user hears the call.
+    unawaited(_ringtoneService.playIncoming());
+
     emit(CallRinging(
       callId: event.callId,
       callerId: event.callerId,
@@ -952,6 +972,8 @@ class CallBloc extends Bloc<CallEvent, CallState> {
     final reason = event.status == AppConstants.callStatusRejected
         ? 'rejected'
         : 'ended';
+
+    unawaited(_ringtoneService.stop());
 
     // Emit terminal state FIRST so the UI pops immediately (same pattern as
     // _onEndCallRequested), then clean up async so the pop is never blocked.
@@ -1000,6 +1022,7 @@ class CallBloc extends Bloc<CallEvent, CallState> {
 
   @override
   Future<void> close() async {
+    await _ringtoneService.stop();
     await _callStateSubscription?.cancel();
     await _remoteUserSubscription?.cancel();
     await _socketSubscription?.cancel();

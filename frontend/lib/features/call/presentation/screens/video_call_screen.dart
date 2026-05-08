@@ -175,6 +175,7 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
     CallMinimizeService.instance.minimize(
       callId: callId,
       callType: AppConstants.callTypeVideo,
+      otherUserId: widget.otherUserId,
       otherUserName: name,
       otherUserRole: role,
       otherUserProfileImageUrl: imageUrl,

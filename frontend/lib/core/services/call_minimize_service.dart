@@ -13,6 +13,7 @@ class CallMinimizeService {
   // synchronously without depending on BLoC state timing.
   String callId = '';
   String callType = '';
+  String otherUserId = '';
   String otherUserName = '';
   String otherUserRole = '';
   String? otherUserProfileImageUrl;
@@ -20,12 +21,14 @@ class CallMinimizeService {
   void minimize({
     required String callId,
     required String callType,
+    required String otherUserId,
     required String otherUserName,
     required String otherUserRole,
     String? otherUserProfileImageUrl,
   }) {
     this.callId = callId;
     this.callType = callType;
+    this.otherUserId = otherUserId;
     this.otherUserName = otherUserName;
     this.otherUserRole = otherUserRole;
     this.otherUserProfileImageUrl = otherUserProfileImageUrl;
@@ -38,6 +41,7 @@ class CallMinimizeService {
     isMinimized.value = false;
     callId = '';
     callType = '';
+    otherUserId = '';
     otherUserName = '';
     otherUserRole = '';
     otherUserProfileImageUrl = null;

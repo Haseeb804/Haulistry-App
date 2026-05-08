@@ -397,8 +397,10 @@ class Booking:
         WHERE (provider:Seeker OR provider:Provider OR provider:User) AND provider.id = b.providerId
         OPTIONAL MATCH (vehicle:Vehicle {id: b.vehicleId})
         OPTIONAL MATCH (service:Service {id: b.serviceId})
-        RETURN b, 
+        RETURN b,
                seeker.name as seekerName, seeker.phone as seekerPhone,
+               seeker.profileImageUrl as seekerProfileImageUrl,
+               seeker.rating as seekerRating,
                provider.name as providerName, provider.phone as providerPhone,
                provider.rating as providerRating,
                vehicle.vehicleType as vehicleType, vehicle.vehicleNumber as vehicleNumber,
@@ -410,6 +412,8 @@ class Booking:
             booking = Booking._serialize_neo4j_data(result[0]['b'])
             booking['seekerName'] = result[0]['seekerName']
             booking['seekerPhone'] = result[0]['seekerPhone']
+            booking['seekerProfileImageUrl'] = result[0]['seekerProfileImageUrl']
+            booking['seekerRating'] = result[0]['seekerRating']
             booking['providerName'] = result[0]['providerName']
             booking['providerPhone'] = result[0]['providerPhone']
             booking['providerRating'] = result[0]['providerRating']

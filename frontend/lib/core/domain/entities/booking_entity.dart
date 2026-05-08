@@ -5,6 +5,8 @@ class BookingEntity extends Equatable {
   final String id;
   final String seekerId;
   final String? seekerName;
+  final String? seekerProfileImageUrl;
+  final double? seekerRating;
   final String? providerId;
   final String? providerName;
   final String? serviceId;
@@ -38,6 +40,8 @@ class BookingEntity extends Equatable {
     required this.id,
     required this.seekerId,
     this.seekerName,
+    this.seekerProfileImageUrl,
+    this.seekerRating,
     this.providerId,
     this.providerName,
     this.serviceId,
@@ -73,6 +77,8 @@ class BookingEntity extends Equatable {
         id,
         seekerId,
         seekerName,
+        seekerProfileImageUrl,
+        seekerRating,
         providerId,
         providerName,
         serviceId,
@@ -107,6 +113,8 @@ class BookingEntity extends Equatable {
     String? id,
     String? seekerId,
     String? seekerName,
+    String? seekerProfileImageUrl,
+    double? seekerRating,
     String? providerId,
     String? providerName,
     String? serviceId,
@@ -140,6 +148,8 @@ class BookingEntity extends Equatable {
       id: id ?? this.id,
       seekerId: seekerId ?? this.seekerId,
       seekerName: seekerName ?? this.seekerName,
+      seekerProfileImageUrl: seekerProfileImageUrl ?? this.seekerProfileImageUrl,
+      seekerRating: seekerRating ?? this.seekerRating,
       providerId: providerId ?? this.providerId,
       providerName: providerName ?? this.providerName,
       serviceId: serviceId ?? this.serviceId,
@@ -176,6 +186,8 @@ class BookingEntity extends Equatable {
       'id': id,
       'seekerId': seekerId,
       'seekerName': seekerName,
+      'seekerProfileImageUrl': seekerProfileImageUrl,
+      'seekerRating': seekerRating,
       'providerId': providerId,
       'providerName': providerName,
       'serviceId': serviceId,
@@ -212,6 +224,8 @@ class BookingEntity extends Equatable {
       id: json['id'] as String,
       seekerId: (json['seekerId'] ?? json['seeker_id']) as String,
       seekerName: (json['seekerName'] ?? json['seeker_name']) as String?,
+      seekerProfileImageUrl: (json['seekerProfileImageUrl'] ?? json['seeker_profile_image_url']) as String?,
+      seekerRating: ((json['seekerRating'] ?? json['seeker_rating']) as num?)?.toDouble(),
       providerId: (json['providerId'] ?? json['provider_id']) as String?,
       providerName: (json['providerName'] ?? json['provider_name']) as String?,
       serviceId: (json['serviceId'] ?? json['service_id']) as String?,

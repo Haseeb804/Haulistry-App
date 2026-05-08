@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import '../../../../core/constants/app_constants.dart';
 import '../../../../core/data/graphql_client.dart';
 import '../../../../core/theme/app_theme.dart';
+import '../../../../core/utils/image_helper.dart';
 import '../../../../core/widgets/modern_widgets.dart';
 import '../../../booking/data/datasources/booking_remote_datasource.dart';
 import '../../../booking/data/repositories/booking_repository_impl.dart';
@@ -761,23 +762,15 @@ class _SeekerHomeScreenState extends State<SeekerHomeScreen>
                       CircleAvatar(
                         radius: 18,
                         backgroundColor: AppTheme.primaryColor.withOpacity(0.1),
-                        child: service.providerImageUrl != null
-                            ? ClipOval(
-                                child: Image.network(
-                                  service.providerImageUrl!,
-                                  fit: BoxFit.cover,
-                                  errorBuilder: (_, __, ___) => const Icon(
-                                    Icons.person_rounded,
-                                    color: AppTheme.primaryColor,
-                                    size: 20,
-                                  ),
-                                ),
-                              )
-                            : const Icon(
-                                Icons.person_rounded,
-                                color: AppTheme.primaryColor,
-                                size: 20,
-                              ),
+                        foregroundImage: ImageHelper.providerFor(service.providerImageUrl),
+                        onForegroundImageError: service.providerImageUrl != null
+                            ? (_, __) {}
+                            : null,
+                        child: const Icon(
+                          Icons.person_rounded,
+                          color: AppTheme.primaryColor,
+                          size: 20,
+                        ),
                       ),
                       const SizedBox(width: 10),
                       Expanded(

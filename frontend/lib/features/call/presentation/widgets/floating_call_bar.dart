@@ -85,6 +85,7 @@ class _FloatingCallBarState extends State<FloatingCallBar> {
                 // doesn't depend on BLoC state timing during restore.
                 final svc = CallMinimizeService.instance;
                 final callId = svc.callId;
+                final otherUserId = svc.otherUserId;
                 final otherUserName = svc.otherUserName.isNotEmpty ? svc.otherUserName : displayName;
                 final otherUserRole = svc.otherUserRole.isNotEmpty ? svc.otherUserRole : AppConstants.roleUser;
                 final otherUserProfileImageUrl = svc.otherUserProfileImageUrl;
@@ -96,7 +97,7 @@ class _FloatingCallBarState extends State<FloatingCallBar> {
                   isVideo ? AppRoutes.callVideo : AppRoutes.callVoice,
                   extra: {
                     'callId': callId,
-                    'otherUserId': '',
+                    'otherUserId': otherUserId,
                     'otherUserName': otherUserName,
                     'otherUserRole': otherUserRole,
                     'otherUserProfileImageUrl': otherUserProfileImageUrl,
