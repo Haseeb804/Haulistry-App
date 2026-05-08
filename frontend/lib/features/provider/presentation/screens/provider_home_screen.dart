@@ -43,7 +43,7 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen> {
       remoteDataSource: FeedbackRemoteDataSource(baseUrl: AppConstants.apiUrl),
     );
 
-    context.read<ProviderBloc>().add(const ProviderLoadBookingsRequested());
+    context.read<ProviderBloc>().add(const ProviderLoadDashboardRequested());
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _enforceMandatoryProviderFeedback();
     });
@@ -168,7 +168,7 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen> {
               state is ProviderServiceActionSuccess) {
             // Trigger loading for states that require dashboard refresh
             WidgetsBinding.instance.addPostFrameCallback((_) {
-              context.read<ProviderBloc>().add(const ProviderLoadBookingsRequested());
+              context.read<ProviderBloc>().add(const ProviderLoadDashboardRequested());
             });
             return const Center(
               child: CircularProgressIndicator(color: AppTheme.primaryColor),
@@ -184,7 +184,7 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen> {
                 subtitle: 'Tap to load your dashboard',
                 buttonText: 'Load Dashboard',
                 onButtonPressed: () {
-                  context.read<ProviderBloc>().add(const ProviderLoadBookingsRequested());
+                  context.read<ProviderBloc>().add(const ProviderLoadDashboardRequested());
                 },
               ),
             );
@@ -198,7 +198,7 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen> {
                 subtitle: state.message,
                 buttonText: 'Retry',
                 onButtonPressed: () {
-                  context.read<ProviderBloc>().add(const ProviderLoadBookingsRequested());
+                  context.read<ProviderBloc>().add(const ProviderLoadDashboardRequested());
                 },
               ),
             );
@@ -207,7 +207,7 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen> {
           if (state is ProviderLoaded) {
             return RefreshIndicator(
               onRefresh: () async {
-                context.read<ProviderBloc>().add(const ProviderLoadBookingsRequested());
+                context.read<ProviderBloc>().add(const ProviderLoadDashboardRequested());
               },
               color: AppTheme.primaryColor,
               child: CustomScrollView(
@@ -339,7 +339,7 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen> {
               title: 'Loading...',
               buttonText: 'Refresh',
               onButtonPressed: () {
-                context.read<ProviderBloc>().add(const ProviderLoadBookingsRequested());
+                context.read<ProviderBloc>().add(const ProviderLoadDashboardRequested());
               },
             ),
           );

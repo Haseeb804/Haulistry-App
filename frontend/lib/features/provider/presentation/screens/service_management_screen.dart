@@ -436,24 +436,25 @@ class _ServiceManagementScreenState extends State<ServiceManagementScreen> {
                           ],
                         ),
                       ),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 6,
-                        ),
-                        decoration: BoxDecoration(
-                          color: AppTheme.secondaryColor.withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Text(
-                          '${vehicle.capacity?.toStringAsFixed(0) ?? '0'} Ton',
-                          style: const TextStyle(
-                            color: AppTheme.secondaryColor,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
+                      if ((vehicle.capacity ?? 0) > 0)
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 6,
+                          ),
+                          decoration: BoxDecoration(
+                            color: AppTheme.secondaryColor.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                            '${vehicle.capacity?.toStringAsFixed(0)} Ton',
+                            style: const TextStyle(
+                              color: AppTheme.secondaryColor,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                            ),
                           ),
                         ),
-                      ),
                     ],
                   ),
                 ),
@@ -462,7 +463,7 @@ class _ServiceManagementScreenState extends State<ServiceManagementScreen> {
                 // Pricing Row
                 Row(
                   children: [
-                    Expanded(child: _buildPriceCard(context, 'Base', service.basePrice, Icons.currency_rupee)),
+                    Expanded(child: _buildPriceCard(context, 'Base', service.basePrice, Icons.payments_rounded)),
                     const SizedBox(width: 10),
                     Expanded(child: _buildPriceCard(context, 'Per Km', service.pricePerKm, Icons.route_rounded)),
                     const SizedBox(width: 10),
@@ -873,9 +874,16 @@ class _ServiceManagementScreenState extends State<ServiceManagementScreen> {
                                   ),
                                 ),
                                 items: vehicles.map((v) {
+                                  final label = AppConstants.serviceCategories
+                                      .cast<ServiceCategory?>()
+                                      .firstWhere(
+                                        (c) => c!.value == v.vehicleType.toLowerCase(),
+                                        orElse: () => null,
+                                      )
+                                      ?.label ?? v.vehicleType;
                                   return DropdownMenuItem(
                                     value: v.id,
-                                    child: Text('${v.vehicleType} - ${v.vehicleNumber}'),
+                                    child: Text('$label · ${v.vehicleNumber}'),
                                   );
                                 }).toList(),
                                 onChanged: (value) {
@@ -885,6 +893,82 @@ class _ServiceManagementScreenState extends State<ServiceManagementScreen> {
                                     ? 'Please select a vehicle'
                                     : null,
                               ),
+
+                            // Vehicle reference panel (read-only)
+                            if (selectedVehicleId != null) ...[
+                              const SizedBox(height: 12),
+                              Builder(builder: (ctx) {
+                                final v = vehicles.cast<dynamic>().firstWhere(
+                                  (x) => x.id == selectedVehicleId,
+                                  orElse: () => null,
+                                );
+                                if (v == null) return const SizedBox.shrink();
+                                final typeLabel = AppConstants.serviceCategories
+                                    .cast<ServiceCategory?>()
+                                    .firstWhere(
+                                      (c) => c!.value == (v.vehicleType as String).toLowerCase(),
+                                      orElse: () => null,
+                                    );
+                                return Container(
+                                  padding: const EdgeInsets.all(12),
+                                  decoration: BoxDecoration(
+                                    color: AppTheme.primaryColor.withOpacity(0.05),
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(
+                                      color: AppTheme.primaryColor.withOpacity(0.15),
+                                    ),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Text(
+                                        typeLabel?.emoji ?? '🚛',
+                                        style: const TextStyle(fontSize: 24),
+                                      ),
+                                      const SizedBox(width: 12),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              typeLabel?.label ?? v.vehicleType as String,
+                                              style: const TextStyle(
+                                                fontWeight: FontWeight.w600,
+                                                fontSize: 13,
+                                              ),
+                                            ),
+                                            Text(
+                                              '${v.vehicleModel ?? ''} · ${v.vehicleNumber}',
+                                              style: TextStyle(
+                                                fontSize: 12,
+                                                color: AppTheme.textSecondary,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 8,
+                                          vertical: 4,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: AppTheme.primaryColor.withOpacity(0.1),
+                                          borderRadius: BorderRadius.circular(6),
+                                        ),
+                                        child: const Text(
+                                          'Read-only',
+                                          style: TextStyle(
+                                            fontSize: 10,
+                                            color: AppTheme.primaryColor,
+                                            fontWeight: FontWeight.w500,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                              }),
+                            ],
                             const SizedBox(height: 20),
 
                             // Service Name
@@ -1017,9 +1101,13 @@ class _ServiceManagementScreenState extends State<ServiceManagementScreen> {
                                   TextFormField(
                                     controller: basePriceController,
                                     keyboardType: TextInputType.number,
-                                    decoration: const InputDecoration(
+                                    decoration: InputDecoration(
                                       labelText: 'Base Price (Rs)',
-                                      prefixIcon: Icon(Icons.currency_rupee),
+                                      prefixText: 'Rs ',
+                                      prefixStyle: const TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        color: AppTheme.textPrimary,
+                                      ),
                                       filled: true,
                                       fillColor: Colors.white,
                                     ),

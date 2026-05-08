@@ -361,7 +361,7 @@ class _VehicleManagementScreenState extends State<VehicleManagementScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        vehicle.vehicleType,
+                        _vehicleTypeLabel(vehicle.vehicleType),
                         style: const TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.bold,
@@ -442,12 +442,12 @@ class _VehicleManagementScreenState extends State<VehicleManagementScreen> {
                     ),
                   ],
                 ),
-                if (vehicle.capacity != null) ...[
+                if ((vehicle.capacity ?? 0) > 0) ...[
                   const SizedBox(height: 12),
                   _buildVehicleDetail(
                     icon: Icons.scale_rounded,
                     label: 'Capacity',
-                    value: '${vehicle.capacity} tons',
+                    value: '${vehicle.capacity?.toStringAsFixed(1)} tons',
                     gradient: AppTheme.secondaryGradient,
                   ),
                 ],
@@ -592,17 +592,26 @@ class _VehicleManagementScreenState extends State<VehicleManagementScreen> {
   }
 
   String _getVehicleEmoji(String vehicleType) {
-    final type = vehicleType.toLowerCase();
-    if (type.contains('trolley') || type.contains('sand') || type.contains('brick')) return '🚛';
-    if (type.contains('harvester')) return '🌾';
-    if (type.contains('tractor')) return '🚜';
-    if (type.contains('crane')) return '🏗️';
-    if (type.contains('excavator')) return '⚙️';
-    if (type.contains('loader')) return '🚧';
-    if (type.contains('dumper')) return '⬇️';
-    if (type.contains('mixer') || type.contains('concrete')) return '🔄';
-    if (type.contains('tanker')) return '🚰';
-    return '🚛';
+    try {
+      return AppConstants.serviceCategories
+          .firstWhere((c) => c.value == vehicleType.toLowerCase())
+          .emoji;
+    } catch (_) {
+      return '🚛';
+    }
+  }
+
+  String _vehicleTypeLabel(String vehicleType) {
+    try {
+      return AppConstants.serviceCategories
+          .firstWhere((c) => c.value == vehicleType.toLowerCase())
+          .label;
+    } catch (_) {
+      return vehicleType
+          .split('_')
+          .map((w) => w.isEmpty ? '' : '${w[0].toUpperCase()}${w.substring(1)}')
+          .join(' ');
+    }
   }
 
   Widget _buildEmptyState() {
@@ -1080,7 +1089,7 @@ class _VehicleManagementScreenState extends State<VehicleManagementScreen> {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
-                                  vehicle.vehicleType,
+                                  _vehicleTypeLabel(vehicle.vehicleType),
                                   style: const TextStyle(
                                     fontWeight: FontWeight.bold,
                                     fontSize: 16,
