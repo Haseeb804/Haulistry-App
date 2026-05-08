@@ -26,6 +26,7 @@ class ProviderRemoteDataSource {
           vehicleYear
           vehicleImageUrl
           vehicleImageBase64
+          vehicleLicenseImageBase64
           isAvailable
           capacity
           extraFields

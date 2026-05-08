@@ -65,6 +65,7 @@ class VehicleType(graphene.ObjectType):
     isAvailable = graphene.Boolean()
     capacity = graphene.Float()
     extraFields = graphene.String()
+    vehicleLicenseImageBase64 = graphene.String()
     createdAt = graphene.DateTime()
     updatedAt = graphene.DateTime()
     
@@ -97,6 +98,9 @@ class VehicleType(graphene.ObjectType):
 
     def resolve_extraFields(self, info):
         return getattr(self, 'extraFields', None) or getattr(self, 'extra_fields', None)
+
+    def resolve_vehicleLicenseImageBase64(self, info):
+        return getattr(self, 'vehicleLicenseImageBase64', None)
 
     def resolve_createdAt(self, info):
         return getattr(self, 'created_at', None) or getattr(self, 'createdAt', None)

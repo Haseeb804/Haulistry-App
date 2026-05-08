@@ -12,7 +12,6 @@ import '../../../../core/widgets/modern_widgets.dart';
 import '../../../auth/presentation/bloc/auth_bloc.dart';
 import '../../../auth/presentation/bloc/auth_event.dart';
 import '../../../auth/presentation/bloc/auth_state.dart';
-import '../widgets/dynamic_service_fields.dart';
 
 class ProviderDocumentsScreen extends StatefulWidget {
   final Map<String, dynamic>? signupData;
@@ -32,12 +31,11 @@ class _ProviderDocumentsScreenState extends State<ProviderDocumentsScreen> {
   final _vehicleYearController = TextEditingController();
   String? _selectedVehicleType;
 
-  Map<String, dynamic> _extraFieldValues = {};
-
   CrossPlatformImage? _cnicFrontImage;
   CrossPlatformImage? _cnicBackImage;
   CrossPlatformImage? _licenseImage;
   CrossPlatformImage? _vehicleImage;
+  CrossPlatformImage? _vehicleLicenseImage;
 
   @override
   void dispose() {
@@ -65,6 +63,9 @@ class _ProviderDocumentsScreenState extends State<ProviderDocumentsScreen> {
           case 'vehicle':
             _vehicleImage = image;
             break;
+          case 'vehicle_license':
+            _vehicleLicenseImage = image;
+            break;
         }
       });
     }
@@ -86,6 +87,9 @@ class _ProviderDocumentsScreenState extends State<ProviderDocumentsScreen> {
             break;
           case 'vehicle':
             _vehicleImage = image;
+            break;
+          case 'vehicle_license':
+            _vehicleLicenseImage = image;
             break;
         }
       });
@@ -191,7 +195,7 @@ class _ProviderDocumentsScreenState extends State<ProviderDocumentsScreen> {
       return;
     }
 
-    if (_cnicFrontImage == null || _cnicBackImage == null || _licenseImage == null || _vehicleImage == null) {
+    if (_cnicFrontImage == null || _cnicBackImage == null || _licenseImage == null || _vehicleImage == null || _vehicleLicenseImage == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Row(
@@ -224,7 +228,8 @@ class _ProviderDocumentsScreenState extends State<ProviderDocumentsScreen> {
     String? cnicBackBase64;
     String? licenseBase64;
     String? vehicleBase64;
-    
+    String? vehicleLicenseBase64;
+
     if (_cnicFrontImage?.bytes != null) {
       cnicFrontBase64 = base64Encode(_cnicFrontImage!.bytes);
     }
@@ -236,6 +241,9 @@ class _ProviderDocumentsScreenState extends State<ProviderDocumentsScreen> {
     }
     if (_vehicleImage?.bytes != null) {
       vehicleBase64 = base64Encode(_vehicleImage!.bytes);
+    }
+    if (_vehicleLicenseImage?.bytes != null) {
+      vehicleLicenseBase64 = base64Encode(_vehicleLicenseImage!.bytes);
     }
     
     // If we have signup data, this is a new registration
@@ -257,9 +265,7 @@ class _ProviderDocumentsScreenState extends State<ProviderDocumentsScreen> {
               cnicBackImageBase64: cnicBackBase64,
               licenseImageBase64: licenseBase64,
               vehicleImageBase64: vehicleBase64,
-              vehicleExtraFields: _extraFieldValues.isNotEmpty
-                  ? jsonEncode(_extraFieldValues)
-                  : null,
+              vehicleLicenseImageBase64: vehicleLicenseBase64,
             ),
           );
     } else if (authState is AuthAuthenticated) {
@@ -526,7 +532,14 @@ class _ProviderDocumentsScreenState extends State<ProviderDocumentsScreen> {
                           isRequired: true,
                         ),
                         const SizedBox(height: 16),
-                        
+                        _buildDocumentSection(
+                          title: 'Vehicle Registration Document',
+                          image: _vehicleLicenseImage,
+                          onTap: () => _showImageSourceDialog('vehicle_license'),
+                          isRequired: true,
+                        ),
+                        const SizedBox(height: 16),
+
                         // Vehicle Type Dropdown
                         Container(
                           decoration: BoxDecoration(
@@ -584,21 +597,6 @@ class _ProviderDocumentsScreenState extends State<ProviderDocumentsScreen> {
                           ),
                         ),
                         const SizedBox(height: 16),
-
-                        if (_selectedVehicleType != null)
-                          DynamicServiceFields(
-                            key: ValueKey(_selectedVehicleType),
-                            category: _selectedVehicleType!,
-                            initialValues: const {},
-                            onChanged: (values) {
-                              setState(() {
-                                _extraFieldValues = values;
-                              });
-                            },
-                          ),
-
-                        if (_selectedVehicleType != null)
-                          const SizedBox(height: 16),
 
                         _buildModernTextField(
                           controller: _vehicleNumberController,

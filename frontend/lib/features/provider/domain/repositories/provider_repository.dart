@@ -15,7 +15,7 @@ abstract class ProviderRepository {
     required double pricePerKm,
     List<String>? imageUrls,
     String? vehicleImageBase64,
-    String? vehicleExtraFields,
+    String? vehicleLicenseImageBase64,
   });
   Future<VehicleEntity> updateVehicle(String vehicleId, Map<String, dynamic> updates);
   Future<void> deleteVehicle(String vehicleId);

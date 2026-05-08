@@ -30,7 +30,7 @@ class ProviderRepositoryImpl implements ProviderRepository {
     required double pricePerKm,
     List<String>? imageUrls,
     String? vehicleImageBase64,
-    String? vehicleExtraFields,
+    String? vehicleLicenseImageBase64,
   }) async {
     try {
       final vehicleData = {
@@ -42,7 +42,7 @@ class ProviderRepositoryImpl implements ProviderRepository {
         'capacity': capacity,
         'isAvailable': true,
         if (vehicleImageBase64 != null) 'vehicleImageBase64': vehicleImageBase64,
-        if (vehicleExtraFields != null) 'extraFields': vehicleExtraFields,
+        if (vehicleLicenseImageBase64 != null) 'vehicleLicenseImageBase64': vehicleLicenseImageBase64,
       };
 
       return await remoteDataSource.createVehicle(vehicleData);

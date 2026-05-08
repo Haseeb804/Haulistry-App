@@ -10,7 +10,6 @@ import '../../../../core/widgets/modern_widgets.dart';
 import '../bloc/provider_bloc.dart';
 import '../bloc/provider_event.dart';
 import '../bloc/provider_state.dart';
-import '../widgets/dynamic_service_fields.dart';
 
 class VehicleManagementScreen extends StatefulWidget {
   const VehicleManagementScreen({super.key});
@@ -627,13 +626,14 @@ class _VehicleManagementScreenState extends State<VehicleManagementScreen> {
   void _showAddVehicleDialog(BuildContext context) {
     final formKey = GlobalKey<FormState>();
     String? selectedServiceType;
-    Map<String, dynamic> extraFieldValues = {};
     final numberController = TextEditingController();
     final modelController = TextEditingController();
     final yearController = TextEditingController();
     final ImagePicker picker = ImagePicker();
     String? vehicleImageBase64;
     XFile? selectedImage;
+    String? vehicleLicenseImageBase64;
+    XFile? licenseDocImage;
 
     showModalBottomSheet(
       context: context,
@@ -715,50 +715,29 @@ class _VehicleManagementScreenState extends State<VehicleManagementScreen> {
                     children: [
                       _buildFormSectionHeader('Vehicle Type', Icons.category_rounded),
                       const SizedBox(height: 12),
-                      StatefulBuilder(
-                        builder: (context, setFieldState) => Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            DropdownButtonFormField<String>(
-                              value: selectedServiceType,
-                              decoration: InputDecoration(
-                                hintText: 'Select vehicle type',
-                                filled: true,
-                                fillColor: AppTheme.backgroundColor,
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(14),
-                                  borderSide: BorderSide.none,
-                                ),
-                                prefixIcon: const Icon(Icons.local_shipping_rounded),
-                              ),
-                              items: AppConstants.serviceCategories
-                                  .map((cat) => DropdownMenuItem(
-                                        value: cat.value,
-                                        child: Text('${cat.emoji} ${cat.label}'),
-                                      ))
-                                  .toList(),
-                              onChanged: (value) {
-                                setFieldState(() {
-                                  selectedServiceType = value;
-                                  extraFieldValues = {};
-                                });
-                              },
-                              validator: (value) =>
-                                  value == null ? 'Please select vehicle type' : null,
-                            ),
-                            if (selectedServiceType != null) ...[
-                              const SizedBox(height: 16),
-                              DynamicServiceFields(
-                                key: ValueKey(selectedServiceType),
-                                category: selectedServiceType!,
-                                initialValues: const {},
-                                onChanged: (values) {
-                                  extraFieldValues = values;
-                                },
-                              ),
-                            ],
-                          ],
+                      DropdownButtonFormField<String>(
+                        value: selectedServiceType,
+                        decoration: InputDecoration(
+                          hintText: 'Select vehicle type',
+                          filled: true,
+                          fillColor: AppTheme.backgroundColor,
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(14),
+                            borderSide: BorderSide.none,
+                          ),
+                          prefixIcon: const Icon(Icons.local_shipping_rounded),
                         ),
+                        items: AppConstants.serviceCategories
+                            .map((cat) => DropdownMenuItem(
+                                  value: cat.value,
+                                  child: Text('${cat.emoji} ${cat.label}'),
+                                ))
+                            .toList(),
+                        onChanged: (value) {
+                          selectedServiceType = value;
+                        },
+                        validator: (value) =>
+                            value == null ? 'Please select vehicle type' : null,
                       ),
 
                       const SizedBox(height: 24),
@@ -901,6 +880,104 @@ class _VehicleManagementScreenState extends State<VehicleManagementScreen> {
                           ),
                         ),
                       ),
+                      const SizedBox(height: 24),
+                      _buildFormSectionHeader('Vehicle Registration Document', Icons.description_rounded),
+                      const SizedBox(height: 12),
+                      StatefulBuilder(
+                        builder: (context, setLicenseState) => GestureDetector(
+                          onTap: () async {
+                            final XFile? image = await picker.pickImage(
+                              source: ImageSource.gallery,
+                              maxWidth: 800,
+                              maxHeight: 800,
+                              imageQuality: 70,
+                            );
+                            if (image != null) {
+                              final bytes = await image.readAsBytes();
+                              setLicenseState(() {
+                                licenseDocImage = image;
+                                vehicleLicenseImageBase64 = base64Encode(bytes);
+                              });
+                            }
+                          },
+                          child: Container(
+                            height: 140,
+                            decoration: BoxDecoration(
+                              color: AppTheme.backgroundColor,
+                              borderRadius: BorderRadius.circular(14),
+                              border: Border.all(
+                                color: Colors.grey.shade300,
+                                width: 2,
+                                style: BorderStyle.solid,
+                              ),
+                            ),
+                            child: licenseDocImage != null
+                                ? ClipRRect(
+                                    borderRadius: BorderRadius.circular(12),
+                                    child: Stack(
+                                      children: [
+                                        FutureBuilder<Uint8List>(
+                                          future: licenseDocImage!.readAsBytes(),
+                                          builder: (context, snapshot) {
+                                            if (snapshot.hasData) {
+                                              return Image.memory(
+                                                snapshot.data!,
+                                                width: double.infinity,
+                                                height: double.infinity,
+                                                fit: BoxFit.cover,
+                                              );
+                                            }
+                                            return const Center(child: CircularProgressIndicator());
+                                          },
+                                        ),
+                                        Positioned(
+                                          top: 8,
+                                          right: 8,
+                                          child: Container(
+                                            decoration: BoxDecoration(
+                                              color: Colors.black54,
+                                              borderRadius: BorderRadius.circular(20),
+                                            ),
+                                            child: IconButton(
+                                              icon: const Icon(Icons.close, color: Colors.white),
+                                              onPressed: () {
+                                                setLicenseState(() {
+                                                  licenseDocImage = null;
+                                                  vehicleLicenseImageBase64 = null;
+                                                });
+                                              },
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  )
+                                : Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Container(
+                                        padding: const EdgeInsets.all(16),
+                                        decoration: BoxDecoration(
+                                          gradient: AppTheme.primaryGradient,
+                                          borderRadius: BorderRadius.circular(16),
+                                        ),
+                                        child: const Icon(Icons.upload_file_rounded, size: 32, color: Colors.white),
+                                      ),
+                                      const SizedBox(height: 12),
+                                      const Text(
+                                        'Tap to upload registration document',
+                                        style: TextStyle(color: AppTheme.textSecondary, fontSize: 14),
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        'Optional',
+                                        style: TextStyle(color: Colors.grey.shade400, fontSize: 12),
+                                      ),
+                                    ],
+                                  ),
+                          ),
+                        ),
+                      ),
                       const SizedBox(height: 32),
                       GradientButton(
                         text: 'Add Vehicle',
@@ -919,9 +996,7 @@ class _VehicleManagementScreenState extends State<VehicleManagementScreen> {
                                     pricePerKm: 0.0,
                                     imageUrls: const [],
                                     vehicleImageBase64: vehicleImageBase64,
-                                    vehicleExtraFields: extraFieldValues.isNotEmpty
-                                        ? jsonEncode(extraFieldValues)
-                                        : null,
+                                    vehicleLicenseImageBase64: vehicleLicenseImageBase64,
                                   ),
                                 );
                           }
@@ -996,23 +1071,12 @@ class _VehicleManagementScreenState extends State<VehicleManagementScreen> {
     String? vehicleImageBase64 = vehicle.vehicleImageBase64;
     XFile? selectedImage;
 
-    // Pre-populate dynamic fields from stored extraFields JSON.
-    Map<String, dynamic> extraFieldValues = {};
-    if (vehicle.extraFields != null && (vehicle.extraFields as String).isNotEmpty) {
-      try {
-        extraFieldValues = Map<String, dynamic>.from(
-          jsonDecode(vehicle.extraFields as String),
-        );
-      } catch (_) {}
-    }
-    Map<String, dynamic> updatedExtraFields = Map.from(extraFieldValues);
-
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (dialogContext) => Container(
-        height: MediaQuery.of(context).size.height * 0.92,
+        height: MediaQuery.of(context).size.height * 0.7,
         decoration: const BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
@@ -1136,19 +1200,6 @@ class _VehicleManagementScreenState extends State<VehicleManagementScreen> {
                         ),
                       ),
                       const SizedBox(height: 20),
-
-                      // Dynamic fields for this vehicle type (fully pre-populated)
-                      _buildFormSectionHeader('Service-Specific Details', Icons.tune_rounded),
-                      const SizedBox(height: 12),
-                      DynamicServiceFields(
-                        key: ValueKey(vehicle.vehicleType),
-                        category: vehicle.vehicleType as String,
-                        initialValues: extraFieldValues,
-                        onChanged: (values) {
-                          updatedExtraFields = values;
-                        },
-                      ),
-                      const SizedBox(height: 8),
 
                       _buildFormSectionHeader('Editable Details', Icons.edit_note_rounded),
                       const SizedBox(height: 12),
@@ -1299,9 +1350,6 @@ class _VehicleManagementScreenState extends State<VehicleManagementScreen> {
                           if (vehicleImageBase64 != null &&
                               vehicleImageBase64 != vehicle.vehicleImageBase64) {
                             updates['vehicleImageBase64'] = vehicleImageBase64;
-                          }
-                          if (updatedExtraFields.isNotEmpty) {
-                            updates['extraFields'] = jsonEncode(updatedExtraFields);
                           }
                           context.read<ProviderBloc>().add(
                                 ProviderUpdateVehicleRequested(

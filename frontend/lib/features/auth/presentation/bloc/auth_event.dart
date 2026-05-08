@@ -231,8 +231,7 @@ class AuthProviderSignUpWithDocuments extends AuthEvent {
   final String? licenseImageBase64;
   final String? vehicleImageBase64;
 
-  // JSON-encoded vehicle-type-specific extra fields
-  final String? vehicleExtraFields;
+  final String? vehicleLicenseImageBase64;
 
   const AuthProviderSignUpWithDocuments({
     required this.email,
@@ -250,7 +249,7 @@ class AuthProviderSignUpWithDocuments extends AuthEvent {
     this.cnicBackImageBase64,
     this.licenseImageBase64,
     this.vehicleImageBase64,
-    this.vehicleExtraFields,
+    this.vehicleLicenseImageBase64,
   });
 
   @override
@@ -270,6 +269,6 @@ class AuthProviderSignUpWithDocuments extends AuthEvent {
         cnicBackImageBase64,
         licenseImageBase64,
         vehicleImageBase64,
-        vehicleExtraFields,
+        vehicleLicenseImageBase64,
       ];
 }

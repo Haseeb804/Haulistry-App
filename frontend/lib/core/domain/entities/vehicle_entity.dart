@@ -12,7 +12,8 @@ class VehicleEntity extends Equatable {
   final String? vehicleImageBase64; // Base64 encoded image
   final bool isAvailable;
   final double? capacity;
-  final String? extraFields; // JSON-encoded dynamic form fields (e.g. capacityTons, materialType)
+  final String? extraFields;
+  final String? vehicleLicenseImageBase64; // vehicle registration document photo
   final DateTime createdAt;
   final DateTime updatedAt;
 
@@ -28,6 +29,7 @@ class VehicleEntity extends Equatable {
     this.isAvailable = true,
     this.capacity,
     this.extraFields,
+    this.vehicleLicenseImageBase64,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -45,6 +47,7 @@ class VehicleEntity extends Equatable {
         isAvailable,
         capacity,
         extraFields,
+        vehicleLicenseImageBase64,
         createdAt,
         updatedAt,
       ];
@@ -61,6 +64,7 @@ class VehicleEntity extends Equatable {
     bool? isAvailable,
     double? capacity,
     String? extraFields,
+    String? vehicleLicenseImageBase64,
     DateTime? createdAt,
     DateTime? updatedAt,
   }) {
@@ -76,6 +80,7 @@ class VehicleEntity extends Equatable {
       isAvailable: isAvailable ?? this.isAvailable,
       capacity: capacity ?? this.capacity,
       extraFields: extraFields ?? this.extraFields,
+      vehicleLicenseImageBase64: vehicleLicenseImageBase64 ?? this.vehicleLicenseImageBase64,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
     );
@@ -94,6 +99,7 @@ class VehicleEntity extends Equatable {
       'isAvailable': isAvailable,
       'capacity': capacity,
       'extraFields': extraFields,
+      'vehicleLicenseImageBase64': vehicleLicenseImageBase64,
       'createdAt': createdAt.toIso8601String(),
       'updatedAt': updatedAt.toIso8601String(),
     };
@@ -112,6 +118,7 @@ class VehicleEntity extends Equatable {
       isAvailable: (json['isAvailable'] ?? json['is_available']) as bool? ?? true,
       capacity: (json['capacity'] as num?)?.toDouble(),
       extraFields: json['extraFields'] as String?,
+      vehicleLicenseImageBase64: json['vehicleLicenseImageBase64'] as String?,
       createdAt: DateTime.parse((json['createdAt'] ?? json['created_at']) as String),
       updatedAt: DateTime.parse((json['updatedAt'] ?? json['updated_at']) as String),
     );

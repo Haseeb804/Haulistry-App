@@ -468,7 +468,7 @@ class ProviderBloc extends Bloc<ProviderEvent, ProviderState> {
         pricePerKm: event.pricePerKm,
         imageUrls: event.imageUrls,
         vehicleImageBase64: event.vehicleImageBase64,
-        vehicleExtraFields: event.vehicleExtraFields,
+        vehicleLicenseImageBase64: event.vehicleLicenseImageBase64,
       );
 
       emit(const ProviderVehicleActionSuccess(message: 'Vehicle added successfully'));

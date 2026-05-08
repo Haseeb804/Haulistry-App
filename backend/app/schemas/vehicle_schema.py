@@ -7,13 +7,14 @@ from typing import Optional, Dict, Any
 
 
 class VehicleCreate(BaseModel):
-    """Schema for creating a new vehicle — pure entity (type, number, model, year, image)"""
+    """Schema for creating a new vehicle — pure entity (type, number, model, year, images)"""
     providerId: str = Field(..., description="ID of the service provider")
     vehicleType: str = Field(..., description="Type of vehicle")
     vehicleNumber: str = Field(..., description="Vehicle registration number")
     vehicleModel: Optional[str] = Field(None, description="Vehicle model")
     vehicleYear: Optional[str] = Field(None, description="Vehicle year")
-    vehicleImageBase64: Optional[str] = Field(None, description="Base64 encoded vehicle image")
+    vehicleImageBase64: Optional[str] = Field(None, description="Base64 encoded vehicle photo")
+    vehicleLicenseImageBase64: Optional[str] = Field(None, description="Base64 encoded vehicle registration document")
     isAvailable: bool = Field(default=True, description="Whether vehicle is available")
     capacity: Optional[float] = Field(None, description="Legacy capacity field")
     extraFields: Optional[str] = Field(None, description="JSON-encoded dynamic form fields")
@@ -39,7 +40,8 @@ class VehicleUpdate(BaseModel):
     vehicleModel: Optional[str] = Field(None, description="Vehicle model")
     vehicleYear: Optional[str] = Field(None, description="Vehicle year")
     vehicleImageUrl: Optional[str] = Field(None, description="Vehicle image URL")
-    vehicleImageBase64: Optional[str] = Field(None, description="Base64 encoded vehicle image")
+    vehicleImageBase64: Optional[str] = Field(None, description="Base64 encoded vehicle photo")
+    vehicleLicenseImageBase64: Optional[str] = Field(None, description="Base64 encoded vehicle registration document")
     isAvailable: Optional[bool] = Field(None, description="Availability status")
     capacity: Optional[float] = Field(None, description="Vehicle capacity (legacy, prefer extraFields)")
     extraFields: Optional[str] = Field(None, description="JSON-encoded dynamic form fields")
