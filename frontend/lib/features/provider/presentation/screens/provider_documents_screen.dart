@@ -12,6 +12,7 @@ import '../../../../core/widgets/modern_widgets.dart';
 import '../../../auth/presentation/bloc/auth_bloc.dart';
 import '../../../auth/presentation/bloc/auth_event.dart';
 import '../../../auth/presentation/bloc/auth_state.dart';
+import '../widgets/dynamic_service_fields.dart';
 
 class ProviderDocumentsScreen extends StatefulWidget {
   final Map<String, dynamic>? signupData;
@@ -31,6 +32,8 @@ class _ProviderDocumentsScreenState extends State<ProviderDocumentsScreen> {
   final _vehicleYearController = TextEditingController();
   final _vehicleCapacityController = TextEditingController();
   String? _selectedVehicleType;
+
+  Map<String, dynamic> _extraFieldValues = {};
 
   CrossPlatformImage? _cnicFrontImage;
   CrossPlatformImage? _cnicBackImage;
@@ -256,6 +259,9 @@ class _ProviderDocumentsScreenState extends State<ProviderDocumentsScreen> {
               cnicBackImageBase64: cnicBackBase64,
               licenseImageBase64: licenseBase64,
               vehicleImageBase64: vehicleBase64,
+              vehicleExtraFields: _extraFieldValues.isNotEmpty
+                  ? jsonEncode(_extraFieldValues)
+                  : null,
             ),
           );
     } else if (authState is AuthAuthenticated) {
@@ -580,7 +586,22 @@ class _ProviderDocumentsScreenState extends State<ProviderDocumentsScreen> {
                           ),
                         ),
                         const SizedBox(height: 16),
-                        
+
+                        if (_selectedVehicleType != null)
+                          DynamicServiceFields(
+                            key: ValueKey(_selectedVehicleType),
+                            category: _selectedVehicleType!,
+                            initialValues: const {},
+                            onChanged: (values) {
+                              setState(() {
+                                _extraFieldValues = values;
+                              });
+                            },
+                          ),
+
+                        if (_selectedVehicleType != null)
+                          const SizedBox(height: 16),
+
                         _buildModernTextField(
                           controller: _vehicleNumberController,
                           label: 'Vehicle Number *',

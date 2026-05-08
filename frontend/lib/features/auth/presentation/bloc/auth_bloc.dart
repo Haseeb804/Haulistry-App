@@ -305,6 +305,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
         'cnicBackImageBase64': event.cnicBackImageBase64,
         'licenseImageBase64': event.licenseImageBase64,
         'vehicleImageBase64': event.vehicleImageBase64,
+        'vehicleExtraFields': event.vehicleExtraFields,
       };
 
       emit(AuthPendingPhoneVerification(

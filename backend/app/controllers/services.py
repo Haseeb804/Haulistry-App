@@ -9,7 +9,7 @@ from ..schemas.service_schema import (
     ServiceCreate, ServiceUpdate, ServiceResponse, ServicesListResponse
 )
 from ..models.service import Service
-from ..config.service_form_configs import get_form_config, list_service_types
+from ..service_form_configs import get_form_config, list_service_types
 
 router = APIRouter()
 
@@ -17,7 +17,7 @@ router = APIRouter()
 @router.get("/form-config/all", tags=["Service Forms"])
 async def get_all_form_configs():
     """Return form field configs for all known service types."""
-    from ..config.service_form_configs import SERVICE_FORM_CONFIGS
+    from ..service_form_configs import SERVICE_FORM_CONFIGS
     return {"success": True, "configs": SERVICE_FORM_CONFIGS, "serviceTypes": list_service_types()}
 
 
