@@ -547,10 +547,12 @@ class Booking:
         query += """
         OPTIONAL MATCH (seeker)
         WHERE (seeker:Seeker OR seeker:Provider OR seeker:User) AND seeker.id = b.seekerId
-        RETURN b, seeker.name as seekerName
+        RETURN b, seeker.name as seekerName,
+               seeker.profileImageUrl as seekerProfileImageUrl,
+               seeker.rating as seekerRating
         ORDER BY b.createdAt DESC
         """
-        
+
         params['pendingStatus'] = BookingStatus.PENDING
         # Use execute_query (session.run) so the query always hits the leader on
         # Neo4j Aura — execute_read routes to read replicas which can lag behind
@@ -562,6 +564,8 @@ class Booking:
                 if record['b']:
                     booking = Booking._serialize_neo4j_data(record['b'])
                     booking['seekerName'] = record['seekerName']
+                    booking['seekerProfileImageUrl'] = record.get('seekerProfileImageUrl')
+                    booking['seekerRating'] = record.get('seekerRating')
                     bookings.append(booking)
         return bookings
     

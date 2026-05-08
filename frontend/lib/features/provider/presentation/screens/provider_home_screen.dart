@@ -803,6 +803,63 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen> {
             padding: const EdgeInsets.all(16),
             child: Column(
               children: [
+                // Seeker info row
+                if (booking.seekerName != null) ...[
+                  Row(
+                    children: [
+                      CircleAvatar(
+                        radius: 18,
+                        backgroundColor: AppTheme.primaryColor.withOpacity(0.1),
+                        backgroundImage: booking.seekerProfileImageUrl != null
+                            ? NetworkImage(booking.seekerProfileImageUrl!)
+                            : null,
+                        child: booking.seekerProfileImageUrl == null
+                            ? Text(
+                                (booking.seekerName ?? '?')[0].toUpperCase(),
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.bold,
+                                  color: AppTheme.primaryColor,
+                                ),
+                              )
+                            : null,
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              booking.seekerName ?? 'Unknown',
+                              style: const TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            if (booking.seekerRating != null)
+                              Row(
+                                children: [
+                                  Icon(Icons.star_rounded,
+                                      size: 13, color: Colors.amber.shade600),
+                                  const SizedBox(width: 2),
+                                  Text(
+                                    booking.seekerRating!.toStringAsFixed(1),
+                                    style: const TextStyle(
+                                      fontSize: 11,
+                                      color: AppTheme.textSecondary,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Divider(color: Colors.grey.shade200, height: 1),
+                  const SizedBox(height: 12),
+                ],
                 _buildLocationRow(
                   icon: Icons.trip_origin_rounded,
                   color: AppTheme.successColor,

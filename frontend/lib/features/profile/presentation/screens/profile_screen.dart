@@ -196,27 +196,34 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                 // Provider Rating
                                 if (isProvider && user.rating != null) ...[
                                   const SizedBox(height: 6),
-                                  Row(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      ...List.generate(5, (index) {
-                                        return Icon(
-                                          index < user.rating!.round()
-                                              ? Icons.star_rounded
-                                              : Icons.star_outline_rounded,
-                                          color: Colors.amber,
-                                          size: 16,
-                                        );
-                                      }),
-                                      const SizedBox(width: 6),
-                                      Text(
-                                        '${user.rating!.toStringAsFixed(1)} • ${user.completedBookings ?? 0} jobs',
-                                        style: const TextStyle(
-                                          color: Colors.white70,
-                                          fontSize: 11,
-                                        ),
-                                      ),
-                                    ],
+                                  BlocBuilder<ProviderBloc, ProviderState>(
+                                    builder: (context, providerState) {
+                                      final jobCount = providerState is ProviderLoaded
+                                          ? providerState.completedBookings.length
+                                          : (user.completedBookings ?? 0);
+                                      return Row(
+                                        mainAxisAlignment: MainAxisAlignment.center,
+                                        children: [
+                                          ...List.generate(5, (index) {
+                                            return Icon(
+                                              index < user.rating!.round()
+                                                  ? Icons.star_rounded
+                                                  : Icons.star_outline_rounded,
+                                              color: Colors.amber,
+                                              size: 16,
+                                            );
+                                          }),
+                                          const SizedBox(width: 6),
+                                          Text(
+                                            '${user.rating!.toStringAsFixed(1)} • $jobCount jobs',
+                                            style: const TextStyle(
+                                              color: Colors.white70,
+                                              fontSize: 11,
+                                            ),
+                                          ),
+                                        ],
+                                      );
+                                    },
                                   ),
                                 ],
                               ],
