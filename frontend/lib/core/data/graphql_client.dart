@@ -44,7 +44,9 @@ class GraphQLClientService {
       link: link,
       defaultPolicies: DefaultPolicies(
         query: Policies(
-          fetch: FetchPolicy.networkOnly,
+          // cacheAndNetwork: serve cached data immediately, refresh in background.
+          // Eliminates the blank loading state on revisits.
+          fetch: FetchPolicy.cacheAndNetwork,
           error: ErrorPolicy.all,
           cacheReread: CacheRereadPolicy.mergeOptimistic,
         ),
@@ -53,7 +55,7 @@ class GraphQLClientService {
           error: ErrorPolicy.all,
         ),
       ),
-      queryRequestTimeout: const Duration(seconds: 30),
+      queryRequestTimeout: const Duration(seconds: 25),
     );
   }
 

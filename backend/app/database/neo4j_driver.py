@@ -14,11 +14,18 @@ _INDEX_QUERIES = [
     "CREATE INDEX call_caller IF NOT EXISTS FOR (c:Call) ON (c.callerId)",
     "CREATE INDEX call_receiver IF NOT EXISTS FOR (c:Call) ON (c.receiverId)",
     "CREATE INDEX seeker_id IF NOT EXISTS FOR (s:Seeker) ON (s.id)",
+    "CREATE INDEX user_id IF NOT EXISTS FOR (u:User) ON (u.id)",
     "CREATE INDEX provider_id IF NOT EXISTS FOR (p:Provider) ON (p.id)",
     "CREATE INDEX booking_seeker IF NOT EXISTS FOR (b:Booking) ON (b.seekerId)",
     "CREATE INDEX booking_provider IF NOT EXISTS FOR (b:Booking) ON (b.providerId)",
     "CREATE INDEX booking_status IF NOT EXISTS FOR (b:Booking) ON (b.status)",
     "CREATE INDEX location_composite IF NOT EXISTS FOR (l:Location) ON (l.userId, l.bookingId)",
+    # Service indexes — critical for getAvailableServices and recommendations
+    "CREATE INDEX service_active IF NOT EXISTS FOR (s:Service) ON (s.isActive)",
+    "CREATE INDEX service_category IF NOT EXISTS FOR (s:Service) ON (s.category)",
+    "CREATE INDEX service_provider IF NOT EXISTS FOR (s:Service) ON (s.providerId)",
+    "CREATE INDEX service_created IF NOT EXISTS FOR (s:Service) ON (s.createdAt)",
+    "CREATE INDEX vehicle_id IF NOT EXISTS FOR (v:Vehicle) ON (v.id)",
 ]
 
 

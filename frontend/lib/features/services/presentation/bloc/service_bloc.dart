@@ -18,12 +18,21 @@ class ServiceBloc extends Bloc<ServiceEvent, ServiceState> {
     Emitter<ServiceState> emit,
   ) async {
     emit(const ServiceLoading());
-    try {
-      final services = await repository.getAvailableServices();
-      emit(ServiceLoaded(services: services));
-    } catch (e) {
-      emit(ServiceError(message: e.toString()));
+    // Two attempts: immediate + one retry after 2 s, before emitting error.
+    for (int attempt = 0; attempt < 2; attempt++) {
+      try {
+        final services = await repository.getAvailableServices();
+        emit(ServiceLoaded(services: services));
+        return;
+      } catch (_) {
+        if (attempt == 0) {
+          await Future.delayed(const Duration(seconds: 2));
+        }
+      }
     }
+    emit(const ServiceError(
+      message: 'Could not load services. Pull down to retry.',
+    ));
   }
 
   Future<void> _onServiceSearchRequested(
@@ -45,16 +54,16 @@ class ServiceBloc extends Bloc<ServiceEvent, ServiceState> {
   ) async {
     emit(const ServiceLoading());
     try {
-      final services = event.category == 'All'
-          ? await repository.getAvailableServices()
-          : await repository.getAvailableServices(category: event.category);
-
+      final category =
+          event.category == 'All' ? null : event.category;
+      final services =
+          await repository.getAvailableServices(category: category);
       emit(ServiceLoaded(
         services: services,
         selectedCategory: event.category,
       ));
     } catch (e) {
-      emit(ServiceError(message: e.toString()));
+      emit(ServiceError(message: 'Could not filter services. Please try again.'));
     }
   }
 

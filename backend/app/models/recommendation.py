@@ -23,43 +23,35 @@ class Recommendation:
         Combines interest-match, booking-history match, provider quality, and recency.
         """
         query = """
-        // ── 1. Seeker interests & past booking categories ─────────────────────
-        MATCH (seeker:Seeker {id: $seekerId})
+        // ── 1. Seeker interests ───────────────────────────────────────────────
+        // Support both Seeker and User labels (legacy nodes may carry either).
+        MATCH (seeker)
+        WHERE (seeker:Seeker OR seeker:User) AND seeker.id = $seekerId
         WITH seeker,
-             coalesce(seeker.interests, [])  AS interests,
-             coalesce(seeker.latitude,  0.0) AS seekLat,
-             coalesce(seeker.longitude, 0.0) AS seekLng
+             coalesce(seeker.interests, []) AS interests
 
-        // Past booking categories (distinct, max 20 lookback)
-        OPTIONAL MATCH (b)
-        WHERE any(l IN labels(b) WHERE l STARTS WITH 'Booking')
-          AND b.seekerId = $seekerId
-          AND b.status = 'completed'
-        WITH seeker, interests, seekLat, seekLng,
+        // Past booking categories — use the Booking index, no full-graph scan.
+        OPTIONAL MATCH (b:Booking {seekerId: $seekerId, status: 'completed'})
+        WITH interests,
              collect(DISTINCT b.serviceType)[..20] AS bookedCategories
 
-        // ── 2. Active services from verified providers only ────────────────────
+        // ── 2. Active services from verified providers only ───────────────────
         MATCH (svc:Service {isActive: true})
-        MATCH (prov)
+        MATCH (prov {id: svc.providerId})
         WHERE (prov:Provider OR prov:Seeker OR prov:User)
-          AND prov.id = svc.providerId
           AND coalesce(prov.isVerified, false) = true
 
-        // ── 3. Scoring ─────────────────────────────────────────────────────────
-        WITH svc, prov, interests, bookedCategories, seekLat, seekLng,
+        // ── 3. Scoring ────────────────────────────────────────────────────────
+        WITH svc, prov, interests, bookedCategories,
 
-             // Interest match score
              CASE WHEN svc.category IN interests THEN 3.0 ELSE 0.0 END
                AS interestScore,
 
-             // Booking history match score
              CASE WHEN svc.category IN bookedCategories THEN 2.0 ELSE 0.0 END
                AS historyScore,
 
-             // Provider quality score (0.0–1.0)
              coalesce(prov.rating, 0.0) / 5.0 AS qualityScore,
 
-             // Recency score — services created within last 7 days get full 0.5 bonus
              CASE
                WHEN duration.between(svc.createdAt, datetime()).days <= 7  THEN 0.5
                WHEN duration.between(svc.createdAt, datetime()).days <= 30 THEN 0.25
@@ -73,17 +65,17 @@ class Recommendation:
         ORDER BY totalScore DESC, svc.createdAt DESC
         LIMIT $limit
 
-        // ── 4. Enrich with provider / vehicle context ─────────────────────────
+        // ── 4. Enrich with vehicle context ───────────────────────────────────
         OPTIONAL MATCH (v:Vehicle {id: svc.vehicleId})
         RETURN
             svc,
             totalScore,
-            prov.name             AS providerName,
+            prov.name                  AS providerName,
             coalesce(prov.rating, 0.0) AS providerRating,
-            prov.profileImageUrl  AS providerImageUrl,
-            v.vehicleType         AS vehicleType,
-            v.vehicleNumber       AS vehicleNumber,
-            v.vehicleImageBase64  AS vehicleImageBase64
+            prov.profileImageUrl       AS providerImageUrl,
+            v.vehicleType              AS vehicleType,
+            v.vehicleNumber            AS vehicleNumber,
+            v.vehicleImageBase64       AS vehicleImageBase64
         ORDER BY totalScore DESC
         """
 

@@ -40,6 +40,7 @@ class _SeekerHomeScreenState extends State<SeekerHomeScreen>
 
   List<ServiceEntity> _recommendations = [];
   bool _recommendationsLoading = false;
+  bool _recommendationsTimedOut = false;
 
   // Categories that match backend service categories
   final List<Map<String, dynamic>> _categories = [
@@ -151,11 +152,15 @@ class _SeekerHomeScreenState extends State<SeekerHomeScreen>
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
     if (!mounted) return;
-    setState(() => _recommendationsLoading = true);
+    setState(() {
+      _recommendationsLoading = true;
+      _recommendationsTimedOut = false;
+    });
     try {
+      // 25 s covers cold-start Neo4j/backend (free-tier Render/Railway wakeup).
       final response = await ApiService.instance
           .getRecommendedServices(user.uid, limit: 6)
-          .timeout(const Duration(seconds: 10));
+          .timeout(const Duration(seconds: 25));
       final List<dynamic> items =
           response['recommendations'] as List<dynamic>? ?? [];
       if (!mounted) return;
@@ -164,9 +169,15 @@ class _SeekerHomeScreenState extends State<SeekerHomeScreen>
             .map((j) => ServiceEntity.fromJson(j as Map<String, dynamic>))
             .toList();
         _recommendationsLoading = false;
+        _recommendationsTimedOut = false;
       });
     } catch (_) {
-      if (mounted) setState(() => _recommendationsLoading = false);
+      if (!mounted) return;
+      setState(() {
+        _recommendationsLoading = false;
+        // Only flag as timed out if we have nothing cached yet.
+        _recommendationsTimedOut = _recommendations.isEmpty;
+      });
     }
   }
 
@@ -492,6 +503,61 @@ class _SeekerHomeScreenState extends State<SeekerHomeScreen>
                 itemBuilder: (_, __) => _buildRecommendationShimmer(),
               ),
             )
+          else if (_recommendationsTimedOut)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+              child: GestureDetector(
+                onTap: _loadRecommendations,
+                child: Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(16),
+                    boxShadow: AppTheme.softShadow,
+                    border: Border.all(
+                        color: AppTheme.warningColor.withOpacity(0.3)),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: AppTheme.warningColor.withOpacity(0.12),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: const Icon(Icons.refresh_rounded,
+                            color: AppTheme.warningColor, size: 22),
+                      ),
+                      const SizedBox(width: 12),
+                      const Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Tap to load recommendations',
+                              style: TextStyle(
+                                fontWeight: FontWeight.w600,
+                                fontSize: 14,
+                              ),
+                            ),
+                            SizedBox(height: 2),
+                            Text(
+                              'Server is warming up — usually ready in seconds',
+                              style: TextStyle(
+                                color: AppTheme.textSecondary,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const Icon(Icons.chevron_right_rounded,
+                          color: AppTheme.textMuted, size: 20),
+                    ],
+                  ),
+                ),
+              ),
+            )
           else if (_recommendations.isEmpty)
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
@@ -527,7 +593,7 @@ class _SeekerHomeScreenState extends State<SeekerHomeScreen>
                           ),
                           SizedBox(height: 2),
                           Text(
-                            'Book a service to get personalized suggestions',
+                            'Book a service to get personalised suggestions',
                             style: TextStyle(
                               color: AppTheme.textSecondary,
                               fontSize: 12,

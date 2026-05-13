@@ -45,7 +45,7 @@ class ServiceRemoteDataSource {
         QueryOptions(
           document: gql(query),
           variables: {'category': category},
-          fetchPolicy: FetchPolicy.networkOnly,
+          // Use default (cacheAndNetwork) — caller already tried REST first.
         ),
       );
 
