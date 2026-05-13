@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -156,34 +155,16 @@ class _SeekerHomeScreenState extends State<SeekerHomeScreen>
     try {
       final response = await ApiService.instance
           .getRecommendedServices(user.uid, limit: 6)
-          .timeout(const Duration(seconds: 8));
+          .timeout(const Duration(seconds: 10));
       final List<dynamic> items =
           response['recommendations'] as List<dynamic>? ?? [];
-
       if (!mounted) return;
-
-      if (items.isNotEmpty) {
-        setState(() {
-          _recommendations = items
-              .map((j) => ServiceEntity.fromJson(j as Map<String, dynamic>))
-              .toList();
-          _recommendationsLoading = false;
-        });
-      } else {
-        // Fall back to top available services when no personalized results
-        final fallback = await ApiService.instance
-            .getAvailableServices()
-            .timeout(const Duration(seconds: 8));
-        final List<dynamic> fallbackItems =
-            (fallback['services'] as List<dynamic>? ?? []).take(6).toList();
-        if (!mounted) return;
-        setState(() {
-          _recommendations = fallbackItems
-              .map((j) => ServiceEntity.fromJson(j as Map<String, dynamic>))
-              .toList();
-          _recommendationsLoading = false;
-        });
-      }
+      setState(() {
+        _recommendations = items
+            .map((j) => ServiceEntity.fromJson(j as Map<String, dynamic>))
+            .toList();
+        _recommendationsLoading = false;
+      });
     } catch (_) {
       if (mounted) setState(() => _recommendationsLoading = false);
     }
@@ -209,8 +190,7 @@ class _SeekerHomeScreenState extends State<SeekerHomeScreen>
           slivers: [
             _buildAppBar(),
             _buildCategoriesSection(),
-            if (_recommendations.isNotEmpty || _recommendationsLoading)
-              _buildRecommendationsSection(),
+            _buildRecommendationsSection(),
             _buildServicesHeader(),
             _buildServicesGrid(),
             const SliverPadding(padding: EdgeInsets.only(bottom: 100)),
@@ -510,6 +490,54 @@ class _SeekerHomeScreenState extends State<SeekerHomeScreen>
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 itemCount: 3,
                 itemBuilder: (_, __) => _buildRecommendationShimmer(),
+              ),
+            )
+          else if (_recommendations.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+              child: Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(16),
+                  boxShadow: AppTheme.softShadow,
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: AppTheme.primaryColor.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Icon(Icons.explore_outlined,
+                          color: AppTheme.primaryColor, size: 24),
+                    ),
+                    const SizedBox(width: 12),
+                    const Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'No recommendations yet',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w600,
+                              fontSize: 14,
+                            ),
+                          ),
+                          SizedBox(height: 2),
+                          Text(
+                            'Book a service to get personalized suggestions',
+                            style: TextStyle(
+                              color: AppTheme.textSecondary,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
               ),
             )
           else

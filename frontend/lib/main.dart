@@ -47,6 +47,7 @@ import 'features/booking/presentation/screens/request_accepted_screen.dart';
 import 'features/provider/presentation/screens/provider_booking_detail_screen.dart';
 import 'features/provider/presentation/screens/provider_request_review_screen.dart';
 import 'features/provider/presentation/screens/provider_tracking_screen.dart';
+import 'features/provider/presentation/screens/providers_explorer_screen.dart';
 import 'features/chat/presentation/bloc/chat_bloc.dart';
 import 'features/chat/presentation/screens/chat_list_screen.dart';
 import 'features/chat/presentation/screens/chat_screen.dart';
@@ -800,6 +801,10 @@ final _router = GoRouter(
     GoRoute(
       path: AppRoutes.providerHistory,
       builder: (context, state) => const BookingHistoryScreen(),
+    ),
+    GoRoute(
+      path: AppRoutes.providerExplorer,
+      builder: (context, state) => const ProvidersExplorerScreen(),
     ),
     GoRoute(
       path: AppRoutes.providerBookingPattern,

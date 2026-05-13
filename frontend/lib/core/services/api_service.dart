@@ -382,6 +382,19 @@ class ApiService {
     return get(ApiEndpoints.seekerInterests(seekerId));
   }
 
+  /// Get all verified providers (excluding self) for the Providers Explorer
+  Future<Map<String, dynamic>> exploreProviders({
+    String requesterId = '',
+    int limit = 50,
+    int offset = 0,
+  }) async {
+    return get(ApiEndpoints.providersExplore, queryParams: {
+      'requester_id': requesterId,
+      'limit': limit.toString(),
+      'offset': offset.toString(),
+    });
+  }
+
   // ============================================
   // VEHICLE API METHODS
   // ============================================

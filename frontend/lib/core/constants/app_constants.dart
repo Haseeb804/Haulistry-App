@@ -219,6 +219,7 @@ class AppRoutes {
   static const String providerServices = '/provider/services';
   static const String providerEarnings = '/provider/earnings';
   static const String providerHistory = '/provider/history';
+  static const String providerExplorer = '/provider/explore';
   static const String providerBookingPattern = '/provider/booking/:id';
   static const String providerRequestPattern = '/provider/request/:id';
 
@@ -316,6 +317,7 @@ class ApiEndpoints {
 
   static String recommendations(String seekerId) => '/api/recommendations/$seekerId';
   static String seekerInterests(String seekerId) => '/api/recommendations/$seekerId/interests';
+  static const String providersExplore = '/api/providers/explore';
 }
 
 class MapEndpoints {

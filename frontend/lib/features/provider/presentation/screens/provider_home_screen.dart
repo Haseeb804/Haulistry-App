@@ -590,47 +590,117 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen> {
   Widget _buildQuickActions(BuildContext context, {bool isPendingVerification = false}) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20),
-      child: Row(
+      child: Column(
         children: [
-          Expanded(
-            child: _buildQuickActionCard(
-              icon: Icons.home_repair_service_rounded,
-              label: 'Services',
-              color: isPendingVerification ? AppTheme.textSecondary : AppTheme.accentColor,
-              onTap: isPendingVerification
-                  ? () => _showServicesLockedSnackbar(context)
-                  : () => context.push(AppRoutes.providerServices),
-              locked: isPendingVerification,
-            ),
+          Row(
+            children: [
+              Expanded(
+                child: _buildQuickActionCard(
+                  icon: Icons.home_repair_service_rounded,
+                  label: 'Services',
+                  color: isPendingVerification ? AppTheme.textSecondary : AppTheme.accentColor,
+                  onTap: isPendingVerification
+                      ? () => _showServicesLockedSnackbar(context)
+                      : () => context.push(AppRoutes.providerServices),
+                  locked: isPendingVerification,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _buildQuickActionCard(
+                  icon: Icons.local_shipping_rounded,
+                  label: 'Vehicles',
+                  color: AppTheme.primaryColor,
+                  onTap: () => context.push(AppRoutes.providerVehicles),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _buildQuickActionCard(
+                  icon: Icons.bar_chart_rounded,
+                  label: 'Earnings',
+                  color: AppTheme.secondaryColor,
+                  onTap: () => context.push(AppRoutes.providerEarnings),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _buildQuickActionCard(
+                  icon: Icons.history_rounded,
+                  label: 'History',
+                  color: AppTheme.infoColor,
+                  onTap: () => context.push(AppRoutes.providerHistory),
+                ),
+              ),
+            ],
           ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: _buildQuickActionCard(
-              icon: Icons.local_shipping_rounded,
-              label: 'Vehicles',
-              color: AppTheme.primaryColor,
-              onTap: () => context.push(AppRoutes.providerVehicles),
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: _buildQuickActionCard(
-              icon: Icons.bar_chart_rounded,
-              label: 'Earnings',
-              color: AppTheme.secondaryColor,
-              onTap: () => context.push(AppRoutes.providerEarnings),
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: _buildQuickActionCard(
-              icon: Icons.history_rounded,
-              label: 'History',
-              color: AppTheme.infoColor,
-              onTap: () => context.push(AppRoutes.providerHistory),
-            ),
-          ),
+          const SizedBox(height: 12),
+          _buildExploreProvidersCard(context),
         ],
+      ),
+    );
+  }
+
+  Widget _buildExploreProvidersCard(BuildContext context) {
+    return GestureDetector(
+      onTap: () => context.push(AppRoutes.providerExplorer),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(
+            colors: [Color(0xFF6C5CE7), Color(0xFFA29BFE)],
+            begin: Alignment.centerLeft,
+            end: Alignment.centerRight,
+          ),
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [
+            BoxShadow(
+              color: const Color(0xFF6C5CE7).withOpacity(0.3),
+              blurRadius: 12,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.2),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Icon(Icons.explore_rounded,
+                  color: Colors.white, size: 22),
+            ),
+            const SizedBox(width: 14),
+            const Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Explore Providers',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 15,
+                    ),
+                  ),
+                  SizedBox(height: 2),
+                  Text(
+                    'Discover other providers, their services & ratings',
+                    style: TextStyle(
+                      color: Colors.white70,
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const Icon(Icons.arrow_forward_ios_rounded,
+                color: Colors.white70, size: 16),
+          ],
+        ),
       ),
     );
   }
