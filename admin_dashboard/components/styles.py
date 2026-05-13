@@ -102,6 +102,7 @@ def inject_global_css():
         }}
 
         /* ── Sidebar ── */
+        [data-testid="stSidebarNav"] {{ display: none !important; }}
         [data-testid="stSidebar"] {{
             background: linear-gradient(180deg, {DARK_BG} 0%, {DARK_SURFACE} 100%) !important;
             border-right: 1px solid rgba(255,255,255,.06) !important;
@@ -109,30 +110,6 @@ def inject_global_css():
         [data-testid="stSidebar"] .stMarkdown p {{
             color: rgba(255,255,255,.75) !important;
             font-size: 13px !important;
-        }}
-        [data-testid="stSidebarNav"] li {{
-            margin: 1px 6px !important;
-        }}
-        [data-testid="stSidebarNav"] a {{
-            border-radius: 10px !important;
-            padding: 9px 12px !important;
-            transition: all .18s ease !important;
-            font-size: 13.5px !important;
-            font-weight: 500 !important;
-        }}
-        [data-testid="stSidebarNav"] a:hover {{
-            background: rgba(255,107,53,.12) !important;
-            color: rgba(255,255,255,.95) !important;
-        }}
-        [data-testid="stSidebarNav"] a[aria-selected="true"] {{
-            background: rgba(255,107,53,.20) !important;
-            border-left: 3px solid {PRIMARY} !important;
-            padding-left: 9px !important;
-            color: #fff !important;
-            font-weight: 600 !important;
-        }}
-        [data-testid="stSidebarNav"] span {{
-            color: rgba(255,255,255,.80) !important;
         }}
 
         /* ── Metric cards ── */
