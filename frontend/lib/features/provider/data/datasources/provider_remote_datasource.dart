@@ -144,56 +144,32 @@ class ProviderRemoteDataSource {
   }
 
   Future<List<BookingEntity>> getProviderBookings(String providerId) async {
-    const String query = r'''
-      query GetUserBookings($userId: ID!) {
-        getUserBookings(userId: $userId) {
-          id
-          seekerId
-          seekerName
-          providerId
-          providerName
-          vehicleId
-          serviceType
-          status
-          pickupLatitude
-          pickupLongitude
-          pickupAddress
-          dropLatitude
-          dropLongitude
-          dropAddress
-          distanceInKm
-          estimatedPrice
-          finalPrice
-          hours
-          isUrgent
-          scheduledDateTime
-          startedAt
-          completedAt
-          cancelledAt
-          cancellationReason
-          notes
-          rating
-          review
-          createdAt
-          updatedAt
-        }
-      }
-    ''';
-
     try {
-      final result = await graphQLClient.query(
-        QueryOptions(
-          document: gql(query),
-          variables: {'userId': providerId},
-        ),
-      );
+      final response = await http.get(
+        Uri.parse('$baseUrl/bookings/provider/$providerId'),
+        headers: {'Content-Type': 'application/json'},
+      ).timeout(const Duration(seconds: 15));
 
-      if (result.hasException) {
-        throw _handleException(result.exception!);
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        final List<dynamic> bookings = (data['bookings'] as List<dynamic>?) ?? [];
+        return bookings
+            .whereType<Map<String, dynamic>>()
+            .map((j) {
+              try {
+                return BookingEntity.fromJson(j);
+              } catch (_) {
+                return null;
+              }
+            })
+            .whereType<BookingEntity>()
+            .toList();
+      } else {
+        final error = json.decode(response.body);
+        throw custom_exceptions.ServerException(
+          message: error['detail'] ?? 'Failed to fetch bookings',
+        );
       }
-
-      final List<dynamic> bookings = result.data?['getUserBookings'] ?? [];
-      return bookings.map((json) => BookingEntity.fromJson(json)).toList();
     } catch (e) {
       if (e is custom_exceptions.ApiException) rethrow;
       throw custom_exceptions.ServerException(message: 'Failed to fetch bookings: $e');

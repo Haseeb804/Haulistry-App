@@ -737,8 +737,20 @@ class _ChatScreenState extends State<ChatScreen> {
         return;
       }
 
-      // Server returned ok=false — surface the reason and let the user retry.
-      final serverReason = ack?['message']?.toString() ?? 'Message not delivered';
+      if (ack == null) {
+        // ACK not received (timeout or socket disconnect). The server may still
+        // have processed the message. Reload silently after a short delay to
+        // pick it up — the merge logic removes pending_* placeholders.
+        // Do NOT show an error here: the message likely delivered successfully.
+        await Future<void>.delayed(const Duration(seconds: 3));
+        if (!mounted) return;
+        await _loadBackendMessages();
+        _scrollToBottom();
+        return;
+      }
+
+      // Server explicitly returned ok=false — surface the reason and let the user retry.
+      final serverReason = ack['message']?.toString() ?? 'Message not delivered';
       setState(() {
         _backendMessages = _backendMessages.where((m) => m.id != optimisticId).toList();
       });
@@ -760,24 +772,11 @@ class _ChatScreenState extends State<ChatScreen> {
       }
     } catch (e) {
       if (!mounted) return;
-      // Network/socket error — restore the input so the user can retry manually.
-      setState(() {
-        _backendMessages = _backendMessages.where((m) => m.id != optimisticId).toList();
-      });
-      _messageController.text = message;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text('Failed to send — tap Retry or check your connection'),
-          backgroundColor: AppTheme.errorColor,
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          action: SnackBarAction(
-            label: 'Retry',
-            textColor: Colors.white,
-            onPressed: () => _sendMessageViaBackend(message),
-          ),
-        ),
-      );
+      // Network/socket error — silently reload to check if server saved the message.
+      await Future<void>.delayed(const Duration(seconds: 2));
+      if (!mounted) return;
+      await _loadBackendMessages();
+      _scrollToBottom();
     }
   }
 

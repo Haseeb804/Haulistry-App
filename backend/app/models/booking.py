@@ -479,10 +479,12 @@ class Booking:
         OPTIONAL MATCH (provider)
         WHERE (provider:Seeker OR provider:Provider OR provider:User) AND provider.id = b.providerId
         RETURN b, seeker.name as seekerName, seeker.phone as seekerPhone,
+               seeker.profileImageUrl as seekerProfileImageUrl,
+               seeker.rating as seekerRating,
                provider.name as providerName
         ORDER BY b.createdAt DESC
         """
-        
+
         result = neo4j_driver.execute_read(query, params)
         bookings = []
         if result:
@@ -491,6 +493,8 @@ class Booking:
                     booking = Booking._serialize_neo4j_data(record['b'])
                     booking['seekerName'] = record['seekerName']
                     booking['seekerPhone'] = record['seekerPhone']
+                    booking['seekerProfileImageUrl'] = record.get('seekerProfileImageUrl')
+                    booking['seekerRating'] = record.get('seekerRating')
                     booking['providerName'] = record['providerName']
                     bookings.append(booking)
         return bookings

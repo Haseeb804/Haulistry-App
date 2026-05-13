@@ -131,13 +131,20 @@ async def create_booking(booking: BookingCreate):
             )
 
         booking_data = Booking.create(booking.dict())
-        
+
         if not booking_data:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Failed to create booking"
             )
-        
+
+        # Fetch seeker profile so providers see real name/image/rating on request cards
+        from ..models.user import User
+        seeker_profile = await asyncio.to_thread(User.get_by_id, booking.seekerId)
+        seeker_name = (seeker_profile or {}).get('name') or 'Customer'
+        seeker_image = (seeker_profile or {}).get('profileImageUrl')
+        seeker_rating = (seeker_profile or {}).get('rating')
+
         # Handle notifications based on booking type:
         # If providerId is set (direct booking): notify only that provider
         # If providerId is null (open request): broadcast to all providers
@@ -147,10 +154,10 @@ async def create_booking(booking: BookingCreate):
                 user_id=booking_data['providerId'],
                 notification_type='new_booking_request',
                 title="🚚 New Booking Request",
-                body=f"{booking_data.get('seekerName', 'Customer')} needs {booking.serviceType} service",
+                body=f"{seeker_name} needs {booking.serviceType} service",
                 data={
                     "bookingId": booking_data['id'],
-                    "seekerName": booking_data.get('seekerName', 'Customer'),
+                    "seekerName": seeker_name,
                     "serviceType": booking.serviceType,
                     "pickupAddress": booking.pickupAddress,
                 },
@@ -160,7 +167,7 @@ async def create_booking(booking: BookingCreate):
             # Open request - broadcast to all providers
             await fcm_service.notify_new_booking_request(
                 booking_id=booking_data['id'],
-                seeker_name=booking_data.get('seekerName', 'Customer'),
+                seeker_name=seeker_name,
                 service_type=booking.serviceType,
                 pickup_address=booking.pickupAddress,
                 exclude_seeker_id=booking.seekerId
@@ -175,7 +182,9 @@ async def create_booking(booking: BookingCreate):
             # Kept for backward-compatibility with any existing listeners
             'bookingId': booking_data['id'],
             'seekerId': booking.seekerId,
-            'seekerName': booking_data.get('seekerName') or 'Customer',
+            'seekerName': seeker_name,
+            'seekerProfileImageUrl': seeker_image,
+            'seekerRating': seeker_rating,
             'providerId': booking.providerId,
             'serviceId': booking.serviceId,
             'vehicleId': booking.vehicleId,

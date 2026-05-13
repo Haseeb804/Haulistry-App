@@ -1,10 +1,7 @@
-import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
-import 'package:flutter_map/flutter_map.dart';
-import 'package:latlong2/latlong.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/constants/app_constants.dart';
 import '../../../../core/utils/image_helper.dart';
@@ -223,9 +220,9 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
 
           return Column(
             children: [
-              // Map Header with gradient overlay
-              _buildMapHeader(bookingState),
-              
+              // Header
+              _buildSimpleHeader(context),
+
               // Scrollable Content
               Expanded(
                 child: SingleChildScrollView(
@@ -499,183 +496,49 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
     );
   }
 
-  Widget _buildMapHeader(BookingInProgress bookingState) {
-    const defaultLocation = LatLng(31.5204, 74.3587);
-    
-    List<Marker> markers = [];
-    List<Polyline> polylines = [];
-    LatLng cameraPosition = defaultLocation;
-
-    // Add pickup marker with gradient style
-    if (bookingState.pickupLocation != null) {
-      markers.add(
-        Marker(
-          point: bookingState.pickupLocation!,
-          width: 44,
-          height: 44,
-          child: Container(
-            decoration: BoxDecoration(
-              gradient: AppTheme.secondaryGradient,
-              shape: BoxShape.circle,
-              border: Border.all(color: Colors.white, width: 3),
-              boxShadow: [
-                BoxShadow(
-                  color: AppTheme.secondaryColor.withOpacity(0.4),
-                  blurRadius: 8,
-                  offset: const Offset(0, 4),
-                ),
-              ],
-            ),
-            child: const Icon(Icons.trip_origin, color: Colors.white, size: 20),
-          ),
-        ),
-      );
-      cameraPosition = bookingState.pickupLocation!;
-    }
-
-    // Add drop marker with gradient style
-    if (bookingState.dropLocation != null) {
-      markers.add(
-        Marker(
-          point: bookingState.dropLocation!,
-          width: 44,
-          height: 44,
-          child: Container(
-            decoration: BoxDecoration(
-              gradient: AppTheme.primaryGradient,
-              shape: BoxShape.circle,
-              border: Border.all(color: Colors.white, width: 3),
-              boxShadow: [
-                BoxShadow(
-                  color: AppTheme.primaryColor.withOpacity(0.4),
-                  blurRadius: 8,
-                  offset: const Offset(0, 4),
-                ),
-              ],
-            ),
-            child: const Icon(Icons.location_on, color: Colors.white, size: 20),
-          ),
-        ),
-      );
-      
-      // Draw gradient-colored line between pickup and drop
-      if (bookingState.pickupLocation != null) {
-        polylines.add(
-          Polyline(
-            points: [bookingState.pickupLocation!, bookingState.dropLocation!],
-            color: AppTheme.accentColor,
-            strokeWidth: 4,
-          ),
-        );
-      }
-    }
-
+  Widget _buildSimpleHeader(BuildContext context) {
     return Container(
-      height: 220,
-      decoration: BoxDecoration(
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.1),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
-          ),
-        ],
+      decoration: const BoxDecoration(
+        gradient: AppTheme.primaryGradient,
       ),
-      child: Stack(
-        children: [
-          // Map
-          ClipRRect(
-            borderRadius: const BorderRadius.vertical(bottom: Radius.circular(28)),
-            child: FlutterMap(
-              options: MapOptions(
-                initialCenter: cameraPosition,
-                initialZoom: 13,
-              ),
-              children: [
-                TileLayer(
-                  urlTemplate: MapEndpoints.osmTileTemplate,
-                  userAgentPackageName: 'com.haulistry.app',
-                ),
-                if (polylines.isNotEmpty)
-                  PolylineLayer(polylines: polylines),
-                if (markers.isNotEmpty)
-                  MarkerLayer(markers: markers),
-              ],
-            ),
-          ),
-          // Gradient overlay at top
-          Positioned(
-            top: 0,
-            left: 0,
-            right: 0,
-            child: Container(
-              height: 100,
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    AppTheme.primaryColor.withOpacity(0.9),
-                    AppTheme.primaryColor.withOpacity(0.0),
-                  ],
-                ),
-                borderRadius: const BorderRadius.vertical(bottom: Radius.circular(28)),
-              ),
-            ),
-          ),
-          // Back button and title
-          Positioned(
-            top: MediaQuery.of(context).padding.top + 8,
-            left: 16,
-            right: 16,
-            child: Row(
-              children: [
-                Container(
+      child: SafeArea(
+        bottom: false,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          child: Row(
+            children: [
+              GestureDetector(
+                onTap: () => Navigator.pop(context),
+                child: Container(
+                  padding: const EdgeInsets.all(10),
                   decoration: BoxDecoration(
-                    color: Colors.white,
+                    color: Colors.white.withOpacity(0.2),
                     borderRadius: BorderRadius.circular(12),
-                    boxShadow: AppTheme.softShadow,
                   ),
-                  child: IconButton(
-                    icon: const Icon(Icons.chevron_left_rounded),
-                    onPressed: () => Navigator.pop(context),
-                  ),
+                  child: const Icon(Icons.chevron_left_rounded, color: Colors.white, size: 22),
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(12),
-                      boxShadow: AppTheme.softShadow,
-                    ),
-                    child: Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(6),
-                          decoration: BoxDecoration(
-                            gradient: AppTheme.primaryGradient,
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: const Icon(Icons.local_shipping, color: Colors.white, size: 16),
-                        ),
-                        const SizedBox(width: 10),
-                        const Text(
-                          'Create Booking',
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 16,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
+              ),
+              const SizedBox(width: 14),
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(10),
                 ),
-              ],
-            ),
+                child: const Icon(Icons.local_shipping_rounded, color: Colors.white, size: 20),
+              ),
+              const SizedBox(width: 10),
+              const Text(
+                'Create Booking',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
