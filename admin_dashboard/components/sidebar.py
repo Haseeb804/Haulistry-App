@@ -111,25 +111,28 @@ _SIDEBAR_CSS = """
 }
 
 /* Sign-out button in sidebar */
+[data-testid="stSidebar"] .stButton > button,
+[data-testid="stSidebar"] .stButton > button *,
+[data-testid="stSidebar"] [data-testid="stBaseButton-secondary"],
+[data-testid="stSidebar"] [data-testid="stBaseButton-secondary"] *,
 [data-testid="stSidebar"] [data-testid="stBaseButton-secondary"] button,
-[data-testid="stSidebar"] [data-testid="stBaseButton-secondary"] button p,
-[data-testid="stSidebar"] [data-testid="stBaseButton-secondary"] button span,
-[data-testid="stSidebar"] [data-testid="stBaseButton-secondary"] button div {
-    background: rgba(255,255,255,.06) !important;
-    border: 1px solid rgba(255,255,255,.18) !important;
-    color: rgba(255,255,255,.8) !important;
+[data-testid="stSidebar"] [data-testid="stBaseButton-secondary"] button * {
+    background: #0D0D22 !important;
+    color: #FF6B35 !important;
+    border: 1.5px solid rgba(255,107,53,.45) !important;
     border-radius: 10px !important;
     font-size: 12.5px !important;
-    font-weight: 600 !important;
-    transition: background .18s !important;
+    font-weight: 700 !important;
+    transition: background .18s, color .18s !important;
     width: 100% !important;
 }
+[data-testid="stSidebar"] .stButton > button:hover,
+[data-testid="stSidebar"] .stButton > button:hover *,
 [data-testid="stSidebar"] [data-testid="stBaseButton-secondary"] button:hover,
-[data-testid="stSidebar"] [data-testid="stBaseButton-secondary"] button:hover p,
-[data-testid="stSidebar"] [data-testid="stBaseButton-secondary"] button:hover span {
-    background: rgba(231,76,60,.18) !important;
-    color: #FC8181 !important;
-    border-color: rgba(231,76,60,.35) !important;
+[data-testid="stSidebar"] [data-testid="stBaseButton-secondary"] button:hover * {
+    background: rgba(255,107,53,.15) !important;
+    color: #FF8C5A !important;
+    border-color: rgba(255,107,53,.7) !important;
 }
 
 /* Divider */
