@@ -6,6 +6,7 @@ Handles HTTP requests and delegates to model layer
 from fastapi import APIRouter, HTTPException, status
 from ..schemas.vehicle_schema import VehicleCreate, VehicleUpdate, VehicleResponse
 from ..models.vehicle import Vehicle
+from ..models.user import User
 
 router = APIRouter()
 
@@ -14,6 +15,13 @@ router = APIRouter()
 async def create_vehicle(vehicle: VehicleCreate):
     """Create a new vehicle"""
     try:
+        provider = User.get_by_id(vehicle.providerId)
+        if not provider or not provider.get('isVerified'):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Your account is pending admin approval."
+            )
+
         vehicle_data = Vehicle.create(vehicle.dict())
         
         if not vehicle_data:

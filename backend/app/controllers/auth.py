@@ -265,7 +265,7 @@ async def signup_complete(
             'cnicBackImageUrl': payload.cnicBackImageUrl,
             'licenseImageUrl': payload.licenseImageUrl,
             'vehicleImageUrl': payload.vehicleImageUrl,
-            'isVerified': True,
+            'isVerified': role != 'provider',
             'isActive': True,
         })
 
@@ -452,8 +452,7 @@ async def sync_phone_user(
             if existing_user.get('phone') != phone_number:
                 update_data['phone'] = phone_number
 
-            if existing_user.get('isVerified') is not True:
-                update_data['isVerified'] = True
+            # Never auto-verify providers — admin must approve manually
 
             if payload.name and not existing_user.get('name'):
                 update_data['name'] = payload.name.strip()
@@ -479,7 +478,7 @@ async def sync_phone_user(
             "name": fallback_name,
             "phone": phone_number,
             "role": role,
-            "isVerified": True,
+            "isVerified": role != 'provider',
             "isActive": True,
             "profileImageUrl": payload.profileImageUrl,
         }
@@ -717,3 +716,15 @@ async def update_fcm_token(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to update FCM token: {str(e)}"
         )
+
+
+@router.get("/profile/{user_id}", response_model=UserResponse)
+async def get_user_profile(user_id: str):
+    """Get user profile by Firebase UID — used by frontend to check verification status."""
+    user = User.get_by_id(user_id)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found"
+        )
+    return UserResponse(success=True, message="Profile retrieved", user=user)

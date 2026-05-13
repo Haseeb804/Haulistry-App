@@ -173,6 +173,17 @@ class ProviderWithdrawalSuccess extends ProviderState {
   List<Object?> get props => [message];
 }
 
+class ProviderPendingVerification extends ProviderState {
+  final String? rejectionReason;
+
+  const ProviderPendingVerification({this.rejectionReason});
+
+  bool get isRejected => rejectionReason != null && rejectionReason!.isNotEmpty;
+
+  @override
+  List<Object?> get props => [rejectionReason];
+}
+
 class ProviderError extends ProviderState {
   final String message;
 

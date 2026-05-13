@@ -190,6 +190,23 @@ class ProviderBloc extends Bloc<ProviderEvent, ProviderState> {
         throw Exception('User not authenticated');
       }
 
+      // Check admin approval status before loading dashboard
+      try {
+        final profileData = await _apiService
+            .get('/api/auth/profile/${user.uid}')
+            .timeout(const Duration(seconds: 10));
+        final userData = profileData['user'] as Map<String, dynamic>?;
+        final role = userData?['role'] as String? ?? 'seeker';
+        final isVerified = userData?['isVerified'] as bool? ?? true;
+        if (role == 'provider' && !isVerified) {
+          final rejectionReason = userData?['rejectionReason'] as String?;
+          emit(ProviderPendingVerification(rejectionReason: rejectionReason));
+          return;
+        }
+      } catch (_) {
+        // Non-blocking — proceed normally if profile check fails
+      }
+
       // Fetch all data in parallel with individual error handling
       List<BookingEntity> allBookings = [];
       List<VehicleEntity> vehicles = [];

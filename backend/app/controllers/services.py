@@ -9,6 +9,7 @@ from ..schemas.service_schema import (
     ServiceCreate, ServiceUpdate, ServiceResponse, ServicesListResponse
 )
 from ..models.service import Service
+from ..models.user import User
 from ..service_form_configs import get_form_config, list_service_types
 
 router = APIRouter()
@@ -37,6 +38,13 @@ async def get_service_form_config(service_type: str):
 async def create_service(service: ServiceCreate):
     """Create a new service offering"""
     try:
+        provider = User.get_by_id(service.providerId)
+        if not provider or not provider.get('isVerified'):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Your account is pending admin approval."
+            )
+
         service_data = Service.create(service.dict())
         
         if not service_data:

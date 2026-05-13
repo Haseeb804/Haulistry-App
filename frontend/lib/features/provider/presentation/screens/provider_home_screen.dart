@@ -175,6 +175,10 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen> {
             );
           }
 
+          if (state is ProviderPendingVerification) {
+            return _buildPendingVerificationScreen(context, state);
+          }
+
           // ProviderEarningsLoaded - user was on earnings screen, show refresh prompt
           if (state is ProviderEarningsLoaded) {
             return Center(
@@ -1318,6 +1322,150 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen> {
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildPendingVerificationScreen(
+    BuildContext context,
+    ProviderPendingVerification state,
+  ) {
+    final isRejected = state.isRejected;
+    return Scaffold(
+      backgroundColor: AppTheme.backgroundColor,
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Container(
+                width: 100,
+                height: 100,
+                decoration: BoxDecoration(
+                  color: isRejected
+                      ? AppTheme.errorColor.withOpacity(0.12)
+                      : AppTheme.primaryColor.withOpacity(0.12),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  isRejected ? Icons.cancel_outlined : Icons.hourglass_top_rounded,
+                  size: 52,
+                  color: isRejected ? AppTheme.errorColor : AppTheme.primaryColor,
+                ),
+              ),
+              const SizedBox(height: 28),
+              Text(
+                isRejected ? 'Account Rejected' : 'Pending Approval',
+                style: const TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.w800,
+                  color: Color(0xFF1A202C),
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 12),
+              Text(
+                isRejected
+                    ? 'Your account application has been reviewed and rejected by the admin.'
+                    : 'Your account is under review. An admin will verify your documents and approve your account shortly.',
+                style: const TextStyle(
+                  fontSize: 15,
+                  color: Color(0xFF718096),
+                  height: 1.5,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              if (isRejected && state.rejectionReason != null) ...[
+                const SizedBox(height: 20),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: AppTheme.errorColor.withOpacity(0.08),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: AppTheme.errorColor.withOpacity(0.25)),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'REJECTION REASON',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFF742A2A),
+                          letterSpacing: 0.8,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        state.rejectionReason!,
+                        style: const TextStyle(
+                          fontSize: 14,
+                          color: Color(0xFF742A2A),
+                          height: 1.4,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+              const SizedBox(height: 24),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: const Color(0xFFE2E8F0)),
+                ),
+                child: Column(
+                  children: [
+                    _pendingInfoRow(Icons.timer_outlined, 'Typical review time: 24–48 hours'),
+                    const Divider(height: 20),
+                    _pendingInfoRow(Icons.shield_outlined, 'Keep your documents ready for review'),
+                    const Divider(height: 20),
+                    _pendingInfoRow(Icons.notifications_outlined, 'You\'ll be notified once reviewed'),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 28),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: () => context
+                      .read<ProviderBloc>()
+                      .add(const ProviderLoadDashboardRequested()),
+                  icon: const Icon(Icons.refresh_rounded),
+                  label: const Text('Check Status'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppTheme.primaryColor,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _pendingInfoRow(IconData icon, String text) {
+    return Row(
+      children: [
+        Icon(icon, size: 18, color: const Color(0xFF718096)),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Text(text,
+              style: const TextStyle(fontSize: 13, color: Color(0xFF718096))),
+        ),
+      ],
     );
   }
 }
