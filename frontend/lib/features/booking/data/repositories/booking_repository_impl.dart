@@ -26,6 +26,12 @@ class BookingRepositoryImpl implements BookingRepository {
     int hours = 1,
     bool isUrgent = false,
     String? notes,
+    String? bookingMode,
+    String? jobType,
+    double? serviceLocationLat,
+    double? serviceLocationLng,
+    String? serviceLocationAddress,
+    Map<String, dynamic>? extraData,
   }) async {
     try {
       final bookingData = {
@@ -46,6 +52,12 @@ class BookingRepositoryImpl implements BookingRepository {
         'hours': hours,
         'isUrgent': isUrgent,
         'notes': notes,
+        if (bookingMode != null) 'bookingMode': bookingMode,
+        if (jobType != null) 'jobType': jobType,
+        if (serviceLocationLat != null) 'serviceLocationLat': serviceLocationLat,
+        if (serviceLocationLng != null) 'serviceLocationLng': serviceLocationLng,
+        if (serviceLocationAddress != null) 'serviceLocationAddress': serviceLocationAddress,
+        if (extraData != null) 'extraData': extraData,
       };
 
       return await remoteDataSource.createBooking(bookingData);

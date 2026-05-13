@@ -615,6 +615,12 @@ final _router = GoRouter(
       path: AppRoutes.serviceByTypePattern,
       builder: (context, state) {
         final serviceType = state.pathParameters['serviceType'] ?? '';
+        final extra = state.extra;
+        // When navigated from seeker home, extra carries the full ServiceEntity
+        // (provider name, real pricing, extraFields, vehicle image, location, etc.)
+        if (extra is ServiceEntity) {
+          return ServiceDetailScreen(serviceType: serviceType, service: extra);
+        }
         return ServiceDetailScreen(serviceType: serviceType);
       },
     ),

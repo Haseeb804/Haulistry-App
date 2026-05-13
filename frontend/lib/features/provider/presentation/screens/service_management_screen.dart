@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:latlong2/latlong.dart';
 import 'dart:convert';
 import '../../../../core/domain/entities/service_entity.dart';
 import '../../../../core/domain/entities/vehicle_entity.dart';
@@ -8,6 +9,7 @@ import '../../../../core/widgets/modern_widgets.dart';
 import '../../../../core/constants/app_constants.dart';
 import '../../../../core/utils/image_helper.dart';
 import '../../../../core/utils/service_pricing_deriver.dart';
+import '../../../booking/presentation/screens/location_picker_screen.dart';
 import '../bloc/provider_bloc.dart';
 import '../bloc/provider_event.dart';
 import '../bloc/provider_state.dart';
@@ -811,6 +813,11 @@ class _ServiceManagementScreenState extends State<ServiceManagementScreen> {
       } catch (_) {}
     }
 
+    // Base location state — pre-populate from existing service if editing.
+    double? baseLatitude = existingService?.serviceBaseLatitude;
+    double? baseLongitude = existingService?.serviceBaseLongitude;
+    String? baseAddress = existingService?.serviceBaseAddress;
+
     final formKey = GlobalKey<FormState>();
 
     showModalBottomSheet(
@@ -1132,6 +1139,158 @@ class _ServiceManagementScreenState extends State<ServiceManagementScreen> {
                             ),
                             const SizedBox(height: 28),
 
+                            // ── Machine Base Location ─────────────────────────────
+                            Container(
+                              padding: const EdgeInsets.all(16),
+                              decoration: BoxDecoration(
+                                color: Colors.grey.shade50,
+                                borderRadius: BorderRadius.circular(16),
+                                border: Border.all(
+                                  color: baseLatitude != null
+                                      ? AppTheme.primaryColor.withOpacity(0.3)
+                                      : Colors.grey.shade200,
+                                ),
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    children: [
+                                      Container(
+                                        padding: const EdgeInsets.all(8),
+                                        decoration: BoxDecoration(
+                                          gradient: baseLatitude != null
+                                              ? AppTheme.primaryGradient
+                                              : const LinearGradient(
+                                                  colors: [Color(0xFFBDBDBD), Color(0xFF9E9E9E)]),
+                                          borderRadius: BorderRadius.circular(10),
+                                        ),
+                                        child: const Icon(Icons.garage_rounded,
+                                            color: Colors.white, size: 18),
+                                      ),
+                                      const SizedBox(width: 10),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            const Text('Machine Base Location',
+                                                style: TextStyle(
+                                                    fontWeight: FontWeight.bold, fontSize: 14)),
+                                            Text(
+                                              baseLatitude != null
+                                                  ? 'Location set'
+                                                  : 'Where is this machine based?',
+                                              style: TextStyle(
+                                                  fontSize: 12,
+                                                  color: baseLatitude != null
+                                                      ? AppTheme.primaryColor
+                                                      : AppTheme.textSecondary),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      if (baseLatitude != null)
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(
+                                              horizontal: 8, vertical: 4),
+                                          decoration: BoxDecoration(
+                                            color: AppTheme.successColor.withOpacity(0.1),
+                                            borderRadius: BorderRadius.circular(8),
+                                          ),
+                                          child: Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              Icon(Icons.check_circle_rounded,
+                                                  size: 14,
+                                                  color: AppTheme.successColor),
+                                              const SizedBox(width: 4),
+                                              Text('Set',
+                                                  style: TextStyle(
+                                                      fontSize: 11,
+                                                      color: AppTheme.successColor,
+                                                      fontWeight: FontWeight.w600)),
+                                            ],
+                                          ),
+                                        ),
+                                    ],
+                                  ),
+                                  if (baseAddress != null) ...[
+                                    const SizedBox(height: 10),
+                                    Container(
+                                      padding: const EdgeInsets.all(10),
+                                      decoration: BoxDecoration(
+                                        color: AppTheme.primaryColor.withOpacity(0.05),
+                                        borderRadius: BorderRadius.circular(10),
+                                      ),
+                                      child: Row(
+                                        children: [
+                                          Icon(Icons.location_on_rounded,
+                                              size: 14, color: AppTheme.primaryColor),
+                                          const SizedBox(width: 8),
+                                          Expanded(
+                                            child: Text(
+                                              baseAddress!,
+                                              style: const TextStyle(
+                                                  fontSize: 12,
+                                                  color: AppTheme.textSecondary),
+                                              maxLines: 2,
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                  const SizedBox(height: 12),
+                                  SizedBox(
+                                    width: double.infinity,
+                                    child: OutlinedButton.icon(
+                                      icon: Icon(
+                                        baseLatitude != null
+                                            ? Icons.edit_location_alt_rounded
+                                            : Icons.add_location_alt_rounded,
+                                        size: 18,
+                                      ),
+                                      label: Text(baseLatitude != null
+                                          ? 'Change Location'
+                                          : 'Pin on Map'),
+                                      style: OutlinedButton.styleFrom(
+                                        foregroundColor: AppTheme.primaryColor,
+                                        side: BorderSide(
+                                            color: AppTheme.primaryColor.withOpacity(0.5)),
+                                        shape: RoundedRectangleBorder(
+                                            borderRadius: BorderRadius.circular(12)),
+                                        padding: const EdgeInsets.symmetric(vertical: 12),
+                                      ),
+                                      onPressed: () async {
+                                        final result = await Navigator.push<Map<String, dynamic>>(
+                                          context,
+                                          MaterialPageRoute(
+                                            builder: (_) => LocationPickerScreen(
+                                              title: 'Machine Base Location',
+                                              subtitle: 'Pin where this machine is garaged or based',
+                                              initialLocation: baseLatitude != null
+                                                  ? LatLng(baseLatitude!, baseLongitude!)
+                                                  : null,
+                                            ),
+                                          ),
+                                        );
+                                        if (result != null) {
+                                          final loc = result['location'] as LatLng;
+                                          setDialogState(() {
+                                            baseLatitude = loc.latitude;
+                                            baseLongitude = loc.longitude;
+                                            baseAddress = result['address'] as String?;
+                                          });
+                                        }
+                                      },
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(height: 28),
+
                             // Submit Button
                             GradientButton(
                               text: isEditing ? 'Update Service' : 'Add Service',
@@ -1167,6 +1326,9 @@ class _ServiceManagementScreenState extends State<ServiceManagementScreen> {
                                                   'pricePerHour': derived['pricePerHour'],
                                                   'category': selectedCategory,
                                                   if (encodedExtra != null) 'extraFields': encodedExtra,
+                                                  if (baseLatitude != null) 'serviceBaseLatitude': baseLatitude,
+                                                  if (baseLongitude != null) 'serviceBaseLongitude': baseLongitude,
+                                                  if (baseAddress != null) 'serviceBaseAddress': baseAddress,
                                                 },
                                               ),
                                             );
@@ -1181,6 +1343,9 @@ class _ServiceManagementScreenState extends State<ServiceManagementScreen> {
                                                 pricePerHour: derived['pricePerHour']!,
                                                 category: selectedCategory,
                                                 extraFields: encodedExtra,
+                                                serviceBaseLatitude: baseLatitude,
+                                                serviceBaseLongitude: baseLongitude,
+                                                serviceBaseAddress: baseAddress,
                                               ),
                                             );
                                       }

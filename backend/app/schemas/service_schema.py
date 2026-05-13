@@ -18,6 +18,9 @@ class ServiceCreate(BaseModel):
     pricePerHour: float = Field(default=0.0, description="Price per hour")
     category: str = Field(default="general", description="Service category")
     extraFields: Optional[str] = Field(None, description="JSON string of service-specific extra fields")
+    serviceBaseLatitude: Optional[float] = Field(None, description="Latitude of the machine's base/garage location")
+    serviceBaseLongitude: Optional[float] = Field(None, description="Longitude of the machine's base/garage location")
+    serviceBaseAddress: Optional[str] = Field(None, description="Human-readable address of the machine's base location")
 
     class Config:
         json_schema_extra = {
@@ -45,6 +48,9 @@ class ServiceUpdate(BaseModel):
     category: Optional[str] = Field(None, description="Service category")
     isActive: Optional[bool] = Field(None, description="Service availability")
     extraFields: Optional[str] = Field(None, description="JSON string of service-specific extra fields")
+    serviceBaseLatitude: Optional[float] = Field(None, description="Latitude of the machine's base/garage location")
+    serviceBaseLongitude: Optional[float] = Field(None, description="Longitude of the machine's base/garage location")
+    serviceBaseAddress: Optional[str] = Field(None, description="Human-readable address of the machine's base location")
 
 
 class ServiceResponse(BaseModel):

@@ -674,6 +674,9 @@ class ProviderBloc extends Bloc<ProviderEvent, ProviderState> {
         pricePerHour: event.pricePerHour,
         category: event.category,
         extraFields: event.extraFields,
+        serviceBaseLatitude: event.serviceBaseLatitude,
+        serviceBaseLongitude: event.serviceBaseLongitude,
+        serviceBaseAddress: event.serviceBaseAddress,
       );
 
       emit(const ProviderServiceActionSuccess(message: 'Service added successfully'));

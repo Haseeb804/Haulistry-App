@@ -19,6 +19,13 @@ abstract class BookingRepository {
     int hours = 1,
     bool isUrgent = false,
     String? notes,
+    // Dynamic booking fields
+    String? bookingMode,
+    String? jobType,
+    double? serviceLocationLat,
+    double? serviceLocationLng,
+    String? serviceLocationAddress,
+    Map<String, dynamic>? extraData,
   });
 
   Future<List<BookingEntity>> getUserBookings(String userId);

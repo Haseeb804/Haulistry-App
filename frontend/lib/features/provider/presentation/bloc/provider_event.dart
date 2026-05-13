@@ -332,6 +332,9 @@ class ProviderAddServiceRequested extends ProviderEvent {
   final double pricePerHour;
   final String category;
   final String? extraFields;
+  final double? serviceBaseLatitude;
+  final double? serviceBaseLongitude;
+  final String? serviceBaseAddress;
 
   const ProviderAddServiceRequested({
     required this.vehicleId,
@@ -343,6 +346,9 @@ class ProviderAddServiceRequested extends ProviderEvent {
     required this.pricePerHour,
     required this.category,
     this.extraFields,
+    this.serviceBaseLatitude,
+    this.serviceBaseLongitude,
+    this.serviceBaseAddress,
   });
 
   @override
@@ -356,6 +362,9 @@ class ProviderAddServiceRequested extends ProviderEvent {
         pricePerHour,
         category,
         extraFields,
+        serviceBaseLatitude,
+        serviceBaseLongitude,
+        serviceBaseAddress,
       ];
 }
 

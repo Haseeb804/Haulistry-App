@@ -602,7 +602,7 @@ class _SeekerHomeScreenState extends State<SeekerHomeScreen>
     final categoryData = _getCategoryData(service.category);
 
     return GestureDetector(
-      onTap: () => _navigateToBooking(service),
+      onTap: () => _navigateToServiceDetail(service),
       child: Container(
         margin: const EdgeInsets.only(bottom: 16),
         decoration: BoxDecoration(
@@ -815,7 +815,7 @@ class _SeekerHomeScreenState extends State<SeekerHomeScreen>
                         child: Material(
                           color: Colors.transparent,
                           child: InkWell(
-                            onTap: () => _navigateToBooking(service),
+                            onTap: () => _navigateToBooking(service), // direct booking
                             borderRadius: BorderRadius.circular(10),
                             child: const Padding(
                               padding: EdgeInsets.symmetric(
@@ -904,8 +904,13 @@ class _SeekerHomeScreenState extends State<SeekerHomeScreen>
     );
   }
 
+  void _navigateToServiceDetail(ServiceEntity service) {
+    // Tap card body → service detail screen with full provider listing data
+    context.push('/service/${service.category}', extra: service);
+  }
+
   void _navigateToBooking(ServiceEntity service) {
-    // Navigate to booking screen with service data
+    // Tap "Book" button → go directly to booking form
     context.push(AppRoutes.bookingCreate, extra: service);
   }
 

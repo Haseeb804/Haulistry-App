@@ -21,6 +21,9 @@ class ServiceEntity {
   final DateTime updatedAt;
   /// JSON-encoded string of service-specific extra fields (stored in Neo4j).
   final String? extraFields;
+  final double? serviceBaseLatitude;
+  final double? serviceBaseLongitude;
+  final String? serviceBaseAddress;
 
   const ServiceEntity({
     required this.id,
@@ -43,6 +46,9 @@ class ServiceEntity {
     required this.createdAt,
     required this.updatedAt,
     this.extraFields,
+    this.serviceBaseLatitude,
+    this.serviceBaseLongitude,
+    this.serviceBaseAddress,
   });
 
   factory ServiceEntity.fromJson(Map<String, dynamic> json) {
@@ -67,6 +73,9 @@ class ServiceEntity {
       createdAt: DateTime.parse(json['createdAt'] as String),
       updatedAt: DateTime.parse(json['updatedAt'] as String),
       extraFields: json['extraFields'] as String?,
+      serviceBaseLatitude: (json['serviceBaseLatitude'] as num?)?.toDouble(),
+      serviceBaseLongitude: (json['serviceBaseLongitude'] as num?)?.toDouble(),
+      serviceBaseAddress: json['serviceBaseAddress'] as String?,
     );
   }
 
@@ -86,6 +95,9 @@ class ServiceEntity {
       'createdAt': createdAt.toIso8601String(),
       'updatedAt': updatedAt.toIso8601String(),
       'extraFields': extraFields,
+      'serviceBaseLatitude': serviceBaseLatitude,
+      'serviceBaseLongitude': serviceBaseLongitude,
+      'serviceBaseAddress': serviceBaseAddress,
     };
   }
 
@@ -110,6 +122,9 @@ class ServiceEntity {
     DateTime? createdAt,
     DateTime? updatedAt,
     String? extraFields,
+    double? serviceBaseLatitude,
+    double? serviceBaseLongitude,
+    String? serviceBaseAddress,
   }) {
     return ServiceEntity(
       id: id ?? this.id,
@@ -132,6 +147,9 @@ class ServiceEntity {
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       extraFields: extraFields ?? this.extraFields,
+      serviceBaseLatitude: serviceBaseLatitude ?? this.serviceBaseLatitude,
+      serviceBaseLongitude: serviceBaseLongitude ?? this.serviceBaseLongitude,
+      serviceBaseAddress: serviceBaseAddress ?? this.serviceBaseAddress,
     );
   }
 }

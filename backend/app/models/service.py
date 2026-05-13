@@ -117,6 +117,9 @@ class Service:
             pricePerHour: $pricePerHour,
             category: $category,
             extraFields: $extraFields,
+            serviceBaseLatitude: $serviceBaseLatitude,
+            serviceBaseLongitude: $serviceBaseLongitude,
+            serviceBaseAddress: $serviceBaseAddress,
             isActive: true,
             createdAt: datetime(),
             updatedAt: datetime()
@@ -137,6 +140,9 @@ class Service:
             'pricePerHour': service_data.get('pricePerHour', 0.0),
             'category': service_data.get('category', 'general'),
             'extraFields': service_data.get('extraFields'),
+            'serviceBaseLatitude': service_data.get('serviceBaseLatitude'),
+            'serviceBaseLongitude': service_data.get('serviceBaseLongitude'),
+            'serviceBaseAddress': service_data.get('serviceBaseAddress'),
         }
         
         result = neo4j_driver.execute_write(query, params)
@@ -231,14 +237,17 @@ class Service:
              count(serviceFeedback) as serviceReviewCount,
              p.rating as overallProviderRating,
              p.latitude as latitude, p.longitude as longitude
-        RETURN s, p.id as providerId, p.name as providerName, 
+        RETURN s, p.id as providerId, p.name as providerName,
                serviceRating as providerRating,
                serviceReviewCount as totalReviews,
                overallProviderRating,
                p.profileImageUrl as providerImageUrl,
                v.id as vehicleId, v.vehicleType as vehicleType, v.vehicleNumber as vehicleNumber,
                v.vehicleImageBase64 as vehicleImageBase64,
-               latitude, longitude
+               latitude, longitude,
+               COALESCE(s.serviceBaseLatitude, p.latitude) as serviceBaseLatitude,
+               COALESCE(s.serviceBaseLongitude, p.longitude) as serviceBaseLongitude,
+               s.serviceBaseAddress as serviceBaseAddress
         ORDER BY s.createdAt DESC
         """
         
@@ -261,6 +270,9 @@ class Service:
                     service['vehicleImageBase64'] = record['vehicleImageBase64']
                     service['providerLatitude'] = record['latitude']
                     service['providerLongitude'] = record['longitude']
+                    service['serviceBaseLatitude'] = record['serviceBaseLatitude']
+                    service['serviceBaseLongitude'] = record['serviceBaseLongitude']
+                    service['serviceBaseAddress'] = record['serviceBaseAddress']
                     services.append(service)
         return services
     
@@ -280,6 +292,9 @@ class Service:
             'category': 'category',
             'isActive': 'isActive',
             'extraFields': 'extraFields',
+            'serviceBaseLatitude': 'serviceBaseLatitude',
+            'serviceBaseLongitude': 'serviceBaseLongitude',
+            'serviceBaseAddress': 'serviceBaseAddress',
         }
         
         for key, neo4j_key in field_mapping.items():

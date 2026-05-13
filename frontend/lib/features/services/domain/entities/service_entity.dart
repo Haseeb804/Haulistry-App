@@ -1,4 +1,6 @@
+import 'dart:convert';
 import 'package:equatable/equatable.dart';
+import '../../../booking/domain/models/booking_mode_config.dart';
 
 /// Service Entity - Represents a real service offered by a verified provider
 class ServiceEntity extends Equatable {
@@ -13,19 +15,27 @@ class ServiceEntity extends Equatable {
   final double pricePerHour;
   final String category;
   final bool isActive;
-  
+
   // Provider info
   final String? providerName;
   final double? providerRating;
   final double? providerLatitude;
   final double? providerLongitude;
   final String? providerImageUrl;
-  
+
   // Vehicle info
   final String? vehicleType;
   final String? vehicleNumber;
   final String? vehicleImageBase64;
-  
+
+  // Provider-configured extra parameters (pricing tiers, machine specs, features)
+  final Map<String, dynamic>? extraFields;
+
+  // Machine base/garage location set by provider during service creation
+  final double? serviceBaseLatitude;
+  final double? serviceBaseLongitude;
+  final String? serviceBaseAddress;
+
   final DateTime? createdAt;
   final DateTime? updatedAt;
 
@@ -49,9 +59,47 @@ class ServiceEntity extends Equatable {
     this.vehicleType,
     this.vehicleNumber,
     this.vehicleImageBase64,
+    this.extraFields,
+    this.serviceBaseLatitude,
+    this.serviceBaseLongitude,
+    this.serviceBaseAddress,
     this.createdAt,
     this.updatedAt,
   });
+
+  // ── Derived pricing helpers ────────────────────────────────────────────────
+
+  double? _numField(String key) {
+    final v = extraFields?[key];
+    return (v as num?)?.toDouble();
+  }
+
+  double get pricePerAcre =>
+      _numField('pricePerAcre') ?? _numField('price_per_acre') ?? basePrice;
+
+  double get pricePerTrip =>
+      _numField('pricePerTrip') ?? _numField('price_per_trip') ?? basePrice;
+
+  double? get mobilizationChargePerKm =>
+      _numField('mobilizationCharge') ?? _numField('mobilization_charge');
+
+  /// Returns a formatted price summary string for the given booking mode config.
+  String pricingSummary(BookingModeConfig config) {
+    switch (config.pricingModel) {
+      case PricingModel.perAcre:
+        return 'Rs. ${pricePerAcre.toStringAsFixed(0)} / acre';
+      case PricingModel.perHour:
+        final rate =
+            _numField('hourlyRate') ?? _numField('hourly_rate') ?? pricePerHour;
+        return 'Rs. ${rate.toStringAsFixed(0)} / hr';
+      case PricingModel.perTrip:
+        return 'Rs. ${pricePerTrip.toStringAsFixed(0)} / trip';
+      case PricingModel.perKm:
+        return 'Rs. ${pricePerKm.toStringAsFixed(0)} / km';
+      case PricingModel.hybrid:
+        return 'From Rs. ${basePrice.toStringAsFixed(0)}';
+    }
+  }
 
   /// Calculate estimated price based on distance and hours
   double calculatePrice({required double distanceKm, int hours = 1}) {
@@ -60,6 +108,16 @@ class ServiceEntity extends Equatable {
 
   /// Factory constructor from JSON
   factory ServiceEntity.fromJson(Map<String, dynamic> json) {
+    Map<String, dynamic>? extras;
+    final rawExtras = json['extraFields'];
+    if (rawExtras is Map<String, dynamic>) {
+      extras = rawExtras;
+    } else if (rawExtras is String && rawExtras.isNotEmpty) {
+      try {
+        extras = jsonDecode(rawExtras) as Map<String, dynamic>?;
+      } catch (_) {}
+    }
+
     return ServiceEntity(
       id: json['id'] ?? '',
       providerId: json['providerId'] ?? '',
@@ -80,8 +138,16 @@ class ServiceEntity extends Equatable {
       vehicleType: json['vehicleType'],
       vehicleNumber: json['vehicleNumber'],
       vehicleImageBase64: json['vehicleImageBase64'],
-      createdAt: json['createdAt'] != null ? DateTime.tryParse(json['createdAt']) : null,
-      updatedAt: json['updatedAt'] != null ? DateTime.tryParse(json['updatedAt']) : null,
+      extraFields: extras,
+      serviceBaseLatitude: json['serviceBaseLatitude']?.toDouble(),
+      serviceBaseLongitude: json['serviceBaseLongitude']?.toDouble(),
+      serviceBaseAddress: json['serviceBaseAddress'],
+      createdAt: json['createdAt'] != null
+          ? DateTime.tryParse(json['createdAt'])
+          : null,
+      updatedAt: json['updatedAt'] != null
+          ? DateTime.tryParse(json['updatedAt'])
+          : null,
     );
   }
 
@@ -106,11 +172,20 @@ class ServiceEntity extends Equatable {
       'vehicleType': vehicleType,
       'vehicleNumber': vehicleNumber,
       'vehicleImageBase64': vehicleImageBase64,
+      'extraFields': extraFields,
+      'serviceBaseLatitude': serviceBaseLatitude,
+      'serviceBaseLongitude': serviceBaseLongitude,
+      'serviceBaseAddress': serviceBaseAddress,
     };
   }
 
   @override
   List<Object?> get props => [
-    id, providerId, vehicleId, name, category, isActive,
-  ];
+        id,
+        providerId,
+        vehicleId,
+        name,
+        category,
+        isActive,
+      ];
 }
