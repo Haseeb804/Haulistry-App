@@ -111,20 +111,25 @@ _SIDEBAR_CSS = """
 }
 
 /* Sign-out button in sidebar */
-[data-testid="stSidebar"] [data-testid="stBaseButton-secondary"] button {
+[data-testid="stSidebar"] [data-testid="stBaseButton-secondary"] button,
+[data-testid="stSidebar"] [data-testid="stBaseButton-secondary"] button p,
+[data-testid="stSidebar"] [data-testid="stBaseButton-secondary"] button span,
+[data-testid="stSidebar"] [data-testid="stBaseButton-secondary"] button div {
     background: rgba(255,255,255,.06) !important;
-    border: 1px solid rgba(255,255,255,.12) !important;
-    color: rgba(255,255,255,.55) !important;
+    border: 1px solid rgba(255,255,255,.18) !important;
+    color: rgba(255,255,255,.8) !important;
     border-radius: 10px !important;
     font-size: 12.5px !important;
     font-weight: 600 !important;
     transition: background .18s !important;
     width: 100% !important;
 }
-[data-testid="stSidebar"] [data-testid="stBaseButton-secondary"] button:hover {
-    background: rgba(231,76,60,.15) !important;
+[data-testid="stSidebar"] [data-testid="stBaseButton-secondary"] button:hover,
+[data-testid="stSidebar"] [data-testid="stBaseButton-secondary"] button:hover p,
+[data-testid="stSidebar"] [data-testid="stBaseButton-secondary"] button:hover span {
+    background: rgba(231,76,60,.18) !important;
     color: #FC8181 !important;
-    border-color: rgba(231,76,60,.3) !important;
+    border-color: rgba(231,76,60,.35) !important;
 }
 
 /* Divider */

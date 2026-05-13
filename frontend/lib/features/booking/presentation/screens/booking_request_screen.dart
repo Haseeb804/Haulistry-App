@@ -302,12 +302,11 @@ class _BookingRequestScreenState extends State<BookingRequestScreen> {
                       ),
                   ]),
                 if (pickupPt != null && dropPt != null)
-                  PolylineLayer(polylines: [
+                  PolylineLayer<Object>(polylines: [
                     Polyline(
                       points: [pickupPt, dropPt],
                       color: AppTheme.primaryColor.withOpacity(0.6),
                       strokeWidth: 2.5,
-                      isDotted: true,
                     ),
                   ]),
               ],
