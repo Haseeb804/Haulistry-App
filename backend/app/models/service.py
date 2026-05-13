@@ -213,25 +213,27 @@ class Service:
         radius_km: float = 50.0
     ) -> List[Dict[str, Any]]:
         """Get all available services from verified providers"""
+        # Use OPTIONAL MATCH for vehicle so services without a PROVIDES
+        # relationship are still returned (e.g. if vehicle was deleted later).
+        # Provider label + coalesce guards against null isVerified.
         query = """
-        MATCH (p)-[:OFFERS]->(s:Service)<-[:PROVIDES]-(v:Vehicle)
-        WHERE (p:Provider OR p:User OR p:Seeker)
-        AND s.isActive = true
-        AND p.isActive = true
-        AND p.isVerified = true
+        MATCH (p:Provider)-[:OFFERS]->(s:Service)
+        WHERE s.isActive = true
+          AND coalesce(p.isActive, true) = true
+          AND coalesce(p.isVerified, false) = true
+        OPTIONAL MATCH (v:Vehicle)-[:PROVIDES]->(s)
         """
-        
+
         params = {}
-        
+
         if category:
-            # Case-insensitive category matching using toLower()
-            query += " AND (toLower(s.category) CONTAINS toLower($category) OR toLower(v.vehicleType) CONTAINS toLower($category))"
+            query += " WITH p, s, v WHERE (toLower(s.category) CONTAINS toLower($category) OR toLower(coalesce(v.vehicleType,'')) CONTAINS toLower($category))"
             params['category'] = category
-        
+
         query += """
         // Calculate service-specific rating from feedback
         OPTIONAL MATCH (s)<-[:FOR_SERVICE]-(serviceFeedback:Feedback)
-        WITH s, p, v, 
+        WITH s, p, v,
              COALESCE(avg(serviceFeedback.rating), p.rating, 0.0) as serviceRating,
              count(serviceFeedback) as serviceReviewCount,
              p.rating as overallProviderRating,

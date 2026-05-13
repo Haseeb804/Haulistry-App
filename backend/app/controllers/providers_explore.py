@@ -48,18 +48,17 @@ async def explore_providers(requester_id: str = "", limit: int = 50, offset: int
     try:
         query = """
         MATCH (p)
-        WHERE (p:Provider OR p:User OR p:Seeker)
+        WHERE (p:Provider OR p:User)
+          AND p.role = 'provider'
           AND coalesce(p.isVerified, false) = true
           AND coalesce(p.isActive, true) = true
           AND ($requesterId = '' OR p.id <> $requesterId)
 
-        // Aggregate stats
-        OPTIONAL MATCH (b)
-          WHERE any(l IN labels(b) WHERE l STARTS WITH 'Booking')
-            AND b.providerId = p.id
-            AND b.status = 'completed'
+        // Aggregate completed bookings (indexed label+property lookup)
+        OPTIONAL MATCH (b:Booking {providerId: p.id, status: 'completed'})
         WITH p, count(b) AS completedBookings
 
+        // Aggregate provider reviews
         OPTIONAL MATCH (fb:Feedback)-[:FOR_PROVIDER]->(p)
         WITH p, completedBookings, count(fb) AS totalReviews
 
@@ -69,24 +68,34 @@ async def explore_providers(requester_id: str = "", limit: int = 50, offset: int
         // Services for each provider (active only)
         OPTIONAL MATCH (p)-[:OFFERS]->(svc:Service {isActive: true})
         OPTIONAL MATCH (v:Vehicle {id: svc.vehicleId})
+
+        // Pre-aggregate service feedback BEFORE collect() — avg/count cannot
+        // be used inside a collect() map literal in Cypher.
         OPTIONAL MATCH (svc)<-[:FOR_SERVICE]-(sfb:Feedback)
+        WITH p, completedBookings, totalReviews, svc, v,
+             avg(sfb.rating) AS svcRating, count(sfb) AS svcReviewCount
 
         WITH p, completedBookings, totalReviews,
-             collect(DISTINCT {
-               id: svc.id,
-               name: svc.name,
-               description: svc.description,
-               category: svc.category,
-               basePrice: svc.basePrice,
-               pricePerKm: svc.pricePerKm,
-               pricePerHour: svc.pricePerHour,
-               imageUrl: svc.imageUrl,
-               vehicleType: v.vehicleType,
-               vehicleNumber: v.vehicleNumber,
-               vehicleImageBase64: v.vehicleImageBase64,
-               serviceRating: avg(sfb.rating),
-               serviceReviewCount: count(sfb)
-             }) AS rawServices
+             collect(
+               CASE WHEN svc.id IS NOT NULL
+                 THEN {
+                   id: svc.id,
+                   name: svc.name,
+                   description: svc.description,
+                   category: svc.category,
+                   basePrice: svc.basePrice,
+                   pricePerKm: svc.pricePerKm,
+                   pricePerHour: svc.pricePerHour,
+                   imageUrl: svc.imageUrl,
+                   vehicleType: v.vehicleType,
+                   vehicleNumber: v.vehicleNumber,
+                   vehicleImageBase64: v.vehicleImageBase64,
+                   serviceRating: svcRating,
+                   serviceReviewCount: svcReviewCount
+                 }
+                 ELSE null
+               END
+             ) AS rawServices
 
         RETURN p, completedBookings, totalReviews, rawServices
         ORDER BY p.rating DESC, completedBookings DESC

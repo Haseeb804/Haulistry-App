@@ -23,23 +23,19 @@ class Recommendation:
         Combines interest-match, booking-history match, provider quality, and recency.
         """
         query = """
-        // ── 1. Seeker interests ───────────────────────────────────────────────
-        // Support both Seeker and User labels (legacy nodes may carry either).
-        MATCH (seeker)
-        WHERE (seeker:Seeker OR seeker:User) AND seeker.id = $seekerId
-        WITH seeker,
-             coalesce(seeker.interests, []) AS interests
+        // ── 1. Seeker context (optional — if node missing, still return services) ──
+        OPTIONAL MATCH (seeker:Seeker {id: $seekerId})
+        WITH coalesce(seeker.interests, []) AS interests
 
-        // Past booking categories — use the Booking index, no full-graph scan.
         OPTIONAL MATCH (b:Booking {seekerId: $seekerId, status: 'completed'})
         WITH interests,
              collect(DISTINCT b.serviceType)[..20] AS bookedCategories
 
         // ── 2. Active services from verified providers only ───────────────────
+        // MATCH (prov:Provider) uses the provider_id index — no full-graph scan.
         MATCH (svc:Service {isActive: true})
-        MATCH (prov {id: svc.providerId})
-        WHERE (prov:Provider OR prov:Seeker OR prov:User)
-          AND coalesce(prov.isVerified, false) = true
+        MATCH (prov:Provider {id: svc.providerId})
+        WHERE coalesce(prov.isVerified, false) = true
 
         // ── 3. Scoring ────────────────────────────────────────────────────────
         WITH svc, prov, interests, bookedCategories,
@@ -53,8 +49,8 @@ class Recommendation:
              coalesce(prov.rating, 0.0) / 5.0 AS qualityScore,
 
              CASE
-               WHEN duration.between(svc.createdAt, datetime()).days <= 7  THEN 0.5
-               WHEN duration.between(svc.createdAt, datetime()).days <= 30 THEN 0.25
+               WHEN svc.createdAt IS NOT NULL AND duration.between(svc.createdAt, datetime()).days <= 7  THEN 0.5
+               WHEN svc.createdAt IS NOT NULL AND duration.between(svc.createdAt, datetime()).days <= 30 THEN 0.25
                ELSE 0.0
              END AS recencyScore
 

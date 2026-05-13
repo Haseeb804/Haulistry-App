@@ -392,7 +392,7 @@ class ApiService {
       'requester_id': requesterId,
       'limit': limit.toString(),
       'offset': offset.toString(),
-    });
+    }).timeout(const Duration(seconds: 25));
   }
 
   // ============================================
