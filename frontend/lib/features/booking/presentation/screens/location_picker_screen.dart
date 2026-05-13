@@ -76,7 +76,9 @@ class _LocationPickerScreenState extends State<LocationPickerScreen>
 
     _pinBounceCtrl = AnimationController(
         vsync: this, duration: const Duration(milliseconds: 500));
-    _pinBounce = Tween<double>(begin: 0, end: -16).animate(
+    // begin at -20 (above the point), end at 0 (exactly on the point).
+    // elasticOut bounces around 0 before settling, creating the "drop" effect.
+    _pinBounce = Tween<double>(begin: -20, end: 0).animate(
       CurvedAnimation(parent: _pinBounceCtrl, curve: Curves.elasticOut),
     );
 

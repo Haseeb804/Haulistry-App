@@ -792,7 +792,11 @@ class _ServiceManagementScreenState extends State<ServiceManagementScreen> {
     _showServiceDialog(context, service, vehicles);
   }
 
-  void _showServiceDialog(BuildContext context, ServiceEntity? existingService, List<VehicleEntity> vehicles) {
+  void _showServiceDialog(BuildContext outerContext, ServiceEntity? existingService, List<VehicleEntity> vehicles) {
+    // Keep a stable reference to the screen-level context for navigation.
+    // The modal bottom sheet creates its own context that must not be used
+    // for Navigator.push — doing so causes a black screen when returning.
+    final BuildContext screenContext = outerContext;
     final isEditing = existingService != null;
     final nameController = TextEditingController(text: existingService?.name ?? '');
     final descriptionController = TextEditingController(text: existingService?.description ?? '');
@@ -821,7 +825,7 @@ class _ServiceManagementScreenState extends State<ServiceManagementScreen> {
     final formKey = GlobalKey<FormState>();
 
     showModalBottomSheet(
-      context: context,
+      context: outerContext,
       isScrollControlled: true,
       useSafeArea: true,
       backgroundColor: Colors.transparent,
@@ -1263,8 +1267,12 @@ class _ServiceManagementScreenState extends State<ServiceManagementScreen> {
                                         padding: const EdgeInsets.symmetric(vertical: 12),
                                       ),
                                       onPressed: () async {
-                                        final result = await Navigator.push<Map<String, dynamic>>(
-                                          context,
+                                        // Use the screen-level context so the
+                                        // navigation is driven by the root
+                                        // Navigator, not the modal sheet's.
+                                        final result =
+                                            await Navigator.push<LocationPickerResult>(
+                                          screenContext,
                                           MaterialPageRoute(
                                             builder: (_) => LocationPickerScreen(
                                               title: 'Machine Base Location',
@@ -1276,11 +1284,10 @@ class _ServiceManagementScreenState extends State<ServiceManagementScreen> {
                                           ),
                                         );
                                         if (result != null) {
-                                          final loc = result['location'] as LatLng;
                                           setDialogState(() {
-                                            baseLatitude = loc.latitude;
-                                            baseLongitude = loc.longitude;
-                                            baseAddress = result['address'] as String?;
+                                            baseLatitude = result.location.latitude;
+                                            baseLongitude = result.location.longitude;
+                                            baseAddress = result.address;
                                           });
                                         }
                                       },
