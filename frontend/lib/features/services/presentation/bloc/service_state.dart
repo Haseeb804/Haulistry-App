@@ -37,3 +37,12 @@ class ServiceError extends ServiceState {
   @override
   List<Object?> get props => [message];
 }
+
+class ServiceRecommendationsLoaded extends ServiceState {
+  final List<ServiceEntity> recommendations;
+
+  const ServiceRecommendationsLoaded({required this.recommendations});
+
+  @override
+  List<Object?> get props => [recommendations];
+}

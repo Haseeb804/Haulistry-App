@@ -220,6 +220,12 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen> {
                   // Modern App Bar
                   _buildAppBar(context),
 
+                  // Verification pending banner
+                  if (state.isPendingVerification)
+                    SliverToBoxAdapter(
+                      child: _buildVerificationPendingBanner(context),
+                    ),
+
                   // Stats Section
                   SliverToBoxAdapter(
                     child: _buildStatsSection(state),
@@ -227,7 +233,7 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen> {
 
                   // Quick Actions
                   SliverToBoxAdapter(
-                    child: _buildQuickActions(context),
+                    child: _buildQuickActions(context, isPendingVerification: state.isPendingVerification),
                   ),
 
                   // Assigned Requests — bookings directly assigned to this provider (status='pending', providerId set)
@@ -581,7 +587,7 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen> {
     );
   }
 
-  Widget _buildQuickActions(BuildContext context) {
+  Widget _buildQuickActions(BuildContext context, {bool isPendingVerification = false}) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20),
       child: Row(
@@ -590,8 +596,11 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen> {
             child: _buildQuickActionCard(
               icon: Icons.home_repair_service_rounded,
               label: 'Services',
-              color: AppTheme.accentColor,
-              onTap: () => context.push(AppRoutes.providerServices),
+              color: isPendingVerification ? AppTheme.textSecondary : AppTheme.accentColor,
+              onTap: isPendingVerification
+                  ? () => _showServicesLockedSnackbar(context)
+                  : () => context.push(AppRoutes.providerServices),
+              locked: isPendingVerification,
             ),
           ),
           const SizedBox(width: 12),
@@ -626,11 +635,33 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen> {
     );
   }
 
+  void _showServicesLockedSnackbar(BuildContext context) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: const Row(
+          children: [
+            Icon(Icons.lock_rounded, color: Colors.white, size: 18),
+            SizedBox(width: 10),
+            Expanded(
+              child: Text('Services are locked until your account is verified by admin.'),
+            ),
+          ],
+        ),
+        backgroundColor: const Color(0xFFC05621),
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        margin: const EdgeInsets.all(16),
+        duration: const Duration(seconds: 3),
+      ),
+    );
+  }
+
   Widget _buildQuickActionCard({
     required IconData icon,
     required String label,
     required Color color,
     required VoidCallback onTap,
+    bool locked = false,
   }) {
     return MouseRegion(
       cursor: SystemMouseCursors.click,
@@ -639,32 +670,50 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen> {
         child: Container(
           padding: const EdgeInsets.symmetric(vertical: 16),
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: locked ? const Color(0xFFF7FAFC) : Colors.white,
             borderRadius: BorderRadius.circular(16),
-            boxShadow: AppTheme.softShadow,
+            boxShadow: locked ? [] : AppTheme.softShadow,
+            border: locked
+                ? Border.all(color: const Color(0xFFE2E8F0), width: 1)
+                : null,
           ),
-        child: Column(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: color.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(12),
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              Column(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: color.withOpacity(locked ? 0.06 : 0.1),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Icon(icon, color: color, size: 24),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    label,
+                    style: TextStyle(
+                      color: locked ? AppTheme.textSecondary : AppTheme.textPrimary,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
               ),
-              child: Icon(icon, color: color, size: 24),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              label,
-              style: TextStyle(
-                color: AppTheme.textPrimary,
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ],
+              if (locked)
+                Positioned(
+                  top: 0,
+                  right: 4,
+                  child: Icon(
+                    Icons.lock_rounded,
+                    size: 13,
+                    color: AppTheme.textSecondary.withOpacity(0.6),
+                  ),
+                ),
+            ],
+          ),
         ),
-      ),
       ),
     );
   }
@@ -1319,6 +1368,59 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen> {
               backgroundColor: AppTheme.errorColor,
             ),
             child: const Text('Reject'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildVerificationPendingBanner(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF8F0),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFFDDCB5), width: 1.5),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: const Color(0xFFFF6B35).withOpacity(0.12),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: const Icon(
+              Icons.hourglass_top_rounded,
+              size: 20,
+              color: Color(0xFFC05621),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: const [
+                Text(
+                  'Verification Pending',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF7B341E),
+                  ),
+                ),
+                SizedBox(height: 2),
+                Text(
+                  'Services are locked until admin approves your account.',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Color(0xFFC05621),
+                    height: 1.4,
+                  ),
+                ),
+              ],
+            ),
           ),
         ],
       ),

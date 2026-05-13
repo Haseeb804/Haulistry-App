@@ -210,6 +210,7 @@ class AuthRepositoryImpl implements AuthRepository {
     required String phone,
     required String role,
     Uint8List? profileImage,
+    List<String> interests = const [],
   }) async {
     try {
       // Create user in Firebase Auth
@@ -240,6 +241,7 @@ class AuthRepositoryImpl implements AuthRepository {
           'isVerified': true,
           'isActive': true,
           if (profileImageBase64 != null) 'profileImageUrl': profileImageBase64,
+          if (interests.isNotEmpty) 'interests': interests,
         }),
       );
 
@@ -316,6 +318,11 @@ class AuthRepositoryImpl implements AuthRepository {
         );
       }
 
+      final rawInterests = pendingSignupData['interests'];
+      final interests = rawInterests is List
+          ? rawInterests.cast<String>()
+          : <String>[];
+
       return signUpWithEmail(
         email: email,
         password: password,
@@ -323,6 +330,7 @@ class AuthRepositoryImpl implements AuthRepository {
         phone: phone,
         role: role,
         profileImage: pendingSignupData['profileImage'] as Uint8List?,
+        interests: interests,
       );
     } catch (e) {
       throw _toUserFacingException(e);

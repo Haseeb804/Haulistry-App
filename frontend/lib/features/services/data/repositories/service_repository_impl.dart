@@ -3,6 +3,7 @@ import '../../domain/entities/service_entity.dart';
 import '../datasources/service_remote_datasource.dart';
 import '../../../../core/domain/entities/user_entity.dart';
 import '../../../../core/domain/entities/vehicle_entity.dart';
+import '../../../../core/services/api_service.dart';
 
 class ServiceRepositoryImpl implements ServiceRepository {
   final ServiceRemoteDataSource remoteDataSource;
@@ -52,5 +53,14 @@ class ServiceRepositoryImpl implements ServiceRepository {
     } catch (e) {
       rethrow;
     }
+  }
+
+  @override
+  Future<List<ServiceEntity>> getRecommendedServices(String seekerId, {int limit = 10}) async {
+    final response = await ApiService.instance.getRecommendedServices(seekerId, limit: limit);
+    final List<dynamic> items = response['recommendations'] as List<dynamic>? ?? [];
+    return items
+        .map((json) => ServiceEntity.fromJson(json as Map<String, dynamic>))
+        .toList();
   }
 }

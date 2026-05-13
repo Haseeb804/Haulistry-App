@@ -1,4 +1,4 @@
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from datetime import datetime
 import uuid
 from ..database import neo4j_driver
@@ -144,6 +144,7 @@ class User:
             u.vehicleImageUrl = $vehicleImageUrl,
             u.isVerified = $isVerified,
             u.isActive = $isActive,
+            u.interests = $interests,
             u.rating = 0.0,
             u.completedBookings = 0,
             u.createdAt = datetime(),
@@ -163,10 +164,11 @@ class User:
             u.vehicleImageUrl = COALESCE($vehicleImageUrl, u.vehicleImageUrl),
             u.isVerified = $isVerified,
             u.isActive = $isActive,
+            u.interests = COALESCE($interests, u.interests),
             u.updatedAt = datetime()
         RETURN u
         """
-        
+
         # Ensure optional fields have default values
         user_data.setdefault('profileImageUrl', None)
         user_data.setdefault('cnic', None)
@@ -177,6 +179,7 @@ class User:
         user_data.setdefault('cnicBackImageUrl', None)
         user_data.setdefault('licenseImageUrl', None)
         user_data.setdefault('vehicleImageUrl', None)
+        user_data.setdefault('interests', [])
         
         result = neo4j_driver.execute_write(query, user_data)
         
@@ -310,3 +313,41 @@ class User:
         if result and result[0]['u']:
             return User._serialize_neo4j_data(result[0]['u'])
         return None
+
+    @staticmethod
+    def update_interests(user_id: str, interests: list) -> Optional[Dict[str, Any]]:
+        """Replace a seeker's interest list."""
+        query = """
+        MATCH (u:Seeker {id: $userId})
+        SET u.interests = $interests, u.updatedAt = datetime()
+        RETURN u
+        """
+        result = neo4j_driver.execute_write(query, {'userId': user_id, 'interests': interests})
+        if result and result[0]['u']:
+            return User._serialize_neo4j_data(dict(result[0]['u']))
+        return None
+
+    @staticmethod
+    def get_interests(user_id: str) -> list:
+        """Return a seeker's stored interests list (empty list if none)."""
+        query = """
+        MATCH (u:Seeker {id: $userId})
+        RETURN coalesce(u.interests, []) AS interests
+        """
+        result = neo4j_driver.execute_read(query, {'userId': user_id})
+        if result:
+            return result[0].get('interests') or []
+        return []
+
+    @staticmethod
+    def get_seekers_by_interest(category: str) -> List[Dict[str, Any]]:
+        """Return all active Seekers that have $category in their interests and have an FCM token."""
+        query = """
+        MATCH (u:Seeker)
+        WHERE $category IN coalesce(u.interests, [])
+          AND u.isActive = true
+          AND u.fcmToken IS NOT NULL
+        RETURN u.id AS id, u.name AS name, u.fcmToken AS fcmToken
+        """
+        result = neo4j_driver.execute_read(query, {'category': category})
+        return [dict(r) for r in result] if result else []

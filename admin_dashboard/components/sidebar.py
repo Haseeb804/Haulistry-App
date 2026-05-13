@@ -45,9 +45,22 @@ _SIDEBAR_CSS = """
 }
 [data-testid="stSidebar"] > div:first-child { padding: 0 !important; }
 
+/* Force all sidebar text white — covers every element st.page_link may render */
+[data-testid="stSidebar"] p,
+[data-testid="stSidebar"] span,
+[data-testid="stSidebar"] li,
+[data-testid="stSidebar"] label,
+[data-testid="stSidebar"] a,
+[data-testid="stSidebar"] [data-testid="stPageLink"] *,
+[data-testid="stSidebar"] [data-testid="stPageLink-NavLink"] * {
+    color: rgba(255,255,255,.75) !important;
+}
+
 /* Nav link items (st.page_link) */
 [data-testid="stSidebar"] [data-testid="stPageLink"] a,
-[data-testid="stSidebar"] [data-testid="stPageLink-NavLink"] {
+[data-testid="stSidebar"] [data-testid="stPageLink-NavLink"],
+[data-testid="stSidebar"] [data-testid="stPageLink"] > div,
+[data-testid="stSidebar"] [data-testid="stPageLink"] > a {
     display: flex !important;
     align-items: center !important;
     gap: 10px !important;
@@ -56,21 +69,29 @@ _SIDEBAR_CSS = """
     margin: 2px 10px !important;
     font-size: 13.5px !important;
     font-weight: 600 !important;
-    color: rgba(255,255,255,.55) !important;
+    color: rgba(255,255,255,.75) !important;
     text-decoration: none !important;
     transition: background .18s, color .18s !important;
     background: transparent !important;
     border: none !important;
 }
 [data-testid="stSidebar"] [data-testid="stPageLink"] a:hover,
-[data-testid="stSidebar"] [data-testid="stPageLink-NavLink"]:hover {
+[data-testid="stSidebar"] [data-testid="stPageLink-NavLink"]:hover,
+[data-testid="stSidebar"] [data-testid="stPageLink"]:hover > div,
+[data-testid="stSidebar"] [data-testid="stPageLink"]:hover > a {
     background: rgba(255,255,255,.07) !important;
-    color: rgba(255,255,255,.9) !important;
+    color: #fff !important;
+}
+[data-testid="stSidebar"] [data-testid="stPageLink"]:hover *,
+[data-testid="stSidebar"] [data-testid="stPageLink-NavLink"]:hover * {
+    color: #fff !important;
 }
 
 /* Active / current page */
 [data-testid="stSidebar"] [data-testid="stPageLink"] a[aria-current="page"],
-[data-testid="stSidebar"] [aria-selected="true"] [data-testid="stPageLink-NavLink"] {
+[data-testid="stSidebar"] [aria-selected="true"] [data-testid="stPageLink-NavLink"],
+[data-testid="stSidebar"] [data-testid="stPageLink"] a[aria-current="page"] *,
+[data-testid="stSidebar"] [aria-selected="true"] [data-testid="stPageLink-NavLink"] * {
     background: linear-gradient(135deg, rgba(255,107,53,.25), rgba(255,107,53,.12)) !important;
     color: #FF6B35 !important;
     border-left: 3px solid #FF6B35 !important;

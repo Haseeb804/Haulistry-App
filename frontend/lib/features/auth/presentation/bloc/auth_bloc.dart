@@ -90,6 +90,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
         'phone': event.phone,
         'role': event.role,
         'profileImage': event.profileImage,
+        'interests': event.interests,
       };
 
       emit(AuthPendingPhoneVerification(

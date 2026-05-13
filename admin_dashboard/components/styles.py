@@ -107,6 +107,13 @@ def inject_global_css():
             background: linear-gradient(180deg, {DARK_BG} 0%, {DARK_SURFACE} 100%) !important;
             border-right: 1px solid rgba(255,255,255,.06) !important;
         }}
+        [data-testid="stSidebar"] p,
+        [data-testid="stSidebar"] span,
+        [data-testid="stSidebar"] li,
+        [data-testid="stSidebar"] label,
+        [data-testid="stSidebar"] a {{
+            color: rgba(255,255,255,.75) !important;
+        }}
         [data-testid="stSidebar"] .stMarkdown p {{
             color: rgba(255,255,255,.75) !important;
             font-size: 13px !important;

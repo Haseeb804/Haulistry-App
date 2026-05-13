@@ -364,6 +364,25 @@ class ApiService {
   }
 
   // ============================================
+  // RECOMMENDATIONS API METHODS
+  // ============================================
+
+  /// Get personalized service recommendations for a seeker
+  Future<Map<String, dynamic>> getRecommendedServices(String seekerId, {int limit = 10}) async {
+    return get(ApiEndpoints.recommendations(seekerId), queryParams: {'limit': limit.toString()});
+  }
+
+  /// Update a seeker's interest list
+  Future<Map<String, dynamic>> updateSeekerInterests(String seekerId, List<String> interests) async {
+    return put(ApiEndpoints.seekerInterests(seekerId), {'interests': interests});
+  }
+
+  /// Get a seeker's interest list
+  Future<Map<String, dynamic>> getSeekerInterests(String seekerId) async {
+    return get(ApiEndpoints.seekerInterests(seekerId));
+  }
+
+  // ============================================
   // VEHICLE API METHODS
   // ============================================
 

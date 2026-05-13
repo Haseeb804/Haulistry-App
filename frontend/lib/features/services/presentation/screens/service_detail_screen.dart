@@ -159,7 +159,7 @@ class ServiceDetailScreen extends StatelessWidget {
               return;
             }
             if (service != null) {
-              context.push('/booking/create', extra: service);
+              context.push(AppRoutes.bookingRequest, extra: service);
             } else {
               context.push('/booking/create', extra: {'serviceType': key});
             }

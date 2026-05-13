@@ -17,4 +17,7 @@ abstract class ServiceRepository {
   
   /// Get available vehicles for a service type
   Future<List<VehicleEntity>> getAvailableVehicles(String serviceType);
+
+  /// Get personalized recommended services for a seeker
+  Future<List<ServiceEntity>> getRecommendedServices(String seekerId, {int limit = 10});
 }

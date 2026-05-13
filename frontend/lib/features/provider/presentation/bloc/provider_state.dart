@@ -31,6 +31,8 @@ class ProviderLoaded extends ProviderState {
   final double totalEarnings;
   final double pendingEarnings;
   final bool isOnline;
+  // true when account is unverified but not yet reviewed (pending admin approval)
+  final bool isPendingVerification;
 
   const ProviderLoaded({
     required this.pendingBookings,
@@ -43,6 +45,7 @@ class ProviderLoaded extends ProviderState {
     required this.totalEarnings,
     required this.pendingEarnings,
     this.isOnline = false,
+    this.isPendingVerification = false,
   });
 
   int get totalBookings =>
@@ -62,6 +65,7 @@ class ProviderLoaded extends ProviderState {
     double? totalEarnings,
     double? pendingEarnings,
     bool? isOnline,
+    bool? isPendingVerification,
   }) {
     return ProviderLoaded(
       pendingBookings: pendingBookings ?? this.pendingBookings,
@@ -74,6 +78,7 @@ class ProviderLoaded extends ProviderState {
       totalEarnings: totalEarnings ?? this.totalEarnings,
       pendingEarnings: pendingEarnings ?? this.pendingEarnings,
       isOnline: isOnline ?? this.isOnline,
+      isPendingVerification: isPendingVerification ?? this.isPendingVerification,
     );
   }
 
@@ -89,6 +94,7 @@ class ProviderLoaded extends ProviderState {
         totalEarnings,
         pendingEarnings,
         isOnline,
+        isPendingVerification,
       ];
 }
 

@@ -24,6 +24,9 @@ class UserEntity extends Equatable {
   final double? longitude;
   final String? address;
 
+  // Seeker-specific
+  final List<String> interests;
+
   const UserEntity({
     required this.id,
     required this.email,
@@ -42,6 +45,7 @@ class UserEntity extends Equatable {
     this.latitude,
     this.longitude,
     this.address,
+    this.interests = const [],
   });
 
   @override
@@ -63,6 +67,7 @@ class UserEntity extends Equatable {
         latitude,
         longitude,
         address,
+        interests,
       ];
 
   UserEntity copyWith({
@@ -83,6 +88,7 @@ class UserEntity extends Equatable {
     double? latitude,
     double? longitude,
     String? address,
+    List<String>? interests,
   }) {
     return UserEntity(
       id: id ?? this.id,
@@ -102,6 +108,7 @@ class UserEntity extends Equatable {
       latitude: latitude ?? this.latitude,
       longitude: longitude ?? this.longitude,
       address: address ?? this.address,
+      interests: interests ?? this.interests,
     );
   }
 
@@ -124,6 +131,7 @@ class UserEntity extends Equatable {
       'latitude': latitude,
       'longitude': longitude,
       'address': address,
+      'interests': interests,
     };
   }
 
@@ -146,6 +154,7 @@ class UserEntity extends Equatable {
       latitude: (json['latitude'] as num?)?.toDouble(),
       longitude: (json['longitude'] as num?)?.toDouble(),
       address: json['address'] as String?,
+      interests: (json['interests'] as List<dynamic>?)?.cast<String>() ?? const [],
     );
   }
 

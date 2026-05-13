@@ -191,6 +191,7 @@ class ProviderBloc extends Bloc<ProviderEvent, ProviderState> {
       }
 
       // Check admin approval status before loading dashboard
+      bool isPendingVerification = false;
       try {
         final profileData = await _apiService
             .get('/api/auth/profile/${user.uid}')
@@ -200,8 +201,14 @@ class ProviderBloc extends Bloc<ProviderEvent, ProviderState> {
         final isVerified = userData?['isVerified'] as bool? ?? false;
         if (role == 'provider' && !isVerified) {
           final rejectionReason = userData?['rejectionReason'] as String?;
-          emit(ProviderPendingVerification(rejectionReason: rejectionReason));
-          return;
+          final isRejected = rejectionReason != null && rejectionReason.isNotEmpty;
+          if (isRejected) {
+            // Hard block: account was explicitly rejected — show rejection screen only
+            emit(ProviderPendingVerification(rejectionReason: rejectionReason));
+            return;
+          }
+          // Pending review: allow dashboard + vehicles, block services
+          isPendingVerification = true;
         }
       } catch (_) {
         // Non-blocking — proceed normally if profile check fails
@@ -287,6 +294,7 @@ class ProviderBloc extends Bloc<ProviderEvent, ProviderState> {
         totalEarnings: totalEarnings,
         pendingEarnings: pendingEarnings,
         isOnline: _isOnline,
+        isPendingVerification: isPendingVerification,
       ));
     } catch (e) {
       emit(ProviderError(message: 'Error loading dashboard: ${e.toString()}'));

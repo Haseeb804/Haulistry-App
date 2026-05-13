@@ -33,6 +33,7 @@ class AuthSignUpRequested extends AuthEvent {
   final String phone;
   final String role;
   final Uint8List? profileImage;
+  final List<String> interests;
 
   const AuthSignUpRequested({
     required this.email,
@@ -41,6 +42,7 @@ class AuthSignUpRequested extends AuthEvent {
     required this.phone,
     required this.role,
     this.profileImage,
+    this.interests = const [],
   });
 
   @override
@@ -51,6 +53,7 @@ class AuthSignUpRequested extends AuthEvent {
         phone,
         role,
         profileImage,
+        interests,
       ];
 }
 

@@ -3,7 +3,8 @@ Pydantic schemas for User/Auth API requests and responses
 """
 
 from pydantic import BaseModel, Field, EmailStr
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
+
 
 
 class UserCreate(BaseModel):
@@ -20,6 +21,7 @@ class UserCreate(BaseModel):
     licenseImageBase64: Optional[str] = Field(None, description="Base64 license image")
     isVerified: bool = Field(default=False, description="Admin-verified status (always computed server-side)")
     isActive: bool = Field(default=True, description="Account active status")
+    interests: Optional[List[str]] = Field(default=None, description="Seeker interest categories")
 
     class Config:
         json_schema_extra = {
@@ -176,3 +178,9 @@ class SignupCompleteRequest(BaseModel):
     vehicleModel: Optional[str] = Field(None, description="Vehicle model")
     vehicleYear: Optional[str] = Field(None, description="Vehicle year")
     vehicleCapacity: Optional[float] = Field(None, description="Vehicle capacity")
+
+    # Seeker-specific preference data (collected during signup)
+    interests: Optional[List[str]] = Field(
+        default=None,
+        description="List of service category keys seeker is interested in (e.g. ['harvester', 'crane'])"
+    )

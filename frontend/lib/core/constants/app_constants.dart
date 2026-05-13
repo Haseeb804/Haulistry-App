@@ -34,19 +34,33 @@ class AppConstants {
   
   // Service / vehicle categories — single source of truth used by all dropdowns.
   // [value] is the snake_case key stored in Neo4j; [label] is the display name.
+  // [bookingMode] controls whether both locations are entered or only the work site.
   static const List<ServiceCategory> serviceCategories = [
-    ServiceCategory(value: 'sand_trolley',   label: 'Sand Trolley',    emoji: '🏜️'),
-    ServiceCategory(value: 'bricks_trolley', label: 'Bricks Trolley',  emoji: '🧱'),
-    ServiceCategory(value: 'harvester',      label: 'Harvester',       emoji: '🌾'),
-    ServiceCategory(value: 'crane',          label: 'Crane',           emoji: '🏗️'),
-    ServiceCategory(value: 'tractor',        label: 'Tractor',         emoji: '🚜'),
-    ServiceCategory(value: 'loader',         label: 'Loader',          emoji: '🚛'),
-    ServiceCategory(value: 'dumper',         label: 'Dumper',          emoji: '🚚'),
-    ServiceCategory(value: 'excavator',      label: 'Excavator',       emoji: '⛏️'),
-    ServiceCategory(value: 'concrete_mixer', label: 'Concrete Mixer',  emoji: '🔄'),
-    ServiceCategory(value: 'water_tanker',   label: 'Water Tanker',    emoji: '💧'),
-    ServiceCategory(value: 'other',          label: 'Other',           emoji: '📦'),
+    ServiceCategory(value: 'sand_trolley',   label: 'Sand Trolley',    emoji: '🏜️', bookingMode: ServiceBookingMode.transport),
+    ServiceCategory(value: 'bricks_trolley', label: 'Bricks Trolley',  emoji: '🧱', bookingMode: ServiceBookingMode.transport),
+    ServiceCategory(value: 'harvester',      label: 'Harvester',       emoji: '🌾', bookingMode: ServiceBookingMode.fixedOrigin),
+    ServiceCategory(value: 'crane',          label: 'Crane',           emoji: '🏗️', bookingMode: ServiceBookingMode.fixedOrigin),
+    ServiceCategory(value: 'tractor',        label: 'Tractor',         emoji: '🚜', bookingMode: ServiceBookingMode.fixedOrigin),
+    ServiceCategory(value: 'loader',         label: 'Loader',          emoji: '🚛', bookingMode: ServiceBookingMode.transport),
+    ServiceCategory(value: 'dumper',         label: 'Dumper',          emoji: '🚚', bookingMode: ServiceBookingMode.transport),
+    ServiceCategory(value: 'excavator',      label: 'Excavator',       emoji: '⛏️', bookingMode: ServiceBookingMode.fixedOrigin),
+    ServiceCategory(value: 'concrete_mixer', label: 'Concrete Mixer',  emoji: '🔄', bookingMode: ServiceBookingMode.fixedOrigin),
+    ServiceCategory(value: 'water_tanker',   label: 'Water Tanker',    emoji: '💧', bookingMode: ServiceBookingMode.transport),
+    ServiceCategory(value: 'other',          label: 'Other',           emoji: '📦', bookingMode: ServiceBookingMode.transport),
   ];
+
+  /// Returns the [ServiceBookingMode] for a given snake_case category value.
+  static ServiceBookingMode getBookingMode(String? categoryValue) {
+    if (categoryValue == null) return ServiceBookingMode.transport;
+    return serviceCategories
+        .firstWhere(
+          (c) => c.value == categoryValue,
+          orElse: () => const ServiceCategory(
+            value: '', label: '', emoji: '', bookingMode: ServiceBookingMode.transport,
+          ),
+        )
+        .bookingMode;
+  }
 
   // Legacy list kept for screens that still reference it (e.g. service detail filter chips).
   static List<String> get serviceTypes =>
@@ -148,17 +162,31 @@ class AppConstants {
   static const String cnicPattern = r'^[0-9]{5}-[0-9]{7}-[0-9]{1}$';
 }
 
+/// Determines how pickup/drop locations are collected during booking creation.
+/// This is distinct from the detailed BookingModeConfig in booking_mode_config.dart.
+enum ServiceBookingMode {
+  /// Machine travels from its service base to the seeker's work site.
+  /// pickupLocation is auto-set from service.serviceBase*; seeker enters work site only.
+  fixedOrigin,
+
+  /// Transports materials from a pickup point to a drop-off point.
+  /// Both pickup and drop locations are entered by the seeker.
+  transport,
+}
+
 /// Represents one service / vehicle category with a stable [value] key,
-/// a human-readable [label], and an [emoji] for UI decoration.
+/// a human-readable [label], an [emoji] for UI decoration, and its [bookingMode].
 class ServiceCategory {
   final String value; // snake_case — stored in Neo4j
   final String label; // display name
   final String emoji;
+  final ServiceBookingMode bookingMode;
 
   const ServiceCategory({
     required this.value,
     required this.label,
     required this.emoji,
+    this.bookingMode = ServiceBookingMode.transport,
   });
 
   @override
@@ -171,10 +199,12 @@ class AppRoutes {
   static const String signup = '/signup';
   static const String phoneAuth = '/phone-auth';
   static const String forgotPassword = '/forgot-password';
+  static const String preferences = '/signup/preferences';
 
   // Service + booking
   static const String serviceByTypePattern = '/service/:serviceType';
   static const String bookingCreate = '/booking/create';
+  static const String bookingRequest = '/booking/request';
   static const String bookingConfirm = '/booking/confirm';
   static const String bookingStatusPattern = '/booking/:id/status';
 
@@ -283,6 +313,9 @@ class ApiEndpoints {
   static String notificationUnreadCount(String userId) => '/api/notifications/$userId/unread-count';
   static String notificationMarkRead(String notificationId) => '/api/notifications/$notificationId/read';
   static String notificationsMarkAllRead(String userId) => '/api/notifications/user/$userId/read-all';
+
+  static String recommendations(String seekerId) => '/api/recommendations/$seekerId';
+  static String seekerInterests(String seekerId) => '/api/recommendations/$seekerId/interests';
 }
 
 class MapEndpoints {

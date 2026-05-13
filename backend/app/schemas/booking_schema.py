@@ -13,6 +13,7 @@ class BookingCreate(BaseModel):
     vehicleId: Optional[str] = Field(None, description="ID of the vehicle")
     serviceId: Optional[str] = Field(None, description="ID of the service being booked")
     serviceType: str = Field(..., description="Type of service (e.g., hauling, delivery)")
+    bookingMode: Optional[str] = Field(None, description="'fixedOrigin' or 'transport'")
     pickupLatitude: float = Field(..., description="Pickup location latitude")
     pickupLongitude: float = Field(..., description="Pickup location longitude")
     pickupAddress: str = Field(..., description="Pickup address")

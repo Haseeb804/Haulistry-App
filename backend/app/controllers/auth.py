@@ -267,6 +267,7 @@ async def signup_complete(
             'vehicleImageUrl': payload.vehicleImageUrl,
             'isVerified': role != 'provider',
             'isActive': True,
+            'interests': payload.interests or [],
         })
 
         if not user_data:

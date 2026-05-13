@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:latlong2/latlong.dart';
 import 'booking_event.dart';
 import 'booking_state.dart';
 import '../../domain/services/booking_service.dart';
@@ -36,6 +37,7 @@ class BookingBloc extends Bloc<BookingEvent, BookingState> {
     on<BookingServiceSelected>(_onServiceSelected);
     on<BookingPickupLocationSelected>(_onPickupLocationSelected);
     on<BookingDropLocationSelected>(_onDropLocationSelected);
+    on<BookingWorkLocationSelected>(_onWorkLocationSelected);
     on<BookingDateTimeSelected>(_onDateTimeSelected);
     on<BookingCalculatePriceRequested>(_onCalculatePriceRequested);
     on<BookingNotesUpdated>(_onNotesUpdated);
@@ -93,17 +95,51 @@ class BookingBloc extends Bloc<BookingEvent, BookingState> {
     BookingServiceSelected event,
     Emitter<BookingState> emit,
   ) {
-    if (state is BookingInProgress) {
-      emit((state as BookingInProgress).copyWith(
+    final mode = AppConstants.getBookingMode(
+      event.service?.category ?? event.serviceType,
+    );
+    final currentState = state is BookingInProgress
+        ? state as BookingInProgress
+        : const BookingInProgress();
+
+    if (mode == ServiceBookingMode.fixedOrigin && event.service != null) {
+      final svc = event.service!;
+      final hasBase = svc.serviceBaseLatitude != null &&
+          svc.serviceBaseLongitude != null;
+      emit(currentState.copyWith(
         serviceType: event.serviceType,
-        service: event.service,
+        service: svc,
+        bookingMode: mode,
+        pickupLocation: hasBase
+            ? LatLng(svc.serviceBaseLatitude!, svc.serviceBaseLongitude!)
+            : null,
+        pickupAddress: svc.serviceBaseAddress,
+        clearPickup: !hasBase,
       ));
     } else {
-      emit(BookingInProgress(
+      emit(currentState.copyWith(
         serviceType: event.serviceType,
         service: event.service,
+        bookingMode: mode,
+        clearPickup: true,
       ));
     }
+  }
+
+  void _onWorkLocationSelected(
+    BookingWorkLocationSelected event,
+    Emitter<BookingState> emit,
+  ) {
+    // Work location maps to dropLocation — the machine arrives at this site
+    final currentState = state is BookingInProgress
+        ? state as BookingInProgress
+        : const BookingInProgress();
+
+    emit(currentState.copyWith(
+      dropLocation: event.location,
+      dropAddress: event.address,
+      clearPriceCalc: true,
+    ));
   }
 
   void _onPickupLocationSelected(
@@ -117,9 +153,7 @@ class BookingBloc extends Bloc<BookingEvent, BookingState> {
     emit(currentState.copyWith(
       pickupLocation: event.location,
       pickupAddress: event.address,
-      // Reset distance and price when location changes
-      distance: null,
-      estimatedPrice: null,
+      clearPriceCalc: true,
     ));
   }
 
@@ -134,9 +168,7 @@ class BookingBloc extends Bloc<BookingEvent, BookingState> {
     emit(currentState.copyWith(
       dropLocation: event.location,
       dropAddress: event.address,
-      // Reset distance and price when location changes
-      distance: null,
-      estimatedPrice: null,
+      clearPriceCalc: true,
     ));
   }
 
@@ -261,6 +293,7 @@ class BookingBloc extends Bloc<BookingEvent, BookingState> {
         providerId: currentState.service?.providerId,
         vehicleId: currentState.service?.vehicleId,
         notes: currentState.notes,
+        bookingMode: currentState.bookingMode?.name,
       );
 
       emit(BookingSuccess(

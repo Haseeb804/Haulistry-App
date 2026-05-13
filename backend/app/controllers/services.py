@@ -5,14 +5,52 @@ Handles service management for providers
 
 from fastapi import APIRouter, HTTPException, status, Query
 from typing import Optional
+import asyncio
+import logging
 from ..schemas.service_schema import (
     ServiceCreate, ServiceUpdate, ServiceResponse, ServicesListResponse
 )
 from ..models.service import Service
 from ..models.user import User
 from ..service_form_configs import get_form_config, list_service_types
+from ..services.fcm_service import fcm_service, FCMNotificationType
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+async def _notify_interested_seekers(category: str, service_data: dict) -> None:
+    """Send a push notification to every seeker that listed this category as an interest."""
+    try:
+        seekers = await asyncio.to_thread(User.get_seekers_by_interest, category)
+        if not seekers:
+            return
+
+        service_name = service_data.get('name') or category.replace('_', ' ').title()
+        provider_name = service_data.get('providerName') or 'A provider'
+        service_id = service_data.get('id', '')
+
+        for seeker in seekers:
+            token = seeker.get('fcmToken')
+            if not token:
+                continue
+            try:
+                await fcm_service.send_to_token(
+                    fcm_token=token,
+                    notification_type=FCMNotificationType.NEW_BOOKING_REQUEST,
+                    title=f"New {service_name} available!",
+                    body=f"{provider_name} just listed a {service_name} service near you.",
+                    data={
+                        'type': 'new_service_recommendation',
+                        'category': category,
+                        'serviceId': service_id,
+                    },
+                )
+            except Exception as exc:
+                logger.warning(f"FCM notification failed for seeker {seeker.get('id')}: {exc}")
+    except Exception as exc:
+        logger.error(f"_notify_interested_seekers error: {exc}")
 
 
 def _require_verified_provider(provider_id: str) -> None:
@@ -62,6 +100,11 @@ async def create_service(service: ServiceCreate):
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Failed to create service",
             )
+
+        # Fire-and-forget: notify seekers interested in this category
+        category = service_data.get('category') or service.category
+        if category:
+            asyncio.create_task(_notify_interested_seekers(category, service_data))
 
         return ServiceResponse(
             success=True,

@@ -16,6 +16,7 @@ import 'features/auth/presentation/screens/login_screen.dart';
 import 'features/auth/presentation/screens/signup_screen.dart';
 import 'features/auth/presentation/screens/phone_auth_screen.dart';
 import 'features/auth/presentation/screens/forgot_password_screen.dart';
+import 'features/auth/presentation/screens/preferences_selection_screen.dart';
 import 'features/services/presentation/screens/seeker_home_screen.dart';
 import 'features/services/presentation/screens/service_detail_screen.dart';
 import 'features/services/presentation/bloc/service_bloc.dart';
@@ -37,6 +38,7 @@ import 'features/booking/presentation/bloc/booking_bloc.dart';
 import 'features/booking/presentation/bloc/negotiation_bloc.dart';
 import 'features/booking/presentation/screens/create_booking_screen.dart';
 import 'features/booking/presentation/screens/booking_confirmation_screen.dart';
+import 'features/booking/presentation/screens/booking_request_screen.dart';
 import 'features/booking/presentation/screens/booking_history_screen.dart';
 import 'features/booking/presentation/screens/request_status_screen.dart';
 import 'features/booking/data/datasources/booking_remote_datasource.dart';
@@ -609,6 +611,12 @@ final _router = GoRouter(
       path: AppRoutes.forgotPassword,
       builder: (context, state) => const ForgotPasswordScreen(),
     ),
+    GoRoute(
+      path: AppRoutes.preferences,
+      builder: (context, state) => PreferencesSelectionScreen(
+        signupData: state.extra as Map<String, dynamic>,
+      ),
+    ),
     
     // Service Routes
     GoRoute(
@@ -626,6 +634,13 @@ final _router = GoRouter(
     ),
     
     // Booking Routes
+    GoRoute(
+      path: AppRoutes.bookingRequest,
+      builder: (context, state) {
+        final service = state.extra as ServiceEntity;
+        return BookingRequestScreen(service: service);
+      },
+    ),
     GoRoute(
       path: AppRoutes.bookingCreate,
       builder: (context, state) {

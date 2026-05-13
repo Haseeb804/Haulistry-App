@@ -52,6 +52,21 @@ class BookingDropLocationSelected extends BookingEvent {
   List<Object?> get props => [location, address];
 }
 
+/// Semantic alias for fixed-origin mode: the seeker's work/field site.
+/// Maps directly to dropLocation in the booking — the machine travels to this location.
+class BookingWorkLocationSelected extends BookingEvent {
+  final LatLng location;
+  final String address;
+
+  const BookingWorkLocationSelected({
+    required this.location,
+    required this.address,
+  });
+
+  @override
+  List<Object?> get props => [location, address];
+}
+
 class BookingDateTimeSelected extends BookingEvent {
   final DateTime dateTime;
 

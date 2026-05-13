@@ -2,6 +2,7 @@ import 'package:equatable/equatable.dart';
 import 'package:latlong2/latlong.dart';
 import '../../../../core/domain/entities/booking_entity.dart';
 import '../../../../core/domain/entities/location_entity.dart';
+import '../../../../core/constants/app_constants.dart';
 import '../../../services/domain/entities/service_entity.dart';
 
 abstract class BookingState extends Equatable {
@@ -18,6 +19,7 @@ class BookingInitial extends BookingState {
 class BookingInProgress extends BookingState {
   final String? serviceType;
   final ServiceEntity? service;
+  final ServiceBookingMode? bookingMode;
   final LatLng? pickupLocation;
   final String? pickupAddress;
   final LatLng? dropLocation;
@@ -30,6 +32,7 @@ class BookingInProgress extends BookingState {
   const BookingInProgress({
     this.serviceType,
     this.service,
+    this.bookingMode,
     this.pickupLocation,
     this.pickupAddress,
     this.dropLocation,
@@ -40,19 +43,29 @@ class BookingInProgress extends BookingState {
     this.notes,
   });
 
+  bool get isFixedOrigin => bookingMode == ServiceBookingMode.fixedOrigin;
+
   bool get isReadyForPriceCalculation =>
       serviceType != null &&
       pickupLocation != null &&
       dropLocation != null;
 
-  bool get isReadyForSubmission =>
-      isReadyForPriceCalculation &&
-      scheduledDateTime != null &&
-      estimatedPrice != null;
+  bool get isReadyForSubmission {
+    if (serviceType == null || scheduledDateTime == null || estimatedPrice == null) {
+      return false;
+    }
+    if (isFixedOrigin) {
+      // Fixed-origin: only the work/drop location is required from the seeker
+      return dropLocation != null && pickupLocation != null;
+    }
+    // Transport: both pickup and drop are required
+    return pickupLocation != null && dropLocation != null;
+  }
 
   BookingInProgress copyWith({
     String? serviceType,
     ServiceEntity? service,
+    ServiceBookingMode? bookingMode,
     LatLng? pickupLocation,
     String? pickupAddress,
     LatLng? dropLocation,
@@ -61,17 +74,20 @@ class BookingInProgress extends BookingState {
     double? distance,
     double? estimatedPrice,
     String? notes,
+    bool clearPickup = false,
+    bool clearPriceCalc = false,
   }) {
     return BookingInProgress(
       serviceType: serviceType ?? this.serviceType,
       service: service ?? this.service,
-      pickupLocation: pickupLocation ?? this.pickupLocation,
-      pickupAddress: pickupAddress ?? this.pickupAddress,
+      bookingMode: bookingMode ?? this.bookingMode,
+      pickupLocation: clearPickup ? null : (pickupLocation ?? this.pickupLocation),
+      pickupAddress: clearPickup ? null : (pickupAddress ?? this.pickupAddress),
       dropLocation: dropLocation ?? this.dropLocation,
       dropAddress: dropAddress ?? this.dropAddress,
       scheduledDateTime: scheduledDateTime ?? this.scheduledDateTime,
-      distance: distance ?? this.distance,
-      estimatedPrice: estimatedPrice ?? this.estimatedPrice,
+      distance: clearPriceCalc ? null : (distance ?? this.distance),
+      estimatedPrice: clearPriceCalc ? null : (estimatedPrice ?? this.estimatedPrice),
       notes: notes ?? this.notes,
     );
   }
@@ -80,6 +96,7 @@ class BookingInProgress extends BookingState {
   List<Object?> get props => [
         serviceType,
         service,
+        bookingMode,
         pickupLocation,
         pickupAddress,
         dropLocation,

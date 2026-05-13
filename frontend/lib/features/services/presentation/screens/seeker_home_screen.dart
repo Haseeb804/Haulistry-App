@@ -5,6 +5,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import '../../../../core/constants/app_constants.dart';
 import '../../../../core/data/graphql_client.dart';
+import '../../../../core/services/api_service.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/utils/image_helper.dart';
 import '../../../../core/widgets/modern_widgets.dart';
@@ -37,6 +38,9 @@ class _SeekerHomeScreenState extends State<SeekerHomeScreen>
   late AnimationController _animController;
   late Animation<double> _fadeAnim;
   bool _feedbackGateChecked = false;
+
+  List<ServiceEntity> _recommendations = [];
+  bool _recommendationsLoading = false;
 
   // Categories that match backend service categories
   final List<Map<String, dynamic>> _categories = [
@@ -104,6 +108,7 @@ class _SeekerHomeScreenState extends State<SeekerHomeScreen>
     _animController.forward();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _enforceMandatorySeekerFeedback();
+      _loadRecommendations();
     });
   }
 
@@ -143,6 +148,28 @@ class _SeekerHomeScreenState extends State<SeekerHomeScreen>
     }
   }
 
+  Future<void> _loadRecommendations() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+    if (!mounted) return;
+    setState(() => _recommendationsLoading = true);
+    try {
+      final response =
+          await ApiService.instance.getRecommendedServices(user.uid, limit: 6);
+      final List<dynamic> items =
+          response['recommendations'] as List<dynamic>? ?? [];
+      if (!mounted) return;
+      setState(() {
+        _recommendations = items
+            .map((j) => ServiceEntity.fromJson(j as Map<String, dynamic>))
+            .toList();
+        _recommendationsLoading = false;
+      });
+    } catch (_) {
+      if (mounted) setState(() => _recommendationsLoading = false);
+    }
+  }
+
   @override
   void dispose() {
     _searchController.dispose();
@@ -157,11 +184,14 @@ class _SeekerHomeScreenState extends State<SeekerHomeScreen>
       body: RefreshIndicator(
         onRefresh: () async {
           context.read<ServiceBloc>().add(const ServiceLoadRequested());
+          await _loadRecommendations();
         },
         child: CustomScrollView(
           slivers: [
             _buildAppBar(),
             _buildCategoriesSection(),
+            if (_recommendations.isNotEmpty || _recommendationsLoading)
+              _buildRecommendationsSection(),
             _buildServicesHeader(),
             _buildServicesGrid(),
             const SliverPadding(padding: EdgeInsets.only(bottom: 100)),
@@ -419,6 +449,202 @@ class _SeekerHomeScreenState extends State<SeekerHomeScreen>
                     ),
                   );
                 },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildRecommendationsSection() {
+    return SliverToBoxAdapter(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 24, 20, 12),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: BoxDecoration(
+                    gradient: AppTheme.primaryGradient,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(Icons.auto_awesome_rounded,
+                      color: Colors.white, size: 16),
+                ),
+                const SizedBox(width: 10),
+                const Text(
+                  'Recommended for You',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+              ],
+            ),
+          ),
+          if (_recommendationsLoading)
+            SizedBox(
+              height: 160,
+              child: ListView.builder(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                itemCount: 3,
+                itemBuilder: (_, __) => _buildRecommendationShimmer(),
+              ),
+            )
+          else
+            SizedBox(
+              height: 160,
+              child: ListView.builder(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                itemCount: _recommendations.length,
+                itemBuilder: (context, index) =>
+                    _buildRecommendationCard(_recommendations[index]),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRecommendationShimmer() {
+    return Container(
+      width: 220,
+      margin: const EdgeInsets.only(right: 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: AppTheme.softShadow,
+      ),
+      child: const Center(
+        child: CircularProgressIndicator(strokeWidth: 2),
+      ),
+    );
+  }
+
+  Widget _buildRecommendationCard(ServiceEntity service) {
+    final catData = _getCategoryData(service.category);
+    return GestureDetector(
+      onTap: () => _navigateToServiceDetail(service),
+      child: Container(
+        width: 220,
+        margin: const EdgeInsets.only(right: 12),
+        decoration: BoxDecoration(
+          gradient: catData['gradient'] as LinearGradient,
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [
+            BoxShadow(
+              color: AppTheme.primaryColor.withOpacity(0.2),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Stack(
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(14),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Text(catData['emoji'] as String,
+                          style: const TextStyle(fontSize: 28)),
+                      const Spacer(),
+                      if (service.providerRating != null)
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 6, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.9),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(Icons.star_rounded,
+                                  size: 12, color: Colors.amber),
+                              const SizedBox(width: 2),
+                              Text(
+                                service.providerRating!.toStringAsFixed(1),
+                                style: const TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.bold),
+                              ),
+                            ],
+                          ),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    service.name,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 15,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    service.providerName ?? 'Provider',
+                    style: TextStyle(
+                      color: Colors.white.withOpacity(0.85),
+                      fontSize: 12,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const Spacer(),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.2),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      'Rs. ${service.basePrice.toStringAsFixed(0)}+',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Positioned(
+              top: 8,
+              left: 8,
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                decoration: BoxDecoration(
+                  color: Colors.black.withOpacity(0.25),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.auto_awesome_rounded,
+                        color: Colors.white, size: 10),
+                    SizedBox(width: 3),
+                    Text(
+                      'FOR YOU',
+                      style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 9,
+                          fontWeight: FontWeight.bold),
+                    ),
+                  ],
+                ),
               ),
             ),
           ],

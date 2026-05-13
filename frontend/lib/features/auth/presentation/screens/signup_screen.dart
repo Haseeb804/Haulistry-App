@@ -30,6 +30,7 @@ class _SignupScreenState extends State<SignupScreen> with SingleTickerProviderSt
   bool _obscureConfirmPassword = true;
   String _selectedRole = AppConstants.roleSeeker;
   Uint8List? _profileImage;
+  bool _navigatedToPreferences = false;
 
   late AnimationController _animationController;
   late Animation<double> _fadeAnimation;
@@ -90,17 +91,16 @@ class _SignupScreenState extends State<SignupScreen> with SingleTickerProviderSt
           'profileImage': _profileImage,
         });
       } else {
-        // For seekers, create account directly
-        context.read<AuthBloc>().add(
-              AuthSignUpRequested(
-                email: _emailController.text.trim(),
-                password: _passwordController.text,
-                name: _nameController.text.trim(),
-                phone: _phoneController.text.trim(),
-                role: _selectedRole,
-                profileImage: _profileImage,
-              ),
-            );
+        // For seekers, collect interests first then fire signup
+        _navigatedToPreferences = true;
+        context.push(AppRoutes.preferences, extra: {
+          'email': _emailController.text.trim(),
+          'password': _passwordController.text,
+          'name': _nameController.text.trim(),
+          'phone': _phoneController.text.trim(),
+          'role': _selectedRole,
+          'profileImage': _profileImage,
+        });
       }
     }
   }
@@ -127,8 +127,10 @@ class _SignupScreenState extends State<SignupScreen> with SingleTickerProviderSt
             } else {
               context.go('/seeker/home');
             }
-          } else if (state is AuthPendingPhoneVerification) {
+          } else if (state is AuthPendingPhoneVerification &&
+              !_navigatedToPreferences) {
             // Signup pending, proceed to OTP step inside signup pipeline
+            // (skipped when seeker went through preferences screen first)
             context.go('/phone-auth', extra: {
               'verificationId': state.verificationId,
               'phoneNumber': state.phoneNumber,

@@ -28,3 +28,12 @@ class ServiceFilterByCategory extends ServiceEvent {
   @override
   List<Object?> get props => [category];
 }
+
+class ServiceLoadRecommendationsRequested extends ServiceEvent {
+  final String seekerId;
+
+  const ServiceLoadRecommendationsRequested({required this.seekerId});
+
+  @override
+  List<Object?> get props => [seekerId];
+}
