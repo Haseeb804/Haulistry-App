@@ -60,6 +60,33 @@ def health_check() -> bool:
     return _get("/health") is not None
 
 
+def notify_provider_approved(provider_id: str) -> bool:
+    """Push an FCM notification to a provider whose account was just approved."""
+    result = _post("/api/notifications/admin/send", {
+        "userId": provider_id,
+        "title": "Account Approved ✅",
+        "body": (
+            "Congratulations! Your provider account has been verified by admin. "
+            "You can now add services and start accepting bookings."
+        ),
+        "type": "account_verified",
+        "data": {"screen": "provider_home"},
+    })
+    return result is not None
+
+
+def notify_provider_rejected(provider_id: str, reason: str) -> bool:
+    """Push an FCM notification to a provider whose account was just rejected."""
+    result = _post("/api/notifications/admin/send", {
+        "userId": provider_id,
+        "title": "Account Not Approved",
+        "body": f"Your provider application was reviewed and not approved. Reason: {reason}",
+        "type": "account_rejected",
+        "data": {"screen": "provider_home", "rejectionReason": reason},
+    })
+    return result is not None
+
+
 def get_available_services(category: str | None = None) -> list[dict]:
     params = {}
     if category:
@@ -71,6 +98,9 @@ def get_available_services(category: str | None = None) -> list[dict]:
 
 
 def get_provider_services(provider_id: str) -> list[dict]:
+    # NOTE: This REST endpoint requires the provider to be verified (403 otherwise).
+    # Admin pages should use database.get_all_services() with a provider_id filter
+    # for unverified providers.  Kept here for backwards-compat with verified providers.
     result = _get(f"/api/services/provider/{provider_id}")
     if isinstance(result, dict):
         return result.get("services", [])

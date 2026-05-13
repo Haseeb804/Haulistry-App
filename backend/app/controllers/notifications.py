@@ -1,7 +1,8 @@
 from fastapi import APIRouter, HTTPException, status
-from typing import Optional
+from typing import Optional, Any
 import json
 from ..models.notification import Notification
+from ..services.fcm_service import fcm_service
 
 router = APIRouter(prefix="/notifications", tags=["notifications"])
 
@@ -49,3 +50,29 @@ async def mark_all_read(user_id: str):
         return {"success": True, "updated": updated}
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+
+
+@router.post("/admin/send")
+async def admin_send_notification(payload: dict[str, Any]):
+    """Send a push notification to a user. Called from the admin dashboard
+    after verification approval or rejection."""
+    user_id = payload.get("userId")
+    title = payload.get("title")
+    body = payload.get("body")
+    notif_type = payload.get("type", "admin_notification")
+    extra_data: dict[str, Any] = payload.get("data") or {}
+
+    if not user_id or not title or not body:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="userId, title, and body are required",
+        )
+
+    sent = await fcm_service.send_to_user(
+        user_id=user_id,
+        notification_type=notif_type,
+        title=title,
+        body=body,
+        data=extra_data,
+    )
+    return {"success": sent}

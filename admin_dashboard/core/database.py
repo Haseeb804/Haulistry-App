@@ -208,18 +208,23 @@ def get_user_detail(user_id: str) -> dict:
 
 
 def get_pending_providers() -> list[dict]:
+    # Vehicle images are stored on the Vehicle node, not the Provider node.
+    # CNIC/license images are stored on the Provider node from the signup flow.
     q = """
     MATCH (p:Provider)
     WHERE p.isVerified IS NULL OR p.isVerified = false
     OPTIONAL MATCH (p)-[:OWNS]->(v:Vehicle)
-    WITH p, count(v) AS vehicleCount
+    WITH p, count(v) AS vehicleCount, collect(v)[0] AS firstVehicle
     RETURN p.id AS id, p.name AS name, p.email AS email,
            p.phone AS phone, p.cnic AS cnic,
            p.isVerified AS isVerified, p.isActive AS isActive,
            p.createdAt AS createdAt,
            p.profileImageUrl AS profileImageUrl,
-           p.vehicleImageBase64 AS vehicleImageBase64,
-           p.vehicleLicenseImageBase64 AS vehicleLicenseImageBase64,
+           p.rejectionReason AS rejectionReason,
+           p.cnicFrontImageBase64 AS cnicFrontImageBase64,
+           p.cnicBackImageBase64  AS cnicBackImageBase64,
+           p.licenseImageBase64   AS licenseImageBase64,
+           firstVehicle.vehicleImageBase64 AS vehicleImageBase64,
            vehicleCount
     ORDER BY p.createdAt DESC
     """

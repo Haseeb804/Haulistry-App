@@ -5,6 +5,7 @@ Provider verification workflow — approve or reject pending providers.
 import streamlit as st
 from components.sidebar import render_sidebar
 from core.database import get_pending_providers, verify_provider, reject_provider
+from core.api_client import notify_provider_approved, notify_provider_rejected
 from components.styles import (
     page_header, status_badge, fmt_date,
     empty_state, PRIMARY, SECONDARY, DANGER, WARNING,
@@ -112,8 +113,10 @@ for p in pending:
             )
 
         with col_docs:
-            vimg = p.get("vehicleImageBase64")
-            limg = p.get("vehicleLicenseImageBase64")
+            vehicle_img    = p.get("vehicleImageBase64")
+            cnic_front_img = p.get("cnicFrontImageBase64")
+            cnic_back_img  = p.get("cnicBackImageBase64")
+            license_img    = p.get("licenseImageBase64")
 
             st.markdown(
                 f'<div style="font-size:12px;font-weight:700;color:{TEXT_SEC};'
@@ -122,13 +125,24 @@ for p in pending:
                 unsafe_allow_html=True,
             )
 
-            if vimg:
+            any_doc = False
+            if vehicle_img:
+                any_doc = True
                 st.caption("Vehicle Photo")
-                st.image(f"data:image/jpeg;base64,{vimg}", use_container_width=True)
-            if limg:
-                st.caption("License / CNIC Document")
-                st.image(f"data:image/jpeg;base64,{limg}", use_container_width=True)
-            if not vimg and not limg:
+                st.image(f"data:image/jpeg;base64,{vehicle_img}", use_container_width=True)
+            if cnic_front_img:
+                any_doc = True
+                st.caption("CNIC — Front")
+                st.image(f"data:image/jpeg;base64,{cnic_front_img}", use_container_width=True)
+            if cnic_back_img:
+                any_doc = True
+                st.caption("CNIC — Back")
+                st.image(f"data:image/jpeg;base64,{cnic_back_img}", use_container_width=True)
+            if license_img:
+                any_doc = True
+                st.caption("Driving License")
+                st.image(f"data:image/jpeg;base64,{license_img}", use_container_width=True)
+            if not any_doc:
                 st.markdown(
                     f'<div style="background:#F7FAFC;border:1px dashed {BORDER};'
                     f'border-radius:10px;padding:24px;text-align:center;color:{TEXT_SEC};'
@@ -148,6 +162,7 @@ for p in pending:
                          use_container_width=True):
                 ok = verify_provider(pid)
                 if ok:
+                    notify_provider_approved(pid)
                     st.toast(f"{name} has been approved!", icon="✅")
                     st.cache_data.clear()
                     st.rerun()
@@ -166,6 +181,7 @@ for p in pending:
                 reason = reason_text.strip() or "Application rejected by admin."
                 ok = reject_provider(pid, reason)
                 if ok:
+                    notify_provider_rejected(pid, reason)
                     st.toast(f"{name} has been rejected.", icon="❌")
                     st.cache_data.clear()
                     st.rerun()
