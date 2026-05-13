@@ -4,7 +4,7 @@ Seeker / customer management.
 
 import streamlit as st
 from components.sidebar import render_sidebar
-from core.database import get_all_users, get_user_detail, toggle_user_status
+from core.database import get_all_users, get_user_detail, toggle_user_status, delete_user
 from components.styles import (
     page_header, status_badge, fmt_date,
     fmt_number, empty_state, section_header, kpi_card, pagination,
@@ -112,6 +112,40 @@ if st.session_state.selected_seeker:
             f'Seeker ID: <code>{sid}</code></div>',
             unsafe_allow_html=True,
         )
+
+    # ── Danger zone ──────────────────────────────────────────────────────────
+    st.markdown("<div style='height:32px'></div>", unsafe_allow_html=True)
+    st.markdown(
+        f'<div style="border:1px solid #FC8181;border-radius:12px;padding:20px 24px;'
+        f'background:#FFF5F5;">'
+        f'<div style="font-size:14px;font-weight:700;color:#C53030;margin-bottom:6px;">'
+        f'Danger Zone</div>'
+        f'<div style="font-size:13px;color:#742A2A;">Permanently delete this seeker and '
+        f'all related data — bookings, messages, calls, fare offers, feedback, and '
+        f'notifications. This cannot be undone.</div>'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
+    st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
+    confirm_key = f"confirm_delete_seeker_{sid}"
+    confirm_val = st.text_input(
+        "Type **DELETE** to confirm permanent deletion",
+        key=confirm_key,
+        placeholder="DELETE",
+    )
+    if st.button("🗑️ Delete Seeker Permanently",
+                 type="secondary",
+                 disabled=(confirm_val.strip() != "DELETE"),
+                 key=f"delete_seeker_{sid}"):
+        with st.spinner("Deleting seeker and all related data…"):
+            ok = delete_user(sid)
+        if ok:
+            st.success(f"{name} and all related data have been permanently deleted.")
+            st.cache_data.clear()
+            st.session_state.selected_seeker = None
+            st.rerun()
+        else:
+            st.error("Deletion failed — please try again or check the database connection.")
 
     st.stop()
 

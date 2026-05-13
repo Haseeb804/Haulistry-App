@@ -6,8 +6,10 @@ import streamlit as st
 import pandas as pd
 from components.sidebar import render_sidebar
 from core.database import (
-    get_all_users, get_user_detail, get_provider_performance, toggle_user_status,
+    get_all_users, get_user_detail, get_provider_performance,
+    toggle_user_status, verify_provider, reject_provider, delete_user,
 )
+from core.api_client import notify_provider_approved, notify_provider_rejected
 from components.styles import (
     page_header, status_badge, fmt_date, fmt_datetime,
     fmt_currency, fmt_number, empty_state, section_header, kpi_card, pagination,
@@ -85,16 +87,57 @@ if st.session_state.selected_provider:
         unsafe_allow_html=True,
     )
 
-    # ── Toggle button ────────────────────────────────────────────────────────
-    btn_label = "Deactivate Provider" if is_active else "Activate Provider"
-    if st.button(btn_label, type="primary" if not is_active else "secondary"):
-        ok = toggle_user_status(pid, not is_active)
-        if ok:
-            st.toast(f"{'Deactivated' if is_active else 'Activated'} {name}", icon="✅")
-            st.cache_data.clear()
-            st.rerun()
+    # ── Action buttons ────────────────────────────────────────────────────────
+    act_cols = st.columns([1, 1, 2])
+
+    with act_cols[0]:
+        btn_label = "Deactivate" if is_active else "Activate"
+        if st.button(btn_label, type="secondary" if is_active else "primary",
+                     use_container_width=True):
+            ok = toggle_user_status(pid, not is_active)
+            if ok:
+                st.toast(f"{'Deactivated' if is_active else 'Activated'} {name}", icon="✅")
+                st.cache_data.clear()
+                st.rerun()
+            else:
+                st.warning("Action failed — please try again.")
+
+    with act_cols[1]:
+        if not is_verified:
+            if st.button("✅ Approve", type="primary", use_container_width=True):
+                ok = verify_provider(pid)
+                if ok:
+                    notify_provider_approved(pid)
+                    st.toast(f"{name} has been approved!", icon="✅")
+                    st.cache_data.clear()
+                    st.rerun()
+                else:
+                    st.warning("Action failed — please try again.")
         else:
-            st.warning("Action failed — please try again.")
+            st.button("✅ Verified", disabled=True, use_container_width=True)
+
+    # ── Reject / re-reject section (only for unverified providers) ────────────
+    if not is_verified:
+        st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
+        with st.expander("✗  Reject / set rejection reason", expanded=bool(rejection)):
+            reason_val = rejection or ""
+            reason_input = st.text_area(
+                "Rejection reason",
+                value=reason_val,
+                placeholder="Explain why the account is not approved…",
+                key=f"reject_reason_{pid}",
+                label_visibility="collapsed",
+            )
+            if st.button("Confirm Rejection", key=f"do_reject_{pid}"):
+                reason = reason_input.strip() or "Application rejected by admin."
+                ok = reject_provider(pid, reason)
+                if ok:
+                    notify_provider_rejected(pid, reason)
+                    st.toast(f"{name} has been rejected.", icon="❌")
+                    st.cache_data.clear()
+                    st.rerun()
+                else:
+                    st.warning("Action failed — please try again.")
 
     # ── Performance metrics ───────────────────────────────────────────────────
     st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
@@ -192,6 +235,40 @@ if st.session_state.selected_provider:
             f'Provider ID: <code>{pid}</code></div>',
             unsafe_allow_html=True,
         )
+
+    # ── Danger zone ──────────────────────────────────────────────────────────
+    st.markdown("<div style='height:32px'></div>", unsafe_allow_html=True)
+    st.markdown(
+        f'<div style="border:1px solid #FC8181;border-radius:12px;padding:20px 24px;'
+        f'background:#FFF5F5;">'
+        f'<div style="font-size:14px;font-weight:700;color:#C53030;margin-bottom:6px;">'
+        f'Danger Zone</div>'
+        f'<div style="font-size:13px;color:#742A2A;">Permanently delete this provider and '
+        f'all related data — vehicles, services, bookings, messages, calls, fare offers, '
+        f'feedback, notifications, and location history. This cannot be undone.</div>'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
+    st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
+    confirm_key = f"confirm_delete_provider_{pid}"
+    confirm_val = st.text_input(
+        "Type **DELETE** to confirm permanent deletion",
+        key=confirm_key,
+        placeholder="DELETE",
+    )
+    if st.button("🗑️ Delete Provider Permanently",
+                 type="secondary",
+                 disabled=(confirm_val.strip() != "DELETE"),
+                 key=f"delete_provider_{pid}"):
+        with st.spinner("Deleting provider and all related data…"):
+            ok = delete_user(pid)
+        if ok:
+            st.success(f"{name} and all related data have been permanently deleted.")
+            st.cache_data.clear()
+            st.session_state.selected_provider = None
+            st.rerun()
+        else:
+            st.error("Deletion failed — please try again or check the database connection.")
 
     st.stop()
 

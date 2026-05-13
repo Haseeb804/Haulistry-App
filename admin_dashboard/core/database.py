@@ -382,6 +382,96 @@ def get_top_providers(limit: int = 10) -> list[dict]:
     return run_query(q, {"limit": limit})
 
 
+def delete_user(user_id: str) -> bool:
+    """Permanently delete a user and ALL related data (cascade)."""
+
+    steps = [
+        # 1. Services attached to the user's vehicles
+        """
+        MATCH (u {id: $id}) WHERE u:Provider OR u:Seeker OR u:User
+        OPTIONAL MATCH (u)-[:OWNS]->(v:Vehicle)-[:PROVIDES]->(s:Service)
+        DETACH DELETE s
+        """,
+        # 2. Services offered directly by the user
+        """
+        MATCH (u {id: $id}) WHERE u:Provider OR u:Seeker OR u:User
+        OPTIONAL MATCH (u)-[:OFFERS]->(s:Service)
+        DETACH DELETE s
+        """,
+        # 3. Vehicles owned by the user
+        """
+        MATCH (u {id: $id}) WHERE u:Provider OR u:Seeker OR u:User
+        OPTIONAL MATCH (u)-[:OWNS]->(v:Vehicle)
+        DETACH DELETE v
+        """,
+        # 4. FareOffers on bookings the user is part of
+        """
+        MATCH (b) WHERE any(lbl IN labels(b) WHERE lbl STARTS WITH 'Booking')
+          AND (b.seekerId = $id OR b.providerId = $id)
+        OPTIONAL MATCH (b)-[:HAS_OFFER]->(fo:FareOffer)
+        DETACH DELETE fo
+        """,
+        # 5. FareOffers made directly by the user (provider path)
+        """
+        MATCH (u {id: $id}) WHERE u:Provider OR u:Seeker OR u:User
+        OPTIONAL MATCH (u)-[:MADE_OFFER]->(fo:FareOffer)
+        DETACH DELETE fo
+        """,
+        # 6. Bookings where user is seeker or provider
+        """
+        MATCH (b) WHERE any(lbl IN labels(b) WHERE lbl STARTS WITH 'Booking')
+          AND (b.seekerId = $id OR b.providerId = $id)
+        DETACH DELETE b
+        """,
+        # 7. Chat messages
+        """
+        MATCH (m:Message) WHERE m.senderId = $id OR m.receiverId = $id
+        DETACH DELETE m
+        """,
+        # 8. Voice messages
+        """
+        MATCH (vm:VoiceMessage) WHERE vm.senderId = $id OR vm.receiverId = $id
+        DETACH DELETE vm
+        """,
+        # 9. Calls
+        """
+        MATCH (c:Call) WHERE c.callerId = $id OR c.receiverId = $id
+        DETACH DELETE c
+        """,
+        # 10. Location tracking nodes
+        """
+        MATCH (loc:Location {userId: $id})
+        DETACH DELETE loc
+        """,
+        # 11. Feedback / ratings
+        """
+        MATCH (f:Feedback) WHERE f.providerId = $id OR f.seekerId = $id
+        DETACH DELETE f
+        """,
+        # 12. Notifications
+        """
+        MATCH (n:Notification {userId: $id})
+        DETACH DELETE n
+        """,
+        # 13. The user node itself
+        """
+        MATCH (u {id: $id}) WHERE u:Provider OR u:Seeker OR u:User
+        DETACH DELETE u
+        RETURN 1 AS deleted
+        """,
+    ]
+
+    for cypher in steps:
+        run_query(cypher, {"id": user_id}, write=True)
+
+    # Confirm the user no longer exists
+    check = run_query(
+        "MATCH (u {id: $id}) WHERE u:Provider OR u:Seeker OR u:User RETURN u LIMIT 1",
+        {"id": user_id},
+    )
+    return len(check) == 0
+
+
 def toggle_user_status(user_id: str, active: bool) -> bool:
     q = """
     MATCH (u {id: $id})
