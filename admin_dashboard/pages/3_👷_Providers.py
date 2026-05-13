@@ -19,6 +19,21 @@ from components.styles import (
 st.set_page_config(page_title="Providers · Haulistry Admin", page_icon="👷", layout="wide")
 render_sidebar()
 
+
+def _show_doc(label: str, value: str | None) -> bool:
+    """Render one document image from raw base64, data-URI, or HTTP URL."""
+    if not value:
+        return False
+    v = value.strip()
+    st.caption(label)
+    if v.startswith("data:"):
+        st.image(v, use_container_width=True)
+    elif v.startswith(("http://", "https://")):
+        st.image(v, use_container_width=True)
+    else:
+        st.image(f"data:image/jpeg;base64,{v}", use_container_width=True)
+    return True
+
 # ── State ─────────────────────────────────────────────────────────────────────
 if "selected_provider" not in st.session_state:
     st.session_state.selected_provider = None
@@ -155,7 +170,7 @@ if st.session_state.selected_provider:
     st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
 
     # ── Detail tabs ───────────────────────────────────────────────────────────
-    t1, t2, t3 = st.tabs(["  Profile  ", "  Vehicles & Services  ", "  Details  "])
+    t1, t2, t3, t4 = st.tabs(["  Profile  ", "  Vehicles & Services  ", "  Documents  ", "  Details  "])
 
     with t1:
         rows = [
@@ -229,6 +244,44 @@ if st.session_state.selected_provider:
                 )
 
     with t3:
+        profile_img   = detail.get("profileImageUrl")
+        cnic_front    = detail.get("cnicFrontImageBase64")
+        cnic_back     = detail.get("cnicBackImageBase64")
+        license_img   = detail.get("licenseImageBase64")
+        vehicle_img   = detail.get("vehicleImageBase64") or detail.get("vehicleImageUrl")
+
+        docs = [
+            ("Profile Photo",   profile_img),
+            ("CNIC — Front",    cnic_front),
+            ("CNIC — Back",     cnic_back),
+            ("Driving License", license_img),
+            ("Vehicle Photo",   vehicle_img),
+        ]
+        present = [(lbl, val) for lbl, val in docs if val]
+
+        if not present:
+            st.markdown(
+                f'<div style="background:#F7FAFC;border:1px dashed {BORDER};'
+                f'border-radius:10px;padding:32px;text-align:center;color:{TEXT_SEC};'
+                f'font-size:14px;margin-top:8px;">No document images on file for this provider.</div>',
+                unsafe_allow_html=True,
+            )
+        else:
+            # Lay out docs in a 2-column grid
+            cols = st.columns(2)
+            for i, (lbl, val) in enumerate(present):
+                with cols[i % 2]:
+                    st.markdown(
+                        f'<div style="background:{CARD_BG};border:1px solid {BORDER};'
+                        f'border-radius:10px;padding:12px;margin-bottom:12px;">'
+                        f'<div style="font-size:11px;font-weight:700;color:{TEXT_SEC};'
+                        f'text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">'
+                        f'{lbl}</div></div>',
+                        unsafe_allow_html=True,
+                    )
+                    _show_doc(lbl, val)
+
+    with t4:
         st.markdown(
             f'<div style="background:#FFFBEB;border:1px solid #FEFCBF;border-radius:10px;'
             f'padding:12px 16px;font-size:13px;color:#744210;">'

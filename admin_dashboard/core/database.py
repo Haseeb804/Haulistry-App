@@ -192,15 +192,21 @@ def get_user_detail(user_id: str) -> dict:
          collect(DISTINCT {id: v.id, type: v.vehicleType, number: v.vehicleNumber,
                             isAvailable: v.isAvailable}) AS vehicles,
          collect(DISTINCT {id: s.id, name: s.name, category: s.category,
-                            isActive: s.isActive}) AS services
+                            isActive: s.isActive}) AS services,
+         collect(v)[0] AS firstVehicle
     RETURN u.id AS id, u.name AS name, u.email AS email,
            u.phone AS phone, u.role AS role,
            u.isVerified AS isVerified, u.isActive AS isActive,
            u.rating AS rating, u.cnic AS cnic,
            u.createdAt AS createdAt, u.updatedAt AS updatedAt,
-           u.profileImageUrl AS profileImageUrl,
+           u.profileImageUrl        AS profileImageUrl,
            u.latitude AS latitude, u.longitude AS longitude,
-           u.rejectionReason AS rejectionReason,
+           u.rejectionReason        AS rejectionReason,
+           u.cnicFrontImageBase64   AS cnicFrontImageBase64,
+           u.cnicBackImageBase64    AS cnicBackImageBase64,
+           u.licenseImageBase64     AS licenseImageBase64,
+           firstVehicle.vehicleImageBase64 AS vehicleImageBase64,
+           firstVehicle.vehicleImageUrl    AS vehicleImageUrl,
            vehicles, services
     """
     rows = run_query(q, {"id": user_id})

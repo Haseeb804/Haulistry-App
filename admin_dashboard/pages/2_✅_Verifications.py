@@ -25,6 +25,23 @@ page_header(
     "✅",
 )
 
+def _show_doc(label: str, value: str | None) -> bool:
+    """Render one document image. Handles raw base64, data-URI, and HTTP URL.
+    Returns True when an image was displayed."""
+    if not value:
+        return False
+    v = value.strip()
+    st.caption(label)
+    if v.startswith("data:"):
+        st.image(v, use_container_width=True)
+    elif v.startswith(("http://", "https://")):
+        st.image(v, use_container_width=True)
+    else:
+        # Assume raw base64 (no prefix)
+        st.image(f"data:image/jpeg;base64,{v}", use_container_width=True)
+    return True
+
+
 @st.cache_data(ttl=30, show_spinner=False)
 def _pending():
     return get_pending_providers()
@@ -113,11 +130,6 @@ for p in pending:
             )
 
         with col_docs:
-            vehicle_img    = p.get("vehicleImageBase64")
-            cnic_front_img = p.get("cnicFrontImageBase64")
-            cnic_back_img  = p.get("cnicBackImageBase64")
-            license_img    = p.get("licenseImageBase64")
-
             st.markdown(
                 f'<div style="font-size:12px;font-weight:700;color:{TEXT_SEC};'
                 f'text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;">'
@@ -125,24 +137,18 @@ for p in pending:
                 unsafe_allow_html=True,
             )
 
-            any_doc = False
-            if vehicle_img:
-                any_doc = True
-                st.caption("Vehicle Photo")
-                st.image(f"data:image/jpeg;base64,{vehicle_img}", use_container_width=True)
-            if cnic_front_img:
-                any_doc = True
-                st.caption("CNIC — Front")
-                st.image(f"data:image/jpeg;base64,{cnic_front_img}", use_container_width=True)
-            if cnic_back_img:
-                any_doc = True
-                st.caption("CNIC — Back")
-                st.image(f"data:image/jpeg;base64,{cnic_back_img}", use_container_width=True)
-            if license_img:
-                any_doc = True
-                st.caption("Driving License")
-                st.image(f"data:image/jpeg;base64,{license_img}", use_container_width=True)
-            if not any_doc:
+            shown = 0
+            shown += _show_doc("Profile Photo",    p.get("profileImageUrl"))
+            shown += _show_doc("CNIC — Front",     p.get("cnicFrontImageBase64"))
+            shown += _show_doc("CNIC — Back",      p.get("cnicBackImageBase64"))
+            shown += _show_doc("Driving License",  p.get("licenseImageBase64"))
+            # Vehicle photo: prefer base64, fall back to URL
+            shown += _show_doc(
+                "Vehicle Photo",
+                p.get("vehicleImageBase64") or p.get("vehicleImageUrl"),
+            )
+
+            if shown == 0:
                 st.markdown(
                     f'<div style="background:#F7FAFC;border:1px dashed {BORDER};'
                     f'border-radius:10px;padding:24px;text-align:center;color:{TEXT_SEC};'
