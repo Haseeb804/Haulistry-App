@@ -15,6 +15,21 @@ from ..service_form_configs import get_form_config, list_service_types
 router = APIRouter()
 
 
+def _require_verified_provider(provider_id: str) -> None:
+    """Raise 403 if the provider is not admin-verified."""
+    provider = User.get_by_id(provider_id)
+    if not provider:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Provider not found.",
+        )
+    if not provider.get('isVerified'):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Your account is pending admin approval. You cannot manage services until your account is verified.",
+        )
+
+
 @router.get("/form-config/all", tags=["Service Forms"])
 async def get_all_form_configs():
     """Return form field configs for all known service types."""
@@ -38,31 +53,28 @@ async def get_service_form_config(service_type: str):
 async def create_service(service: ServiceCreate):
     """Create a new service offering"""
     try:
-        provider = User.get_by_id(service.providerId)
-        if not provider or not provider.get('isVerified'):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Your account is pending admin approval."
-            )
+        _require_verified_provider(service.providerId)
 
         service_data = Service.create(service.dict())
-        
+
         if not service_data:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Failed to create service"
+                detail="Failed to create service",
             )
-        
+
         return ServiceResponse(
             success=True,
             message="Service created successfully",
-            service=service_data
+            service=service_data,
         )
-        
+
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to create service: {str(e)}"
+            detail=f"Failed to create service: {str(e)}",
         )
 
 
@@ -98,41 +110,52 @@ async def get_available_services(
 
 @router.get("/provider/{provider_id}", response_model=ServicesListResponse)
 async def get_provider_services(provider_id: str):
-    """Get all services offered by a provider"""
+    """Get all services offered by a provider (provider must be verified)"""
     try:
+        _require_verified_provider(provider_id)
+
         services = Service.get_by_provider(provider_id)
-        
+
         return ServicesListResponse(
             success=True,
             message="Provider services retrieved successfully",
             services=services,
-            total=len(services)
+            total=len(services),
         )
-        
+
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to fetch provider services: {str(e)}"
+            detail=f"Failed to fetch provider services: {str(e)}",
         )
 
 
 @router.get("/vehicle/{vehicle_id}", response_model=ServicesListResponse)
-async def get_vehicle_services(vehicle_id: str):
-    """Get all services offered by a specific vehicle"""
+async def get_vehicle_services(vehicle_id: str, provider_id: Optional[str] = Query(None)):
+    """Get all services offered by a specific vehicle.
+    Pass provider_id when called from the provider dashboard — it enforces verification.
+    Omit provider_id for public/seeker-facing lookups."""
     try:
+        if provider_id:
+            _require_verified_provider(provider_id)
+
         services = Service.get_by_vehicle(vehicle_id)
-        
+
         return ServicesListResponse(
             success=True,
             message="Vehicle services retrieved successfully",
             services=services,
-            total=len(services)
+            total=len(services),
         )
-        
+
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to fetch vehicle services: {str(e)}"
+            detail=f"Failed to fetch vehicle services: {str(e)}",
         )
 
 
@@ -165,29 +188,38 @@ async def get_service(service_id: str):
 
 @router.put("/{service_id}", response_model=ServiceResponse)
 async def update_service(service_id: str, service_update: ServiceUpdate):
-    """Update a service"""
+    """Update a service (provider must be verified)"""
     try:
+        # Resolve the owning provider before mutating.
+        existing = Service.get_by_id(service_id)
+        if not existing:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Service not found",
+            )
+        _require_verified_provider(existing['providerId'])
+
         update_data = {k: v for k, v in service_update.dict().items() if v is not None}
         service_data = Service.update(service_id, update_data)
-        
+
         if not service_data:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="Service not found"
+                detail="Service not found",
             )
-        
+
         return ServiceResponse(
             success=True,
             message="Service updated successfully",
-            service=service_data
+            service=service_data,
         )
-        
+
     except HTTPException:
         raise
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to update service: {str(e)}"
+            detail=f"Failed to update service: {str(e)}",
         )
 
 

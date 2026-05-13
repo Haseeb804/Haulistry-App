@@ -68,9 +68,9 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
       body: BlocConsumer<AuthBloc, AuthState>(
         listener: (context, state) {
           if (state is AuthAuthenticated) {
-            if (state.user.role == AppConstants.roleProvider && !state.user.isVerified) {
-              context.go('/provider/documents');
-            } else if (state.user.role == AppConstants.roleProvider) {
+            if (state.user.role == AppConstants.roleProvider) {
+              // Always go to provider home; the BLoC enforces verification state
+              // and shows the pending-approval screen for unverified accounts.
               context.go('/provider/home');
             } else {
               context.go('/seeker/home');

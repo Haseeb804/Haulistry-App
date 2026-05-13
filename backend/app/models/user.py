@@ -15,7 +15,7 @@ class User:
         phone: str,
         role: str,  # 'seeker' or 'provider'
         profile_image_url: Optional[str] = None,
-        is_verified: bool = True,
+        is_verified: bool = False,
         is_active: bool = True,
         cnic: Optional[str] = None,
         driving_license: Optional[str] = None,
@@ -55,7 +55,7 @@ class User:
             phone=data['phone'],
             role=data['role'],
             profile_image_url=data.get('profile_image_url'),
-            is_verified=data.get('is_verified', True),
+            is_verified=data.get('is_verified', False),
             is_active=data.get('is_active', True),
             cnic=data.get('cnic'),
             driving_license=data.get('driving_license'),

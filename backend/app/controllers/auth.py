@@ -332,8 +332,12 @@ async def sync_user(user: UserCreate):
     Called after successful Firebase signup/login
     """
     try:
-        user_data = User.create(user.dict())
-        
+        user_dict = user.dict()
+        # Always compute isVerified server-side — never trust the client value.
+        # Providers start unverified; seekers are verified immediately.
+        user_dict['isVerified'] = user_dict.get('role', 'seeker').lower() != 'provider'
+        user_data = User.create(user_dict)
+
         if not user_data:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

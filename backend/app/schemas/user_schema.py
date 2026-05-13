@@ -18,7 +18,7 @@ class UserCreate(BaseModel):
     cnicFrontImageBase64: Optional[str] = Field(None, description="Base64 CNIC front image")
     cnicBackImageBase64: Optional[str] = Field(None, description="Base64 CNIC back image")
     licenseImageBase64: Optional[str] = Field(None, description="Base64 license image")
-    isVerified: bool = Field(default=True, description="Email verification status")
+    isVerified: bool = Field(default=False, description="Admin-verified status (always computed server-side)")
     isActive: bool = Field(default=True, description="Account active status")
 
     class Config:

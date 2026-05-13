@@ -197,7 +197,7 @@ class ProviderBloc extends Bloc<ProviderEvent, ProviderState> {
             .timeout(const Duration(seconds: 10));
         final userData = profileData['user'] as Map<String, dynamic>?;
         final role = userData?['role'] as String? ?? 'seeker';
-        final isVerified = userData?['isVerified'] as bool? ?? true;
+        final isVerified = userData?['isVerified'] as bool? ?? false;
         if (role == 'provider' && !isVerified) {
           final rejectionReason = userData?['rejectionReason'] as String?;
           emit(ProviderPendingVerification(rejectionReason: rejectionReason));
