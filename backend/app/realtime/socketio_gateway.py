@@ -31,6 +31,24 @@ def _create_sio_manager() -> socketio.AsyncRedisManager | None:
     url = (settings.REDIS_URL or "").strip()
     if not url:
         return None
+
+    # Pre-flight: verify credentials with a quick synchronous ping before handing
+    # the URL to AsyncRedisManager.  Without this check, a bad URL causes the
+    # AsyncRedisManager background thread to loop indefinitely with AuthenticationError.
+    try:
+        import redis as _sync_redis
+        _r = _sync_redis.from_url(url, socket_connect_timeout=4, socket_timeout=4)
+        _r.ping()
+        _r.close()
+    except Exception as _exc:
+        logger.error(
+            "Redis pre-flight check failed (%s). "
+            "Socket.IO will use in-memory manager. "
+            "Fix REDIS_URL in Railway env vars and redeploy.",
+            _exc,
+        )
+        return None
+
     try:
         mgr = socketio.AsyncRedisManager(url)
         logger.warning("Socket.IO Redis manager ready (%s)", url.split("@")[-1])
