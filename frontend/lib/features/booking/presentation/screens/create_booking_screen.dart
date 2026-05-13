@@ -54,7 +54,7 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
   }
 
   Future<void> _selectPickupLocation() async {
-    final result = await Navigator.push(
+    final result = await Navigator.push<LocationPickerResult>(
       context,
       MaterialPageRoute(
         builder: (context) => const LocationPickerScreen(
@@ -66,15 +66,15 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
     if (result != null && mounted) {
       context.read<BookingBloc>().add(
             BookingPickupLocationSelected(
-              location: result['location'],
-              address: result['address'],
+              location: result.location,
+              address: result.address,
             ),
           );
     }
   }
 
   Future<void> _selectDropLocation() async {
-    final result = await Navigator.push(
+    final result = await Navigator.push<LocationPickerResult>(
       context,
       MaterialPageRoute(
         builder: (context) => const LocationPickerScreen(
@@ -86,8 +86,8 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
     if (result != null && mounted) {
       context.read<BookingBloc>().add(
             BookingDropLocationSelected(
-              location: result['location'],
-              address: result['address'],
+              location: result.location,
+              address: result.address,
             ),
           );
     }

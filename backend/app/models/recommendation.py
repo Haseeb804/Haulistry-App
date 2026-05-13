@@ -66,14 +66,11 @@ class Recommendation:
                ELSE 0.0
              END AS recencyScore
 
-        // Only surface services that have SOME relevance (at least one score > 0)
-        WHERE (interestScore + historyScore) > 0
-
         WITH svc, prov,
              round((interestScore + historyScore + qualityScore + recencyScore) * 100) / 100.0
                AS totalScore
 
-        ORDER BY totalScore DESC
+        ORDER BY totalScore DESC, svc.createdAt DESC
         LIMIT $limit
 
         // ── 4. Enrich with provider / vehicle context ─────────────────────────

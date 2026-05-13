@@ -245,6 +245,10 @@ def verify_provider(provider_id: str) -> bool:
         p.rejectionReason = null,
         p.verifiedAt = datetime(),
         p.updatedAt  = datetime()
+    WITH p
+    OPTIONAL MATCH (p)-[:OWNS]->(v:Vehicle)
+    SET v.isAvailable = true,
+        v.updatedAt  = datetime()
     RETURN p.id AS id
     """
     rows = run_query(q, {"id": provider_id}, write=True)

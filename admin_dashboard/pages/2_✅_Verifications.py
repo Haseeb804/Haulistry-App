@@ -33,12 +33,11 @@ def _show_doc(label: str, value: str | None) -> bool:
     v = value.strip()
     st.caption(label)
     if v.startswith("data:"):
-        st.image(v, use_container_width=True)
+        st.image(v, use_column_width=True)
     elif v.startswith(("http://", "https://")):
-        st.image(v, use_container_width=True)
+        st.image(v, use_column_width=True)
     else:
-        # Assume raw base64 (no prefix)
-        st.image(f"data:image/jpeg;base64,{v}", use_container_width=True)
+        st.image(f"data:image/jpeg;base64,{v}", use_column_width=True)
     return True
 
 

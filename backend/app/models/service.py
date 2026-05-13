@@ -216,10 +216,9 @@ class Service:
         query = """
         MATCH (p)-[:OFFERS]->(s:Service)<-[:PROVIDES]-(v:Vehicle)
         WHERE (p:Provider OR p:User OR p:Seeker)
-        AND s.isActive = true 
+        AND s.isActive = true
         AND p.isActive = true
         AND p.isVerified = true
-        AND v.isAvailable = true
         """
         
         params = {}

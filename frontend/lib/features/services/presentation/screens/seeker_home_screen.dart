@@ -154,17 +154,36 @@ class _SeekerHomeScreenState extends State<SeekerHomeScreen>
     if (!mounted) return;
     setState(() => _recommendationsLoading = true);
     try {
-      final response =
-          await ApiService.instance.getRecommendedServices(user.uid, limit: 6);
+      final response = await ApiService.instance
+          .getRecommendedServices(user.uid, limit: 6)
+          .timeout(const Duration(seconds: 8));
       final List<dynamic> items =
           response['recommendations'] as List<dynamic>? ?? [];
+
       if (!mounted) return;
-      setState(() {
-        _recommendations = items
-            .map((j) => ServiceEntity.fromJson(j as Map<String, dynamic>))
-            .toList();
-        _recommendationsLoading = false;
-      });
+
+      if (items.isNotEmpty) {
+        setState(() {
+          _recommendations = items
+              .map((j) => ServiceEntity.fromJson(j as Map<String, dynamic>))
+              .toList();
+          _recommendationsLoading = false;
+        });
+      } else {
+        // Fall back to top available services when no personalized results
+        final fallback = await ApiService.instance
+            .getAvailableServices()
+            .timeout(const Duration(seconds: 8));
+        final List<dynamic> fallbackItems =
+            (fallback['services'] as List<dynamic>? ?? []).take(6).toList();
+        if (!mounted) return;
+        setState(() {
+          _recommendations = fallbackItems
+              .map((j) => ServiceEntity.fromJson(j as Map<String, dynamic>))
+              .toList();
+          _recommendationsLoading = false;
+        });
+      }
     } catch (_) {
       if (mounted) setState(() => _recommendationsLoading = false);
     }
@@ -1041,7 +1060,7 @@ class _SeekerHomeScreenState extends State<SeekerHomeScreen>
                         child: Material(
                           color: Colors.transparent,
                           child: InkWell(
-                            onTap: () => _navigateToBooking(service), // direct booking
+                            onTap: () => _navigateToBooking(service),
                             borderRadius: BorderRadius.circular(10),
                             child: const Padding(
                               padding: EdgeInsets.symmetric(
@@ -1131,13 +1150,11 @@ class _SeekerHomeScreenState extends State<SeekerHomeScreen>
   }
 
   void _navigateToServiceDetail(ServiceEntity service) {
-    // Tap card body → service detail screen with full provider listing data
     context.push('/service/${service.category}', extra: service);
   }
 
   void _navigateToBooking(ServiceEntity service) {
-    // Tap "Book" button → go directly to booking form
-    context.push(AppRoutes.bookingCreate, extra: service);
+    context.push(AppRoutes.bookingRequest, extra: service);
   }
 
   Widget _buildFAB() {

@@ -263,7 +263,10 @@ class _LocationPickerScreenState extends State<LocationPickerScreen>
         '${_selectedLocation!.latitude.toStringAsFixed(5)}, '
             '${_selectedLocation!.longitude.toStringAsFixed(5)}';
     HapticFeedback.mediumImpact();
-    Navigator.pop(context, {'location': _selectedLocation, 'address': addr});
+    Navigator.pop(
+      context,
+      LocationPickerResult(location: _selectedLocation!, address: addr),
+    );
   }
 
   void _snack(String msg) {

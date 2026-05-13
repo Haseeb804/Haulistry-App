@@ -4,6 +4,7 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:go_router/go_router.dart';
 import 'package:latlong2/latlong.dart';
 import '../../../../core/constants/app_constants.dart';
+import '../../../../core/services/api_service.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/utils/image_helper.dart';
 import '../../../../core/widgets/modern_widgets.dart';
@@ -145,27 +146,34 @@ class ServiceDetailScreen extends StatelessWidget {
           ),
         ],
       ),
-      floatingActionButton: Container(
-        width: double.infinity,
-        margin: const EdgeInsets.symmetric(horizontal: 20),
-        child: GradientButton(
-          text: 'Book Now',
-          icon: Icons.calendar_today_rounded,
-          gradient: AppTheme.primaryGradient,
-          onPressed: () {
-            final authState = context.read<AuthBloc>().state;
-            if (authState is! AuthAuthenticated) {
-              context.push('/login');
-              return;
-            }
-            if (service != null) {
-              context.push(AppRoutes.bookingRequest, extra: service);
-            } else {
-              context.push('/booking/create', extra: {'serviceType': key});
-            }
-          },
-        ),
-      ),
+      floatingActionButton: service != null
+          ? Container(
+              width: double.infinity,
+              margin: const EdgeInsets.symmetric(horizontal: 20),
+              child: GradientButton(
+                text: 'Book Now',
+                icon: Icons.calendar_today_rounded,
+                gradient: AppTheme.primaryGradient,
+                onPressed: () {
+                  final authState = context.read<AuthBloc>().state;
+                  if (authState is! AuthAuthenticated) {
+                    context.push('/login');
+                    return;
+                  }
+                  context.push(AppRoutes.bookingRequest, extra: service);
+                },
+              ),
+            )
+          : Container(
+              width: double.infinity,
+              margin: const EdgeInsets.symmetric(horizontal: 20),
+              child: GradientButton(
+                text: 'Browse Available Providers',
+                icon: Icons.search_rounded,
+                gradient: AppTheme.secondaryGradient,
+                onPressed: () => context.go(AppRoutes.seekerHome),
+              ),
+            ),
       floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
     );
   }
@@ -1205,65 +1213,9 @@ class ServiceDetailScreen extends StatelessWidget {
   }
 
   Widget _buildSimilarServices(BuildContext context, String currentKey) {
-    return SizedBox(
-      height: 110,
-      child: ListView.builder(
-        scrollDirection: Axis.horizontal,
-        itemCount: AppConstants.serviceCategories.length,
-        itemBuilder: (context, index) {
-          final cat = AppConstants.serviceCategories[index];
-          if (cat.value == currentKey || cat.value == 'other') {
-            return const SizedBox();
-          }
-          return Padding(
-            padding: const EdgeInsets.only(right: 12),
-            child: GestureDetector(
-              onTap: () =>
-                  context.pushReplacement('/service/${cat.value}'),
-              child: Container(
-                width: 100,
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(colors: [
-                    AppTheme.primaryColor.withOpacity(0.12),
-                    AppTheme.secondaryColor.withOpacity(0.08),
-                  ]),
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Icon(_getServiceIcon(cat.value),
-                          size: 28, color: AppTheme.primaryColor),
-                    ),
-                    const SizedBox(height: 8),
-                    Padding(
-                      padding:
-                          const EdgeInsets.symmetric(horizontal: 4),
-                      child: Text(
-                        cat.label,
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                          color: AppTheme.primaryColor,
-                        ),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          );
-        },
-      ),
+    return _SimilarServicesSection(
+      currentServiceId: service?.id,
+      category: currentKey,
     );
   }
 
@@ -1463,6 +1415,277 @@ class ServiceDetailScreen extends StatelessWidget {
         return 'Professional service with verified providers. '
             'Book now for reliable and timely service delivery at transparent fixed prices.';
     }
+  }
+}
+
+// ── Similar Services Section ───────────────────────────────────────────────────
+
+class _SimilarServicesSection extends StatefulWidget {
+  final String? currentServiceId;
+  final String category;
+
+  const _SimilarServicesSection({
+    required this.currentServiceId,
+    required this.category,
+  });
+
+  @override
+  State<_SimilarServicesSection> createState() => _SimilarServicesSectionState();
+}
+
+class _SimilarServicesSectionState extends State<_SimilarServicesSection> {
+  List<ServiceEntity> _services = [];
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final resp = await ApiService.instance
+          .getAvailableServices(category: widget.category);
+      final raw = resp['services'] as List<dynamic>? ?? [];
+      if (!mounted) return;
+      final filtered = raw
+          .map((j) => ServiceEntity.fromJson(j as Map<String, dynamic>))
+          .where((s) => s.id != widget.currentServiceId)
+          .take(6)
+          .toList();
+      setState(() {
+        _services = filtered;
+        _loading = false;
+      });
+    } catch (_) {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  LinearGradient _gradientFor(String cat) {
+    final lc = cat.toLowerCase();
+    if (lc.contains('trolley') || lc.contains('sand') || lc.contains('brick')) {
+      return AppTheme.primaryGradient;
+    } else if (lc.contains('harvester') || lc.contains('tractor')) {
+      return AppTheme.secondaryGradient;
+    } else if (lc.contains('crane')) {
+      return AppTheme.accentGradient;
+    } else if (lc.contains('excavator')) {
+      return const LinearGradient(
+          colors: [Color(0xFFE17055), Color(0xFFD63031)]);
+    } else if (lc.contains('loader')) {
+      return const LinearGradient(
+          colors: [Color(0xFFFDAA4F), Color(0xFFFFB347)]);
+    } else if (lc.contains('mixer') || lc.contains('concrete')) {
+      return const LinearGradient(
+          colors: [Color(0xFF636e72), Color(0xFF2d3436)]);
+    } else if (lc.contains('dumper') || lc.contains('tanker')) {
+      return const LinearGradient(
+          colors: [Color(0xFF0984e3), Color(0xFF74b9ff)]);
+    }
+    return AppTheme.primaryGradient;
+  }
+
+  String _emojiFor(String cat) {
+    final lc = cat.toLowerCase();
+    if (lc.contains('trolley') || lc.contains('sand') || lc.contains('brick')) return '🚛';
+    if (lc.contains('harvester')) return '🌾';
+    if (lc.contains('tractor')) return '🚜';
+    if (lc.contains('crane')) return '🏗️';
+    if (lc.contains('excavator')) return '⛏️';
+    if (lc.contains('loader')) return '🚧';
+    if (lc.contains('mixer') || lc.contains('concrete')) return '🔄';
+    if (lc.contains('dumper')) return '🚚';
+    if (lc.contains('tanker')) return '💧';
+    return '🚛';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_loading) {
+      return SizedBox(
+        height: 175,
+        child: ListView.builder(
+          scrollDirection: Axis.horizontal,
+          itemCount: 3,
+          itemBuilder: (_, __) => Container(
+            width: 200,
+            margin: const EdgeInsets.only(right: 12),
+            decoration: BoxDecoration(
+              color: Colors.grey.shade200,
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: const Center(
+              child: CircularProgressIndicator(strokeWidth: 2),
+            ),
+          ),
+        ),
+      );
+    }
+
+    if (_services.isEmpty) {
+      return Container(
+        padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
+        decoration: BoxDecoration(
+          color: Colors.grey.shade50,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: Colors.grey.shade200),
+        ),
+        child: Row(
+          children: [
+            Icon(Icons.info_outline_rounded,
+                color: Colors.grey.shade400, size: 20),
+            const SizedBox(width: 12),
+            Text(
+              'Services not added yet',
+              style: TextStyle(
+                color: Colors.grey.shade500,
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return SizedBox(
+      height: 175,
+      child: ListView.builder(
+        scrollDirection: Axis.horizontal,
+        itemCount: _services.length,
+        itemBuilder: (ctx, index) {
+          final svc = _services[index];
+          final gradient = _gradientFor(svc.category);
+          final emoji = _emojiFor(svc.category);
+          return GestureDetector(
+            onTap: () =>
+                ctx.push('/service/${svc.category}', extra: svc),
+            child: Container(
+              width: 205,
+              margin: const EdgeInsets.only(right: 12),
+              decoration: BoxDecoration(
+                gradient: gradient,
+                borderRadius: BorderRadius.circular(16),
+                boxShadow: [
+                  BoxShadow(
+                    color: gradient.colors.first.withOpacity(0.28),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(14),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Top row: emoji + rating
+                    Row(
+                      children: [
+                        Text(emoji,
+                            style: const TextStyle(fontSize: 22)),
+                        const Spacer(),
+                        if (svc.providerRating != null)
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 6, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withOpacity(0.9),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(Icons.star_rounded,
+                                    size: 11, color: Colors.amber),
+                                const SizedBox(width: 2),
+                                Text(
+                                  svc.providerRating!.toStringAsFixed(1),
+                                  style: const TextStyle(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.bold),
+                                ),
+                              ],
+                            ),
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 7),
+                    // Service name
+                    Text(
+                      svc.name,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 13,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    // Provider name
+                    Text(
+                      svc.providerName ?? 'Provider',
+                      style: TextStyle(
+                        color: Colors.white.withOpacity(0.85),
+                        fontSize: 11,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const Spacer(),
+                    // Bottom row: price + Book button
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 7, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.2),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                            'Rs. ${svc.basePrice.toStringAsFixed(0)}+',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                        const Spacer(),
+                        GestureDetector(
+                          onTap: () => ctx.push(
+                              AppRoutes.bookingRequest,
+                              extra: svc),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 10, vertical: 5),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Text(
+                              'Book',
+                              style: TextStyle(
+                                color: gradient.colors.first,
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
   }
 }
 
