@@ -4,7 +4,12 @@ import '../entities/service_entity.dart';
 
 abstract class ServiceRepository {
   /// Get all active services from verified providers
-  Future<List<ServiceEntity>> getAvailableServices({String? category});
+  Future<List<ServiceEntity>> getAvailableServices({
+    String? category,
+    double? latitude,
+    double? longitude,
+    double radiusKm = 50.0,
+  });
   
   /// Search services by query
   Future<List<ServiceEntity>> searchServices(String query);

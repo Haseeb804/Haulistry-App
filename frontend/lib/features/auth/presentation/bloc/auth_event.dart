@@ -34,6 +34,8 @@ class AuthSignUpRequested extends AuthEvent {
   final String role;
   final Uint8List? profileImage;
   final List<String> interests;
+  final double? latitude;
+  final double? longitude;
 
   const AuthSignUpRequested({
     required this.email,
@@ -43,6 +45,8 @@ class AuthSignUpRequested extends AuthEvent {
     required this.role,
     this.profileImage,
     this.interests = const [],
+    this.latitude,
+    this.longitude,
   });
 
   @override
@@ -54,6 +58,8 @@ class AuthSignUpRequested extends AuthEvent {
         role,
         profileImage,
         interests,
+        latitude,
+        longitude,
       ];
 }
 
@@ -134,6 +140,8 @@ class AuthUpdateProfileRequested extends AuthEvent {
   final String cnic;
   final String drivingLicense;
   final String? profileImageUrl;
+  final double? latitude;
+  final double? longitude;
 
   const AuthUpdateProfileRequested({
     required this.name,
@@ -142,6 +150,8 @@ class AuthUpdateProfileRequested extends AuthEvent {
     required this.cnic,
     required this.drivingLicense,
     this.profileImageUrl,
+    this.latitude,
+    this.longitude,
   });
 
   @override
@@ -152,6 +162,8 @@ class AuthUpdateProfileRequested extends AuthEvent {
         cnic,
         drivingLicense,
         profileImageUrl,
+        latitude,
+        longitude,
       ];
 }
 

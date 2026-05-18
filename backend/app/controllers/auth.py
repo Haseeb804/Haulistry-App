@@ -268,6 +268,8 @@ async def signup_complete(
             'isVerified': role != 'provider',
             'isActive': True,
             'interests': payload.interests or [],
+            'latitude': payload.latitude,
+            'longitude': payload.longitude,
         })
 
         if not user_data:

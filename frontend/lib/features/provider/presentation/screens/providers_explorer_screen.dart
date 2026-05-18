@@ -484,7 +484,7 @@ class _ProvidersExplorerScreenState extends State<ProvidersExplorerScreen> {
               ),
             ),
             SizedBox(
-              height: 110,
+              height: 200,
               child: ListView.builder(
                 scrollDirection: Axis.horizontal,
                 padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
@@ -572,90 +572,470 @@ class _ProvidersExplorerScreenState extends State<ProvidersExplorerScreen> {
   Widget _buildServiceChip(Map<String, dynamic> service) {
     final sName = service['name'] as String? ?? 'Service';
     final category = service['category'] as String? ?? '';
+    final description = service['description'] as String?;
     final basePrice = (service['basePrice'] as num?)?.toDouble() ?? 0.0;
+    final pricePerKm = (service['pricePerKm'] as num?)?.toDouble() ?? 0.0;
+    final pricePerHour = (service['pricePerHour'] as num?)?.toDouble() ?? 0.0;
     final vehicleType = service['vehicleType'] as String?;
     final sRating = (service['serviceRating'] as num?)?.toDouble() ?? 0.0;
+    final sReviews = (service['serviceReviewCount'] as num?)?.toInt() ?? 0;
+    final minLoad = service['minLoad'];
+    final maxLoad = service['maxLoad'];
+    final loadUnit = service['loadUnit'] as String?;
+    final operatingHours = service['operatingHours'] as String?;
+    final rawFeatures = service['features'];
+    final features = (rawFeatures is List)
+        ? rawFeatures.whereType<String>().where((f) => f.isNotEmpty).toList()
+        : <String>[];
+    final availability = service['availability'] as String?;
 
-    return Container(
-      width: 150,
-      margin: const EdgeInsets.only(right: 8),
-      padding: const EdgeInsets.all(10),
-      decoration: BoxDecoration(
-        color: AppTheme.backgroundColor,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFE8ECF0)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(5),
-                decoration: BoxDecoration(
-                  color: AppTheme.primaryColor.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: const Icon(Icons.home_repair_service_rounded,
-                    color: AppTheme.primaryColor, size: 14),
-              ),
-              const SizedBox(width: 6),
-              Expanded(
-                child: Text(
-                  sName,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w600,
-                    fontSize: 12,
+    return GestureDetector(
+      onTap: () => _showServiceDetailSheet(service),
+      child: Container(
+        width: 180,
+        margin: const EdgeInsets.only(right: 10),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: AppTheme.backgroundColor,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: const Color(0xFFE8ECF0)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Name row with rating
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(5),
+                  decoration: BoxDecoration(
+                    color: AppTheme.primaryColor.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
                   ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+                  child: const Icon(Icons.home_repair_service_rounded,
+                      color: AppTheme.primaryColor, size: 13),
+                ),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    sName,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 12,
+                    ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 5),
+            // Vehicle / Category tag
+            if (vehicleType != null && vehicleType.isNotEmpty)
+              _serviceTag(Icons.local_shipping_rounded, vehicleType, AppTheme.infoColor)
+            else if (category.isNotEmpty)
+              _serviceTag(Icons.category_rounded, category, AppTheme.accentColor),
+            // Description
+            if (description != null && description.isNotEmpty) ...[
+              const SizedBox(height: 4),
+              Text(
+                description,
+                style: const TextStyle(fontSize: 10, color: AppTheme.textSecondary),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
+            const SizedBox(height: 6),
+            // Pricing row
+            if (basePrice > 0)
+              _pricingRow(Icons.payments_rounded, 'Base', 'Rs ${basePrice.toStringAsFixed(0)}'),
+            if (pricePerKm > 0)
+              _pricingRow(Icons.straighten_rounded, '/km', 'Rs ${pricePerKm.toStringAsFixed(0)}'),
+            if (pricePerHour > 0)
+              _pricingRow(Icons.access_time_rounded, '/hr', 'Rs ${pricePerHour.toStringAsFixed(0)}'),
+            if (basePrice == 0 && pricePerKm == 0 && pricePerHour == 0)
+              const Text(
+                'Negotiable',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 11,
+                  color: AppTheme.primaryColor,
+                ),
+              ),
+            // Load capacity
+            if (minLoad != null || maxLoad != null) ...[
+              const SizedBox(height: 4),
+              Row(
+                children: [
+                  const Icon(Icons.fitness_center_rounded, size: 11, color: AppTheme.textSecondary),
+                  const SizedBox(width: 3),
+                  Text(
+                    [
+                      if (minLoad != null) 'Min: $minLoad${loadUnit ?? ''}',
+                      if (maxLoad != null) 'Max: $maxLoad${loadUnit ?? ''}',
+                    ].join('  '),
+                    style: const TextStyle(fontSize: 10, color: AppTheme.textSecondary),
+                  ),
+                ],
+              ),
+            ],
+            // Operating hours / availability
+            if (operatingHours != null && operatingHours.isNotEmpty) ...[
+              const SizedBox(height: 3),
+              Row(
+                children: [
+                  const Icon(Icons.schedule_rounded, size: 11, color: AppTheme.textSecondary),
+                  const SizedBox(width: 3),
+                  Expanded(
+                    child: Text(
+                      operatingHours,
+                      style: const TextStyle(fontSize: 10, color: AppTheme.textSecondary),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
+            ] else if (availability != null && availability.isNotEmpty) ...[
+              const SizedBox(height: 3),
+              Row(
+                children: [
+                  const Icon(Icons.event_available_rounded, size: 11, color: AppTheme.textSecondary),
+                  const SizedBox(width: 3),
+                  Expanded(
+                    child: Text(
+                      availability,
+                      style: const TextStyle(fontSize: 10, color: AppTheme.textSecondary),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+            // Features
+            if (features.isNotEmpty) ...[
+              const SizedBox(height: 5),
+              Wrap(
+                spacing: 4,
+                runSpacing: 3,
+                children: features.take(3).map((f) => Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: AppTheme.successColor.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Text(
+                    f,
+                    style: const TextStyle(
+                      fontSize: 9,
+                      color: AppTheme.successColor,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                )).toList(),
+              ),
+            ],
+            // Rating footer
+            if (sRating > 0) ...[
+              const SizedBox(height: 6),
+              Row(
+                children: [
+                  const Icon(Icons.star_rounded, color: Color(0xFFF9CA24), size: 12),
+                  const SizedBox(width: 2),
+                  Text(
+                    '${sRating.toStringAsFixed(1)} ($sReviews)',
+                    style: const TextStyle(fontSize: 10, color: AppTheme.textSecondary),
+                  ),
+                ],
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _serviceTag(IconData icon, String text, Color color) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 10, color: color),
+        const SizedBox(width: 3),
+        Flexible(
+          child: Text(
+            text,
+            style: TextStyle(fontSize: 10, color: color, fontWeight: FontWeight.w500),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _pricingRow(IconData icon, String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 2),
+      child: Row(
+        children: [
+          Icon(icon, size: 10, color: AppTheme.primaryColor),
+          const SizedBox(width: 3),
+          Text(
+            '$label: ',
+            style: const TextStyle(fontSize: 10, color: AppTheme.textSecondary),
+          ),
+          Text(
+            value,
+            style: const TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.bold,
+              color: AppTheme.primaryColor,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showServiceDetailSheet(Map<String, dynamic> service) {
+    final sName = service['name'] as String? ?? 'Service';
+    final category = service['category'] as String? ?? '';
+    final description = service['description'] as String?;
+    final basePrice = (service['basePrice'] as num?)?.toDouble() ?? 0.0;
+    final pricePerKm = (service['pricePerKm'] as num?)?.toDouble() ?? 0.0;
+    final pricePerHour = (service['pricePerHour'] as num?)?.toDouble() ?? 0.0;
+    final vehicleType = service['vehicleType'] as String?;
+    final vehicleNumber = service['vehicleNumber'] as String?;
+    final sRating = (service['serviceRating'] as num?)?.toDouble() ?? 0.0;
+    final sReviews = (service['serviceReviewCount'] as num?)?.toInt() ?? 0;
+    final minLoad = service['minLoad'];
+    final maxLoad = service['maxLoad'];
+    final loadUnit = service['loadUnit'] as String?;
+    final operatingHours = service['operatingHours'] as String?;
+    final rawFeatures = service['features'];
+    final features = (rawFeatures is List)
+        ? rawFeatures.whereType<String>().where((f) => f.isNotEmpty).toList()
+        : <String>[];
+    final availability = service['availability'] as String?;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => DraggableScrollableSheet(
+        initialChildSize: 0.55,
+        maxChildSize: 0.9,
+        minChildSize: 0.4,
+        builder: (_, scrollCtrl) => Container(
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+          ),
+          child: Column(
+            children: [
+              // Handle
+              Container(
+                margin: const EdgeInsets.only(top: 12),
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade300,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              Expanded(
+                child: ListView(
+                  controller: scrollCtrl,
+                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+                  children: [
+                    // Header
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            color: AppTheme.primaryColor.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: const Icon(Icons.home_repair_service_rounded,
+                              color: AppTheme.primaryColor, size: 24),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                sName,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 18,
+                                ),
+                              ),
+                              if (vehicleType != null && vehicleType.isNotEmpty)
+                                Text(vehicleType,
+                                    style: const TextStyle(
+                                        color: AppTheme.infoColor, fontSize: 13))
+                              else if (category.isNotEmpty)
+                                Text(category,
+                                    style: const TextStyle(
+                                        color: AppTheme.accentColor, fontSize: 13)),
+                            ],
+                          ),
+                        ),
+                        if (sRating > 0)
+                          Column(
+                            children: [
+                              Row(
+                                children: [
+                                  const Icon(Icons.star_rounded,
+                                      color: Color(0xFFF9CA24), size: 18),
+                                  const SizedBox(width: 2),
+                                  Text(
+                                    sRating.toStringAsFixed(1),
+                                    style: const TextStyle(
+                                        fontWeight: FontWeight.bold, fontSize: 16),
+                                  ),
+                                ],
+                              ),
+                              Text(
+                                '$sReviews reviews',
+                                style: const TextStyle(
+                                    fontSize: 11, color: AppTheme.textSecondary),
+                              ),
+                            ],
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    // Description
+                    if (description != null && description.isNotEmpty) ...[
+                      _sheetSectionTitle('Description'),
+                      Text(
+                        description,
+                        style: const TextStyle(
+                            color: AppTheme.textSecondary, fontSize: 13, height: 1.5),
+                      ),
+                      const SizedBox(height: 14),
+                    ],
+                    // Pricing
+                    _sheetSectionTitle('Pricing'),
+                    _sheetDetailRow(Icons.payments_rounded, 'Base Price',
+                        basePrice > 0 ? 'Rs ${basePrice.toStringAsFixed(0)}' : 'Negotiable'),
+                    if (pricePerKm > 0)
+                      _sheetDetailRow(Icons.straighten_rounded, 'Per Km',
+                          'Rs ${pricePerKm.toStringAsFixed(0)}'),
+                    if (pricePerHour > 0)
+                      _sheetDetailRow(Icons.access_time_rounded, 'Per Hour',
+                          'Rs ${pricePerHour.toStringAsFixed(0)}'),
+                    const SizedBox(height: 14),
+                    // Vehicle
+                    if (vehicleType != null || vehicleNumber != null) ...[
+                      _sheetSectionTitle('Vehicle'),
+                      if (vehicleType != null && vehicleType.isNotEmpty)
+                        _sheetDetailRow(Icons.local_shipping_rounded, 'Type', vehicleType),
+                      if (vehicleNumber != null && vehicleNumber.isNotEmpty)
+                        _sheetDetailRow(Icons.pin_rounded, 'Number', vehicleNumber),
+                      const SizedBox(height: 14),
+                    ],
+                    // Capacity
+                    if (minLoad != null || maxLoad != null) ...[
+                      _sheetSectionTitle('Load Capacity'),
+                      if (minLoad != null)
+                        _sheetDetailRow(Icons.arrow_downward_rounded, 'Minimum',
+                            '$minLoad ${loadUnit ?? ''}'),
+                      if (maxLoad != null)
+                        _sheetDetailRow(Icons.arrow_upward_rounded, 'Maximum',
+                            '$maxLoad ${loadUnit ?? ''}'),
+                      const SizedBox(height: 14),
+                    ],
+                    // Schedule
+                    if (operatingHours != null && operatingHours.isNotEmpty) ...[
+                      _sheetSectionTitle('Operating Hours'),
+                      _sheetDetailRow(Icons.schedule_rounded, 'Hours', operatingHours),
+                      const SizedBox(height: 14),
+                    ] else if (availability != null && availability.isNotEmpty) ...[
+                      _sheetSectionTitle('Availability'),
+                      _sheetDetailRow(Icons.event_available_rounded, 'Schedule', availability),
+                      const SizedBox(height: 14),
+                    ],
+                    // Features
+                    if (features.isNotEmpty) ...[
+                      _sheetSectionTitle('Features & Offerings'),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 6,
+                        children: features.map((f) => Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 10, vertical: 5),
+                          decoration: BoxDecoration(
+                            color: AppTheme.successColor.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(
+                                color: AppTheme.successColor.withOpacity(0.3)),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(Icons.check_circle_rounded,
+                                  size: 13, color: AppTheme.successColor),
+                              const SizedBox(width: 5),
+                              Text(
+                                f,
+                                style: const TextStyle(
+                                    fontSize: 12,
+                                    color: AppTheme.successColor,
+                                    fontWeight: FontWeight.w500),
+                              ),
+                            ],
+                          ),
+                        )).toList(),
+                      ),
+                    ],
+                  ],
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 5),
-          if (vehicleType != null && vehicleType.isNotEmpty)
-            Text(
-              vehicleType,
-              style: const TextStyle(
-                  fontSize: 11, color: AppTheme.textSecondary),
-              maxLines: 1,
+        ),
+      ),
+    );
+  }
+
+  Widget _sheetSectionTitle(String title) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Text(
+        title,
+        style: const TextStyle(
+          fontWeight: FontWeight.bold,
+          fontSize: 14,
+          color: AppTheme.textPrimary,
+        ),
+      ),
+    );
+  }
+
+  Widget _sheetDetailRow(IconData icon, String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        children: [
+          Icon(icon, size: 16, color: AppTheme.primaryColor),
+          const SizedBox(width: 8),
+          Text(
+            '$label: ',
+            style: const TextStyle(fontSize: 13, color: AppTheme.textSecondary),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
               overflow: TextOverflow.ellipsis,
             ),
-          if (category.isNotEmpty && vehicleType == null)
-            Text(
-              category,
-              style: const TextStyle(
-                  fontSize: 11, color: AppTheme.textSecondary),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-          const SizedBox(height: 5),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                basePrice > 0 ? 'Rs ${basePrice.toStringAsFixed(0)}' : 'Negotiable',
-                style: const TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 12,
-                  color: AppTheme.primaryColor,
-                ),
-              ),
-              if (sRating > 0)
-                Row(
-                  children: [
-                    const Icon(Icons.star_rounded,
-                        color: Color(0xFFF9CA24), size: 11),
-                    Text(
-                      sRating.toStringAsFixed(1),
-                      style: const TextStyle(
-                          fontSize: 10, color: AppTheme.textSecondary),
-                    ),
-                  ],
-                ),
-            ],
           ),
         ],
       ),

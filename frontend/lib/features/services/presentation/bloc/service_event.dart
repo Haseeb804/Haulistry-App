@@ -8,7 +8,18 @@ abstract class ServiceEvent extends Equatable {
 }
 
 class ServiceLoadRequested extends ServiceEvent {
-  const ServiceLoadRequested();
+  final double? latitude;
+  final double? longitude;
+  final double radiusKm;
+
+  const ServiceLoadRequested({
+    this.latitude,
+    this.longitude,
+    this.radiusKm = 50.0,
+  });
+
+  @override
+  List<Object?> get props => [latitude, longitude, radiusKm];
 }
 
 class ServiceSearchRequested extends ServiceEvent {
@@ -22,11 +33,19 @@ class ServiceSearchRequested extends ServiceEvent {
 
 class ServiceFilterByCategory extends ServiceEvent {
   final String category;
+  final double? latitude;
+  final double? longitude;
+  final double radiusKm;
 
-  const ServiceFilterByCategory({required this.category});
+  const ServiceFilterByCategory({
+    required this.category,
+    this.latitude,
+    this.longitude,
+    this.radiusKm = 50.0,
+  });
 
   @override
-  List<Object?> get props => [category];
+  List<Object?> get props => [category, latitude, longitude, radiusKm];
 }
 
 class ServiceLoadRecommendationsRequested extends ServiceEvent {

@@ -211,6 +211,8 @@ class AuthRepositoryImpl implements AuthRepository {
     required String role,
     Uint8List? profileImage,
     List<String> interests = const [],
+    double? latitude,
+    double? longitude,
   }) async {
     try {
       // Create user in Firebase Auth
@@ -242,6 +244,8 @@ class AuthRepositoryImpl implements AuthRepository {
           'isActive': true,
           if (profileImageBase64 != null) 'profileImageUrl': profileImageBase64,
           if (interests.isNotEmpty) 'interests': interests,
+          if (latitude != null) 'latitude': latitude,
+          if (longitude != null) 'longitude': longitude,
         }),
       );
 
@@ -331,6 +335,8 @@ class AuthRepositoryImpl implements AuthRepository {
         role: role,
         profileImage: pendingSignupData['profileImage'] as Uint8List?,
         interests: interests,
+        latitude: (pendingSignupData['latitude'] as num?)?.toDouble(),
+        longitude: (pendingSignupData['longitude'] as num?)?.toDouble(),
       );
     } catch (e) {
       throw _toUserFacingException(e);

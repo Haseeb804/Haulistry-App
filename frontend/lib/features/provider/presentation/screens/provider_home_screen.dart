@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -30,6 +31,10 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen> {
   late BookingRepositoryImpl _bookingRepository;
   late FeedbackRepositoryImpl _feedbackRepository;
   bool _feedbackGateChecked = false;
+  Timer? _refreshTimer;
+
+  // Auto-refresh interval: 60 seconds keeps data fresh without hammering the server.
+  static const _refreshInterval = Duration(seconds: 60);
 
   @override
   void initState() {
@@ -44,8 +49,19 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen> {
     );
 
     context.read<ProviderBloc>().add(const ProviderLoadDashboardRequested());
+    _startRefreshTimer();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _enforceMandatoryProviderFeedback();
+    });
+  }
+
+  void _startRefreshTimer() {
+    _refreshTimer?.cancel();
+    _refreshTimer = Timer.periodic(_refreshInterval, (_) {
+      if (mounted) {
+        // Silent background refresh — only fires if bloc already has loaded data.
+        context.read<ProviderBloc>().add(const ProviderLoadDashboardRequested());
+      }
     });
   }
 
@@ -86,6 +102,7 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen> {
 
   @override
   void dispose() {
+    _refreshTimer?.cancel();
     super.dispose();
   }
 
@@ -158,18 +175,27 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen> {
             );
           }
 
-          // These states need dashboard to be reloaded
+          // These states need a full dashboard reload.
+          // Vehicle/service CRUD success states are intentionally excluded here
+          // because the BLoC handler already emits ProviderLoaded (optimistic)
+          // right after the success state — no full reload or spinner needed.
           if (state is ProviderInitial ||
               state is ProviderBookingActionSuccess ||
-              state is ProviderVehicleActionSuccess ||
               state is ProviderWithdrawalSuccess ||
               state is ProviderOfferCreatedSuccess ||
-              state is ProviderOfferUpdatedSuccess ||
-              state is ProviderServiceActionSuccess) {
-            // Trigger loading for states that require dashboard refresh
+              state is ProviderOfferUpdatedSuccess) {
             WidgetsBinding.instance.addPostFrameCallback((_) {
               context.read<ProviderBloc>().add(const ProviderLoadDashboardRequested());
             });
+            return const Center(
+              child: CircularProgressIndicator(color: AppTheme.primaryColor),
+            );
+          }
+
+          // Vehicle/service action success — transition is optimistic, keep showing
+          // the last dashboard. The BLoC will emit ProviderLoaded right after.
+          if (state is ProviderVehicleActionSuccess ||
+              state is ProviderServiceActionSuccess) {
             return const Center(
               child: CircularProgressIndicator(color: AppTheme.primaryColor),
             );
@@ -306,13 +332,7 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen> {
                   // Recent Completed
                   if (state.completedBookings.isNotEmpty) ...[
                     SliverToBoxAdapter(
-                      child: _buildSectionHeader(
-                        context,
-                        'Recent Completed',
-                        state.completedBookings.length,
-                        Icons.check_circle_rounded,
-                        AppTheme.successColor,
-                      ),
+                      child: _buildCompletedSectionHeader(context, state.completedBookings.length),
                     ),
                     SliverList(
                       delegate: SliverChildBuilderDelegate(
@@ -836,6 +856,81 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen> {
     );
   }
 
+  Widget _buildCompletedSectionHeader(BuildContext context, int count) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 24, 20, 12),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: AppTheme.successColor.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: const Icon(Icons.check_circle_rounded,
+                color: AppTheme.successColor, size: 20),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              'Recent Completed',
+              style: Theme.of(context)
+                  .textTheme
+                  .titleMedium
+                  ?.copyWith(fontWeight: FontWeight.bold),
+            ),
+          ),
+          // Count badge
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            decoration: BoxDecoration(
+              color: AppTheme.successColor.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Text(
+              count.toString(),
+              style: const TextStyle(
+                color: AppTheme.successColor,
+                fontWeight: FontWeight.bold,
+                fontSize: 13,
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          // View All button
+          GestureDetector(
+            onTap: () => context.push(AppRoutes.providerHistory),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(
+                color: AppTheme.primaryColor.withOpacity(0.08),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(
+                    color: AppTheme.primaryColor.withOpacity(0.3), width: 1),
+              ),
+              child: const Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    'View All',
+                    style: TextStyle(
+                      color: AppTheme.primaryColor,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  SizedBox(width: 3),
+                  Icon(Icons.arrow_forward_ios_rounded,
+                      size: 10, color: AppTheme.primaryColor),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildPendingBookingCard(BuildContext context, booking) {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
@@ -1206,62 +1301,97 @@ class _ProviderHomeScreenState extends State<ProviderHomeScreen> {
   }
 
   Widget _buildCompletedBookingCard(BuildContext context, booking) {
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: AppTheme.softShadow,
-      ),
-      child: ListTile(
-        contentPadding: const EdgeInsets.all(16),
-        leading: Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            gradient: AppTheme.secondaryGradient,
-            borderRadius: BorderRadius.circular(14),
-          ),
-          child: const Icon(
-            Icons.check_circle_rounded,
-            color: Colors.white,
-            size: 24,
-          ),
+    return GestureDetector(
+      onTap: () => context.push(AppRoutes.providerHistory),
+      child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: AppTheme.softShadow,
         ),
-        title: Text(
-          booking.serviceType,
-          style: const TextStyle(fontWeight: FontWeight.bold),
-        ),
-        subtitle: Text(
-          DateFormat('MMM dd, yyyy').format(booking.scheduledDateTime),
-          style: const TextStyle(color: AppTheme.textSecondary),
-        ),
-        trailing: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          crossAxisAlignment: CrossAxisAlignment.end,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              'Rs. ${booking.estimatedPrice.toStringAsFixed(0)}',
-              style: const TextStyle(
-                fontWeight: FontWeight.bold,
-                fontSize: 16,
-                color: AppTheme.primaryColor,
+            ListTile(
+              contentPadding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+              leading: Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  gradient: AppTheme.secondaryGradient,
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: const Icon(
+                  Icons.check_circle_rounded,
+                  color: Colors.white,
+                  size: 24,
+                ),
+              ),
+              title: Text(
+                booking.serviceType,
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              ),
+              subtitle: Text(
+                DateFormat('MMM dd, yyyy').format(booking.scheduledDateTime),
+                style: const TextStyle(color: AppTheme.textSecondary, fontSize: 12),
+              ),
+              trailing: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    'Rs. ${booking.estimatedPrice.toStringAsFixed(0)}',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 15,
+                      color: AppTheme.primaryColor,
+                    ),
+                  ),
+                  if (booking.rating != null)
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.star_rounded, size: 14, color: Colors.amber),
+                        const SizedBox(width: 2),
+                        Text(
+                          booking.rating!.toStringAsFixed(1),
+                          style: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                ],
               ),
             ),
-            if (booking.rating != null)
-              Row(
-                mainAxisSize: MainAxisSize.min,
+            // Tap hint footer
+            Container(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+              child: Row(
                 children: [
-                  const Icon(Icons.star_rounded, size: 16, color: Colors.amber),
-                  const SizedBox(width: 2),
+                  Icon(
+                    Icons.touch_app_rounded,
+                    size: 13,
+                    color: AppTheme.primaryColor.withOpacity(0.6),
+                  ),
+                  const SizedBox(width: 4),
                   Text(
-                    booking.rating!.toStringAsFixed(1),
-                    style: const TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
+                    'Tap to view full booking history',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: AppTheme.primaryColor.withOpacity(0.7),
                     ),
+                  ),
+                  const Spacer(),
+                  const Icon(
+                    Icons.arrow_forward_ios_rounded,
+                    size: 11,
+                    color: AppTheme.textMuted,
                   ),
                 ],
               ),
+            ),
           ],
         ),
       ),

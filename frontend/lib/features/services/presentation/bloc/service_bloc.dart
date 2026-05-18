@@ -18,10 +18,13 @@ class ServiceBloc extends Bloc<ServiceEvent, ServiceState> {
     Emitter<ServiceState> emit,
   ) async {
     emit(const ServiceLoading());
-    // Two attempts: immediate + one retry after 2 s, before emitting error.
     for (int attempt = 0; attempt < 2; attempt++) {
       try {
-        final services = await repository.getAvailableServices();
+        final services = await repository.getAvailableServices(
+          latitude: event.latitude,
+          longitude: event.longitude,
+          radiusKm: event.radiusKm,
+        );
         emit(ServiceLoaded(services: services));
         return;
       } catch (_) {
@@ -54,16 +57,19 @@ class ServiceBloc extends Bloc<ServiceEvent, ServiceState> {
   ) async {
     emit(const ServiceLoading());
     try {
-      final category =
-          event.category == 'All' ? null : event.category;
-      final services =
-          await repository.getAvailableServices(category: category);
+      final category = event.category == 'All' ? null : event.category;
+      final services = await repository.getAvailableServices(
+        category: category,
+        latitude: event.latitude,
+        longitude: event.longitude,
+        radiusKm: event.radiusKm,
+      );
       emit(ServiceLoaded(
         services: services,
         selectedCategory: event.category,
       ));
     } catch (e) {
-      emit(ServiceError(message: 'Could not filter services. Please try again.'));
+      emit(const ServiceError(message: 'Could not filter services. Please try again.'));
     }
   }
 

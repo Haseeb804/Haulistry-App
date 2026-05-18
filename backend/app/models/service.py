@@ -5,7 +5,17 @@ Clean, minimal model for service management
 
 from typing import Optional, Dict, Any, List
 from datetime import datetime
+from math import radians, sin, cos, sqrt, atan2
 from ..database import neo4j_driver
+
+
+def _haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    """Return great-circle distance in km between two lat/lng points."""
+    R = 6371.0
+    dlat = radians(lat2 - lat1)
+    dlon = radians(lon2 - lon1)
+    a = sin(dlat / 2) ** 2 + cos(radians(lat1)) * cos(radians(lat2)) * sin(dlon / 2) ** 2
+    return R * 2 * atan2(sqrt(a), sqrt(1 - a))
 
 
 class Service:
@@ -213,12 +223,12 @@ class Service:
         radius_km: float = 50.0
     ) -> List[Dict[str, Any]]:
         """Get all available services from verified providers"""
-        # Use OPTIONAL MATCH for vehicle so services without a PROVIDES
-        # relationship are still returned (e.g. if vehicle was deleted later).
-        # Provider label + coalesce guards against null isVerified.
+        # Providers can be stored under :Provider OR :User label (role='provider').
+        # Matching only :Provider misses all :User-label providers → empty results.
         query = """
-        MATCH (p:Provider)-[:OFFERS]->(s:Service)
-        WHERE s.isActive = true
+        MATCH (p)-[:OFFERS]->(s:Service)
+        WHERE (p:Provider OR p:User)
+          AND s.isActive = true
           AND coalesce(p.isActive, true) = true
           AND coalesce(p.isVerified, false) = true
         OPTIONAL MATCH (v:Vehicle)-[:PROVIDES]->(s)
@@ -227,7 +237,14 @@ class Service:
         params = {}
 
         if category:
-            query += " WITH p, s, v WHERE (toLower(s.category) CONTAINS toLower($category) OR toLower(coalesce(v.vehicleType,'')) CONTAINS toLower($category))"
+            # Normalise both sides: replace underscores with spaces so that
+            # "sand_trolley" matches a service whose category is "Sand Trolley".
+            query += """
+        WITH p, s, v
+        WHERE toLower(replace(s.category, '_', ' ')) CONTAINS toLower(replace($category, '_', ' '))
+           OR toLower(replace(coalesce(s.name, ''), '_', ' ')) CONTAINS toLower(replace($category, '_', ' '))
+           OR toLower(replace(coalesce(v.vehicleType, ''), '_', ' ')) CONTAINS toLower(replace($category, '_', ' '))
+        """
             params['category'] = category
 
         query += """
@@ -260,7 +277,7 @@ class Service:
                     service = Service._serialize_neo4j_data(record['s'])
                     service_rating = record['providerRating']
                     review_count = record['totalReviews']
-                    
+
                     service['providerName'] = record['providerName']
                     service['providerRating'] = service_rating
                     service['totalReviews'] = review_count
@@ -274,7 +291,30 @@ class Service:
                     service['serviceBaseLatitude'] = record['serviceBaseLatitude']
                     service['serviceBaseLongitude'] = record['serviceBaseLongitude']
                     service['serviceBaseAddress'] = record['serviceBaseAddress']
+                    service['distanceKm'] = None
                     services.append(service)
+
+        # Distance-based filtering and sorting (Python-side; Neo4j CE has no spatial)
+        if latitude is not None and longitude is not None:
+            for svc in services:
+                svc_lat = svc.get('serviceBaseLatitude')
+                svc_lon = svc.get('serviceBaseLongitude')
+                if svc_lat is not None and svc_lon is not None:
+                    try:
+                        svc['distanceKm'] = round(
+                            _haversine_km(latitude, longitude, float(svc_lat), float(svc_lon)), 1
+                        )
+                    except Exception:
+                        svc['distanceKm'] = None
+
+            # Filter to radius (keep services without location — they show as "unknown distance")
+            services = [
+                s for s in services
+                if s.get('distanceKm') is None or s['distanceKm'] <= radius_km
+            ]
+            # Sort: known distance ascending, unknown distance at end
+            services.sort(key=lambda s: (s.get('distanceKm') is None, s.get('distanceKm') or 0))
+
         return services
     
     @staticmethod

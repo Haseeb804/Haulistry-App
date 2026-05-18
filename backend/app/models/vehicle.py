@@ -124,6 +124,8 @@ class Vehicle:
         vehicle_data['vehicleLicenseImageBase64Param'] = vehicle_data.get('vehicleLicenseImageBase64') or None
         vehicle_data['capacityParam'] = vehicle_data.get('capacity') or 0.0
         vehicle_data['extraFieldsParam'] = vehicle_data.get('extraFields') or None
+        vehicle_data['isVerified'] = bool(vehicle_data.get('isVerified', False))
+        vehicle_data['addedAfterVerification'] = bool(vehicle_data.get('addedAfterVerification', False))
 
         query = """
         MATCH (p)
@@ -140,6 +142,8 @@ class Vehicle:
             capacity: $capacityParam,
             extraFields: $extraFieldsParam,
             isAvailable: $isAvailable,
+            isVerified: $isVerified,
+            addedAfterVerification: $addedAfterVerification,
             createdAt: datetime(),
             updatedAt: datetime()
         })
@@ -150,7 +154,6 @@ class Vehicle:
         result = neo4j_driver.execute_write(query, vehicle_data)
         if result and result[0]['v']:
             return Vehicle._serialize_neo4j_data(result[0]['v'])
-        return None
         return None
     
     @staticmethod
@@ -203,6 +206,30 @@ class Vehicle:
             return Vehicle._serialize_neo4j_data(result[0]['v'])
         return None
     
+    @staticmethod
+    def get_all_for_admin() -> list:
+        """Return all vehicles with provider info — for admin monitoring panel."""
+        query = """
+        MATCH (v:Vehicle)
+        OPTIONAL MATCH (p)-[:OWNS]->(v)
+        WHERE p:Provider OR p:User OR p:Seeker
+        RETURN v,
+               p.id   AS providerId,
+               p.name AS providerName,
+               coalesce(p.isVerified, false) AS providerIsVerified
+        ORDER BY v.createdAt DESC
+        """
+        result = neo4j_driver.execute_read(query, {})
+        vehicles = []
+        if result:
+            for record in result:
+                if record['v']:
+                    v = Vehicle._serialize_neo4j_data(record['v'])
+                    v['providerName'] = record.get('providerName')
+                    v['providerIsVerified'] = record.get('providerIsVerified', False)
+                    vehicles.append(v)
+        return vehicles
+
     @staticmethod
     def delete(vehicle_id: str) -> bool:
         """Delete a vehicle from the database"""

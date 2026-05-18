@@ -12,9 +12,19 @@ from ..database import neo4j_driver
 router = APIRouter()
 
 
+@router.get("/admin/all")
+async def get_all_vehicles_admin():
+    """Admin endpoint — list all vehicles with provider info for monitoring."""
+    vehicles = Vehicle.get_all_for_admin()
+    return {"success": True, "vehicles": vehicles, "total": len(vehicles)}
+
+
 @router.post("", response_model=VehicleResponse, status_code=status.HTTP_201_CREATED)
 async def create_vehicle(vehicle: VehicleCreate):
-    """Create a new vehicle"""
+    """Create a new vehicle.
+    If the provider is already verified, the new vehicle is auto-verified and
+    flagged as addedAfterVerification so the admin can review it.
+    """
     try:
         provider = User.get_by_id(vehicle.providerId)
         if not provider:
@@ -23,20 +33,27 @@ async def create_vehicle(vehicle: VehicleCreate):
                 detail="Provider not found."
             )
 
-        vehicle_data = Vehicle.create(vehicle.dict())
-        
+        vehicle_dict = vehicle.dict()
+
+        # Auto-verify when provider is already verified
+        provider_verified = bool(provider.get('isVerified', False))
+        vehicle_dict['isVerified'] = provider_verified
+        vehicle_dict['addedAfterVerification'] = provider_verified
+
+        vehicle_data = Vehicle.create(vehicle_dict)
+
         if not vehicle_data:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Failed to create vehicle"
             )
-        
+
         return VehicleResponse(
             success=True,
-            message="Vehicle created successfully",
+            message="Vehicle added and automatically verified." if provider_verified else "Vehicle created successfully",
             vehicle=vehicle_data
         )
-        
+
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

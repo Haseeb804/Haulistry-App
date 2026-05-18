@@ -227,6 +227,56 @@ class Feedback:
         return exists
     
     @staticmethod
+    def delete_feedback(feedback_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Delete a feedback node and recalculate the target user's rating.
+        Returns the deleted feedback dict on success, None if not found.
+        """
+        query = """
+        MATCH (f:Feedback {id: $feedbackId})
+
+        // Determine who the feedback is about
+        OPTIONAL MATCH (f)-[:ABOUT]->(target)
+
+        WITH f, target, f.reviewerType AS reviewerType
+
+        // Detach and delete the feedback
+        DETACH DELETE f
+
+        // Recalculate the target's rating from remaining feedbacks
+        WITH target, reviewerType
+        WHERE target IS NOT NULL
+        OPTIONAL MATCH (target)<-[:ABOUT]-(remaining:Feedback)
+        WITH target, reviewerType,
+             CASE WHEN count(remaining) > 0 THEN avg(remaining.rating) ELSE 0.0 END AS newAvgRating,
+             count(remaining) AS newTotalReviews
+        SET target.rating = newAvgRating,
+            target.totalReviews = newTotalReviews
+
+        RETURN newAvgRating, newTotalReviews, target.id AS targetId
+        """
+        result = neo4j_driver.execute_write(query, {"feedbackId": feedback_id})
+        if result and len(result) > 0:
+            return {
+                "targetId": result[0].get("targetId"),
+                "newRating": result[0].get("newAvgRating", 0.0),
+                "newTotalReviews": result[0].get("newTotalReviews", 0),
+            }
+        return None
+
+    @staticmethod
+    def get_feedback_by_id(feedback_id: str) -> Optional[Dict[str, Any]]:
+        """Get a single feedback node by ID."""
+        query = """
+        MATCH (f:Feedback {id: $feedbackId})
+        RETURN f
+        """
+        result = neo4j_driver.execute_read(query, {"feedbackId": feedback_id})
+        if result and result[0].get("f"):
+            return Feedback._serialize_neo4j_data(result[0]["f"])
+        return None
+
+    @staticmethod
     def _serialize_neo4j_data(data: Dict[str, Any]) -> Dict[str, Any]:
         """Convert Neo4j data types to Python types"""
         from neo4j.time import DateTime as Neo4jDateTime

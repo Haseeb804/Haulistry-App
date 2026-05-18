@@ -145,6 +145,8 @@ class User:
             u.isVerified = $isVerified,
             u.isActive = $isActive,
             u.interests = $interests,
+            u.latitude = $latitude,
+            u.longitude = $longitude,
             u.rating = 0.0,
             u.completedBookings = 0,
             u.createdAt = datetime(),
@@ -165,6 +167,8 @@ class User:
             u.isVerified = $isVerified,
             u.isActive = $isActive,
             u.interests = COALESCE($interests, u.interests),
+            u.latitude = COALESCE($latitude, u.latitude),
+            u.longitude = COALESCE($longitude, u.longitude),
             u.updatedAt = datetime()
         RETURN u
         """
@@ -180,6 +184,8 @@ class User:
         user_data.setdefault('licenseImageUrl', None)
         user_data.setdefault('vehicleImageUrl', None)
         user_data.setdefault('interests', [])
+        user_data.setdefault('latitude', None)
+        user_data.setdefault('longitude', None)
         
         result = neo4j_driver.execute_write(query, user_data)
         

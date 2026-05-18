@@ -29,6 +29,12 @@ class _VehicleManagementScreenState extends State<VehicleManagementScreen> {
   @override
   void initState() {
     super.initState();
+    // Seed cache immediately — ensures data is shown on first frame if already loaded.
+    final current = context.read<ProviderBloc>().state;
+    if (current is ProviderLoaded) {
+      _lastLoaded = current;
+    }
+    // Always refresh in background; if _lastLoaded is non-null, no spinner is shown.
     context.read<ProviderBloc>().add(const ProviderLoadVehiclesRequested());
   }
 
@@ -400,12 +406,42 @@ class _VehicleManagementScreenState extends State<VehicleManagementScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        _vehicleTypeLabel(vehicle.vehicleType),
-                        style: const TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              _vehicleTypeLabel(vehicle.vehicleType),
+                              style: const TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                          if (vehicle.isVerified)
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                              decoration: BoxDecoration(
+                                color: AppTheme.successColor.withOpacity(0.12),
+                                borderRadius: BorderRadius.circular(20),
+                                border: Border.all(color: AppTheme.successColor.withOpacity(0.4)),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(Icons.verified_rounded, size: 12, color: AppTheme.successColor),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    'Verified',
+                                    style: TextStyle(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w700,
+                                      color: AppTheme.successColor,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                        ],
                       ),
                       const SizedBox(height: 4),
                       Container(
@@ -461,6 +497,35 @@ class _VehicleManagementScreenState extends State<VehicleManagementScreen> {
             padding: const EdgeInsets.all(16),
             child: Column(
               children: [
+                // Auto-verified info banner
+                if (vehicle.addedAfterVerification) ...[
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    margin: const EdgeInsets.only(bottom: 12),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF0984E3).withOpacity(0.08),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: const Color(0xFF0984E3).withOpacity(0.25)),
+                    ),
+                    child: Row(
+                      children: const [
+                        Icon(Icons.info_outline_rounded, size: 15, color: Color(0xFF0984E3)),
+                        SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Auto-verified · Visible to admin for review',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: Color(0xFF0984E3),
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
                 Row(
                   children: [
                     Expanded(

@@ -240,15 +240,16 @@ def get_pending_providers() -> list[dict]:
 def verify_provider(provider_id: str) -> bool:
     q = """
     MATCH (p {id: $id}) WHERE p:Provider OR p:User
-    SET p.isVerified = true,
-        p.isActive   = true,
+    SET p.isVerified      = true,
+        p.isActive        = true,
         p.rejectionReason = null,
-        p.verifiedAt = datetime(),
-        p.updatedAt  = datetime()
+        p.verifiedAt      = datetime(),
+        p.updatedAt       = datetime()
     WITH p
     OPTIONAL MATCH (p)-[:OWNS]->(v:Vehicle)
     SET v.isAvailable = true,
-        v.updatedAt  = datetime()
+        v.isVerified  = true,
+        v.updatedAt   = datetime()
     RETURN p.id AS id
     """
     rows = run_query(q, {"id": provider_id}, write=True)
@@ -322,17 +323,86 @@ def get_all_services(active_only: bool = False, page: int = 0, size: int = 50) -
 
 def get_all_vehicles(page: int = 0, size: int = 50) -> list[dict]:
     q = """
-    MATCH (p:Provider|Seeker)-[:OWNS]->(v:Vehicle)
+    MATCH (v:Vehicle)
+    OPTIONAL MATCH (p)-[:OWNS]->(v)
+    WHERE p:Provider OR p:User OR p:Seeker
     RETURN v.id AS id, v.vehicleType AS vehicleType,
            v.vehicleNumber AS vehicleNumber, v.vehicleModel AS vehicleModel,
            v.vehicleYear AS vehicleYear, v.capacity AS capacity,
            v.isAvailable AS isAvailable,
+           coalesce(v.isVerified, false) AS isVerified,
+           coalesce(v.addedAfterVerification, false) AS addedAfterVerification,
+           coalesce(v.adminReviewed, false) AS adminReviewed,
            v.createdAt AS createdAt,
-           p.id AS providerId, p.name AS providerName
+           p.id AS providerId, p.name AS providerName,
+           coalesce(p.isVerified, false) AS providerIsVerified
     ORDER BY v.createdAt DESC
     SKIP $skip LIMIT $limit
     """
     return run_query(q, {"skip": page * size, "limit": size})
+
+
+def get_post_verification_vehicles() -> list[dict]:
+    """Vehicles added by already-verified providers — auto-verified but need admin monitoring."""
+    q = """
+    MATCH (v:Vehicle {addedAfterVerification: true})
+    OPTIONAL MATCH (p)-[:OWNS]->(v)
+    WHERE p:Provider OR p:User OR p:Seeker
+    RETURN v.id AS id, v.vehicleType AS vehicleType,
+           v.vehicleNumber AS vehicleNumber, v.vehicleModel AS vehicleModel,
+           v.vehicleYear AS vehicleYear, v.capacity AS capacity,
+           v.isAvailable AS isAvailable,
+           coalesce(v.isVerified, true) AS isVerified,
+           coalesce(v.adminReviewed, false) AS adminReviewed,
+           v.vehicleImageBase64        AS vehicleImageBase64,
+           v.vehicleLicenseImageBase64 AS vehicleLicenseImageBase64,
+           v.createdAt AS createdAt,
+           p.id    AS providerId,
+           p.name  AS providerName,
+           p.email AS providerEmail,
+           p.phone AS providerPhone
+    ORDER BY
+        coalesce(v.adminReviewed, false) ASC,
+        v.createdAt DESC
+    """
+    return run_query(q)
+
+
+def mark_vehicle_reviewed(vehicle_id: str) -> bool:
+    """Mark a post-verification vehicle as reviewed by admin (no re-verification needed)."""
+    q = """
+    MATCH (v:Vehicle {id: $id})
+    SET v.adminReviewed   = true,
+        v.adminReviewedAt = datetime(),
+        v.updatedAt       = datetime()
+    RETURN v.id AS id
+    """
+    rows = run_query(q, {"id": vehicle_id}, write=True)
+    return bool(rows)
+
+
+def get_vehicle_detail(vehicle_id: str) -> dict:
+    """Full vehicle details including provider info and images."""
+    q = """
+    MATCH (v:Vehicle {id: $id})
+    OPTIONAL MATCH (p)-[:OWNS]->(v)
+    WHERE p:Provider OR p:User OR p:Seeker
+    RETURN v.id AS id, v.vehicleType AS vehicleType,
+           v.vehicleNumber AS vehicleNumber, v.vehicleModel AS vehicleModel,
+           v.vehicleYear AS vehicleYear, v.capacity AS capacity,
+           v.isAvailable AS isAvailable,
+           coalesce(v.isVerified, false) AS isVerified,
+           coalesce(v.addedAfterVerification, false) AS addedAfterVerification,
+           coalesce(v.adminReviewed, false) AS adminReviewed,
+           v.vehicleImageBase64        AS vehicleImageBase64,
+           v.vehicleLicenseImageBase64 AS vehicleLicenseImageBase64,
+           v.createdAt AS createdAt, v.updatedAt AS updatedAt,
+           p.id    AS providerId,   p.name  AS providerName,
+           p.email AS providerEmail, p.phone AS providerPhone,
+           coalesce(p.isVerified, false) AS providerIsVerified
+    """
+    rows = run_query(q, {"id": vehicle_id})
+    return rows[0] if rows else {}
 
 
 # ─── Feedback ─────────────────────────────────────────────────────────────────

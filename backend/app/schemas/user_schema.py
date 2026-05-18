@@ -22,6 +22,8 @@ class UserCreate(BaseModel):
     isVerified: bool = Field(default=False, description="Admin-verified status (always computed server-side)")
     isActive: bool = Field(default=True, description="Account active status")
     interests: Optional[List[str]] = Field(default=None, description="Seeker interest categories")
+    latitude: Optional[float] = Field(None, description="User latitude")
+    longitude: Optional[float] = Field(None, description="User longitude")
 
     class Config:
         json_schema_extra = {
@@ -184,3 +186,5 @@ class SignupCompleteRequest(BaseModel):
         default=None,
         description="List of service category keys seeker is interested in (e.g. ['harvester', 'crane'])"
     )
+    latitude: Optional[float] = Field(None, description="User latitude from GPS during signup")
+    longitude: Optional[float] = Field(None, description="User longitude from GPS during signup")

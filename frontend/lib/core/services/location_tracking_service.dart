@@ -99,11 +99,15 @@ class LocationTrackingService {
         },
       );
       
-      // Start periodic update timer (backup if distance filter doesn't trigger)
+      // Periodic timer: sends location to Firebase/API AND re-emits to the
+      // position stream so the map marker always stays current even when the
+      // device hasn't moved the distanceFilter threshold.
       _updateTimer = Timer.periodic(
         const Duration(seconds: updateIntervalSeconds),
         (_) async {
           if (_lastPosition != null) {
+            // Re-emit the latest position so BLoC/UI refresh even without movement.
+            _positionController.add(_lastPosition!);
             await _sendLocationUpdate(_lastPosition!);
             _lastSentPosition = _lastPosition;
           }

@@ -449,31 +449,65 @@ class ProviderBloc extends Bloc<ProviderEvent, ProviderState> {
     ProviderLoadVehiclesRequested event,
     Emitter<ProviderState> emit,
   ) async {
-    // Don't emit loading to avoid replacing current state
     try {
       final user = _auth.currentUser;
-      if (user == null) {
-        throw Exception('User not authenticated');
-      }
-
-      final vehicles = await _repository.getProviderVehicles(user.uid);
+      if (user == null) throw Exception('User not authenticated');
 
       final currentState = state;
       if (currentState is ProviderLoaded) {
-        // Guard: never overwrite a non-empty vehicle list with an empty one.
-        // An empty GraphQL response on a cold query is far more likely to be a
-        // transient network/DB issue than genuine "the user deleted all vehicles"
-        // (that case is handled optimistically already and won't race here).
-        final effective = (vehicles.isEmpty && currentState.vehicles.isNotEmpty)
-            ? currentState.vehicles
-            : vehicles;
-        emit(currentState.copyWith(vehicles: effective));
+        // Silent background refresh — UI keeps showing existing vehicles.
+        final vehicles = await _repository
+            .getProviderVehicles(user.uid)
+            .timeout(const Duration(seconds: 10));
+        // Guard: never overwrite a non-empty list with an empty one (transient error).
+        if (state is ProviderLoaded) {
+          final s = state as ProviderLoaded;
+          final effective = (vehicles.isEmpty && s.vehicles.isNotEmpty)
+              ? s.vehicles
+              : vehicles;
+          emit(s.copyWith(vehicles: effective));
+        }
       } else {
-        // Trigger full dashboard load
-        add(const ProviderLoadDashboardRequested());
+        // Standalone quick load — fetch profile + vehicles only (no bookings/offers).
+        // Much faster than a full dashboard load, avoids the 5-6 s spinner.
+        emit(const ProviderLoading());
+
+        bool isPendingVerification = false;
+        try {
+          final profileData = await _apiService
+              .get('/api/auth/profile/${user.uid}')
+              .timeout(const Duration(seconds: 8));
+          final userData = profileData['user'] as Map<String, dynamic>?;
+          final role = userData?['role'] as String? ?? 'seeker';
+          final isVerified = userData?['isVerified'] as bool? ?? false;
+          if (role == 'provider' && !isVerified) {
+            final rejectionReason = userData?['rejectionReason'] as String?;
+            if (rejectionReason != null && rejectionReason.isNotEmpty) {
+              emit(ProviderPendingVerification(rejectionReason: rejectionReason));
+              return;
+            }
+            isPendingVerification = true;
+          }
+        } catch (_) {}
+
+        final vehicles = await _repository
+            .getProviderVehicles(user.uid)
+            .timeout(const Duration(seconds: 10));
+
+        emit(ProviderLoaded(
+          pendingBookings: const [],
+          activeBookings: const [],
+          completedBookings: const [],
+          vehicles: vehicles,
+          services: const [],
+          totalEarnings: 0,
+          pendingEarnings: 0,
+          isOnline: _isOnline,
+          isPendingVerification: isPendingVerification,
+        ));
       }
-    } catch (e) {
-      // Don't emit error state — preserve current state silently.
+    } catch (_) {
+      // Preserve current state silently on error.
     }
   }
 
@@ -608,54 +642,72 @@ class ProviderBloc extends Bloc<ProviderEvent, ProviderState> {
     ProviderLoadServicesRequested event,
     Emitter<ProviderState> emit,
   ) async {
-    // Only show loading if not already in ProviderLoaded state
     final currentState = state;
-    if (currentState is! ProviderLoaded) {
-      emit(const ProviderLoading());
-    }
 
-    // Capture existing vehicles now so we can fall back to them on GraphQL failure.
+    // Capture existing vehicles to fall back to them on GraphQL failure.
     final existingVehicles = currentState is ProviderLoaded
         ? currentState.vehicles
         : <VehicleEntity>[];
 
+    // Only show loading spinner when there is no cached data at all.
+    if (currentState is! ProviderLoaded) {
+      emit(const ProviderLoading());
+    }
+
     try {
       final user = _auth.currentUser;
-      if (user == null) {
-        throw Exception('User not authenticated');
-      }
+      if (user == null) throw Exception('User not authenticated');
 
-      // Load both services and vehicles in parallel
-      final results = await Future.wait([
-        _repository.getProviderServices(user.uid).catchError((e) {
-          return <ServiceEntity>[];
-        }),
-        // On failure, preserve the existing vehicle list so the edit-service
-        // dialog never sees an empty list due to a transient GraphQL error.
-        _repository.getProviderVehicles(user.uid).catchError((e) {
-          return existingVehicles;
-        }),
-      ]);
-
-      final services = results[0] as List<ServiceEntity>;
-      final vehicles = results[1] as List<VehicleEntity>;
-
-      // If we have existing ProviderLoaded state, preserve other data
       if (currentState is ProviderLoaded) {
-        emit(currentState.copyWith(
-          services: services,
-          vehicles: vehicles,
-        ));
+        // Silent background refresh — fetch services + vehicles in parallel.
+        final results = await Future.wait([
+          _repository.getProviderServices(user.uid).catchError((_) => <ServiceEntity>[]),
+          _repository.getProviderVehicles(user.uid).catchError((_) => existingVehicles),
+        ]);
+        if (state is ProviderLoaded) {
+          final s = state as ProviderLoaded;
+          emit(s.copyWith(
+            services: results[0] as List<ServiceEntity>,
+            vehicles: (results[1] as List<VehicleEntity>).isEmpty && existingVehicles.isNotEmpty
+                ? existingVehicles
+                : results[1] as List<VehicleEntity>,
+          ));
+        }
       } else {
+        // Standalone load — profile + services + vehicles only.
+        bool isPendingVerification = false;
+        try {
+          final profileData = await _apiService
+              .get('/api/auth/profile/${user.uid}')
+              .timeout(const Duration(seconds: 8));
+          final userData = profileData['user'] as Map<String, dynamic>?;
+          final role = userData?['role'] as String? ?? 'seeker';
+          final isVerified = userData?['isVerified'] as bool? ?? false;
+          if (role == 'provider' && !isVerified) {
+            final rejectionReason = userData?['rejectionReason'] as String?;
+            if (rejectionReason != null && rejectionReason.isNotEmpty) {
+              emit(ProviderPendingVerification(rejectionReason: rejectionReason));
+              return;
+            }
+            isPendingVerification = true;
+          }
+        } catch (_) {}
+
+        final results = await Future.wait([
+          _repository.getProviderServices(user.uid).catchError((_) => <ServiceEntity>[]),
+          _repository.getProviderVehicles(user.uid).catchError((_) => <VehicleEntity>[]),
+        ]);
+
         emit(ProviderLoaded(
-          pendingBookings: [],
-          activeBookings: [],
-          completedBookings: [],
-          vehicles: vehicles,
-          services: services,
+          pendingBookings: const [],
+          activeBookings: const [],
+          completedBookings: const [],
+          vehicles: results[1] as List<VehicleEntity>,
+          services: results[0] as List<ServiceEntity>,
           totalEarnings: 0,
           pendingEarnings: 0,
           isOnline: _isOnline,
+          isPendingVerification: isPendingVerification,
         ));
       }
     } catch (e) {

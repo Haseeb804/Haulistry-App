@@ -14,6 +14,8 @@ class VehicleEntity extends Equatable {
   final double? capacity;
   final String? extraFields;
   final String? vehicleLicenseImageBase64; // vehicle registration document photo
+  final bool isVerified;
+  final bool addedAfterVerification;
   final DateTime createdAt;
   final DateTime updatedAt;
 
@@ -30,6 +32,8 @@ class VehicleEntity extends Equatable {
     this.capacity,
     this.extraFields,
     this.vehicleLicenseImageBase64,
+    this.isVerified = false,
+    this.addedAfterVerification = false,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -48,6 +52,8 @@ class VehicleEntity extends Equatable {
         capacity,
         extraFields,
         vehicleLicenseImageBase64,
+        isVerified,
+        addedAfterVerification,
         createdAt,
         updatedAt,
       ];
@@ -65,6 +71,8 @@ class VehicleEntity extends Equatable {
     double? capacity,
     String? extraFields,
     String? vehicleLicenseImageBase64,
+    bool? isVerified,
+    bool? addedAfterVerification,
     DateTime? createdAt,
     DateTime? updatedAt,
   }) {
@@ -81,6 +89,8 @@ class VehicleEntity extends Equatable {
       capacity: capacity ?? this.capacity,
       extraFields: extraFields ?? this.extraFields,
       vehicleLicenseImageBase64: vehicleLicenseImageBase64 ?? this.vehicleLicenseImageBase64,
+      isVerified: isVerified ?? this.isVerified,
+      addedAfterVerification: addedAfterVerification ?? this.addedAfterVerification,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
     );
@@ -100,6 +110,8 @@ class VehicleEntity extends Equatable {
       'capacity': capacity,
       'extraFields': extraFields,
       'vehicleLicenseImageBase64': vehicleLicenseImageBase64,
+      'isVerified': isVerified,
+      'addedAfterVerification': addedAfterVerification,
       'createdAt': createdAt.toIso8601String(),
       'updatedAt': updatedAt.toIso8601String(),
     };
@@ -119,6 +131,8 @@ class VehicleEntity extends Equatable {
       capacity: (json['capacity'] as num?)?.toDouble(),
       extraFields: json['extraFields'] as String?,
       vehicleLicenseImageBase64: json['vehicleLicenseImageBase64'] as String?,
+      isVerified: (json['isVerified'] ?? json['is_verified']) as bool? ?? false,
+      addedAfterVerification: (json['addedAfterVerification'] ?? json['added_after_verification']) as bool? ?? false,
       createdAt: DateTime.parse((json['createdAt'] ?? json['created_at']) as String),
       updatedAt: DateTime.parse((json['updatedAt'] ?? json['updated_at']) as String),
     );

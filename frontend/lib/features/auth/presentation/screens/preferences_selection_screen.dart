@@ -2,6 +2,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
+import 'package:geolocator/geolocator.dart';
 import '../../../../core/constants/app_constants.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../bloc/auth_bloc.dart';
@@ -24,6 +25,10 @@ class _PreferencesSelectionScreenState
   final Set<String> _selected = {};
   late AnimationController _animController;
   late Animation<double> _fadeAnim;
+
+  double? _latitude;
+  double? _longitude;
+  String _locationStatus = 'not_set'; // 'not_set' | 'detecting' | 'detected' | 'denied'
 
   static const _categories = [
     _Category('Harvester', 'harvester', '🌾',
@@ -71,6 +76,34 @@ class _PreferencesSelectionScreenState
     });
   }
 
+  Future<void> _detectLocation() async {
+    setState(() => _locationStatus = 'detecting');
+    try {
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+      if (permission == LocationPermission.deniedForever ||
+          permission == LocationPermission.denied) {
+        setState(() => _locationStatus = 'denied');
+        return;
+      }
+      final pos = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.medium,
+          timeLimit: Duration(seconds: 10),
+        ),
+      );
+      setState(() {
+        _latitude = pos.latitude;
+        _longitude = pos.longitude;
+        _locationStatus = 'detected';
+      });
+    } catch (_) {
+      setState(() => _locationStatus = 'denied');
+    }
+  }
+
   void _continue() {
     context.read<AuthBloc>().add(AuthSignUpRequested(
           email: widget.signupData['email'] as String,
@@ -80,6 +113,8 @@ class _PreferencesSelectionScreenState
           role: widget.signupData['role'] as String,
           profileImage: widget.signupData['profileImage'] as Uint8List?,
           interests: _selected.toList(),
+          latitude: _latitude,
+          longitude: _longitude,
         ));
   }
 
@@ -174,6 +209,12 @@ class _PreferencesSelectionScreenState
               ),
             ),
             SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 20, 16, 0),
+                child: _buildLocationSection(),
+              ),
+            ),
+            SliverToBoxAdapter(
               child: FadeTransition(
                 opacity: _fadeAnim,
                 child: Padding(
@@ -202,6 +243,134 @@ class _PreferencesSelectionScreenState
           ],
         ),
         bottomNavigationBar: _buildBottomBar(),
+      ),
+    );
+  }
+
+  Widget _buildLocationSection() {
+    final isDetected = _locationStatus == 'detected';
+    final isDetecting = _locationStatus == 'detecting';
+    final isDenied = _locationStatus == 'denied';
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: isDetected
+            ? const Color(0xFFEAF6F0)
+            : Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: isDetected
+              ? const Color(0xFF27AE60)
+              : const Color(0xFFE5E7EB),
+          width: 1.5,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: isDetected
+                      ? const Color(0xFF27AE60).withOpacity(0.15)
+                      : AppTheme.primaryColor.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(
+                  isDetected ? Icons.location_on_rounded : Icons.location_searching_rounded,
+                  color: isDetected ? const Color(0xFF27AE60) : AppTheme.primaryColor,
+                  size: 20,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Your Location',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      isDetected
+                          ? 'Location detected — nearby services first'
+                          : isDenied
+                              ? 'Permission denied — location not saved'
+                              : 'Helps us show nearest services first',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: isDetected
+                            ? const Color(0xFF27AE60)
+                            : isDenied
+                                ? AppTheme.errorColor
+                                : AppTheme.textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: isDetecting ? null : _detectLocation,
+              icon: isDetecting
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : Icon(
+                      isDetected ? Icons.refresh_rounded : Icons.my_location_rounded,
+                      size: 18,
+                    ),
+              label: Text(
+                isDetecting
+                    ? 'Detecting…'
+                    : isDetected
+                        ? 'Location detected ✓'
+                        : 'Use My Location',
+                style: const TextStyle(fontWeight: FontWeight.w600),
+              ),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: isDetected
+                    ? const Color(0xFF27AE60)
+                    : AppTheme.primaryColor,
+                side: BorderSide(
+                  color: isDetected
+                      ? const Color(0xFF27AE60)
+                      : AppTheme.primaryColor,
+                  width: 1.5,
+                ),
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
+            ),
+          ),
+          if (!isDetected && !isDetecting) ...[
+            const SizedBox(height: 6),
+            Center(
+              child: Text(
+                'Optional — you can set location from profile later',
+                style: TextStyle(
+                  fontSize: 10,
+                  color: Colors.grey.shade400,
+                ),
+              ),
+            ),
+          ],
+        ],
       ),
     );
   }

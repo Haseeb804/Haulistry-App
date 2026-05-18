@@ -91,6 +91,8 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
         'role': event.role,
         'profileImage': event.profileImage,
         'interests': event.interests,
+        if (event.latitude != null) 'latitude': event.latitude,
+        if (event.longitude != null) 'longitude': event.longitude,
       };
 
       emit(AuthPendingPhoneVerification(
@@ -237,6 +239,8 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
         cnic: event.cnic,
         drivingLicense: event.drivingLicense,
         profileImageUrl: event.profileImageUrl,
+        latitude: event.latitude,
+        longitude: event.longitude,
       );
 
       // Update profile in backend

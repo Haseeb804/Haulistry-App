@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:go_router/go_router.dart';
 import '../../../../core/constants/app_constants.dart';
 import '../../../../core/theme/app_theme.dart';
@@ -31,6 +32,10 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   CrossPlatformImage? _profileImage;
   bool _isUpdating = false;
 
+  double? _latitude;
+  double? _longitude;
+  String _locationStatus = 'not_set';
+
   @override
   void initState() {
     super.initState();
@@ -41,6 +46,11 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       _addressController.text = authState.user.address ?? '';
       _cnicController.text = authState.user.cnic ?? '';
       _licenseController.text = authState.user.drivingLicense ?? '';
+      _latitude = authState.user.latitude;
+      _longitude = authState.user.longitude;
+      if (_latitude != null && _longitude != null) {
+        _locationStatus = 'detected';
+      }
     }
   }
 
@@ -203,7 +213,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       profileImageUrl = 'data:image/jpeg;base64,${base64Encode(_profileImage!.bytes)}';
     }
 
-    // Update user profile
     context.read<AuthBloc>().add(
           AuthUpdateProfileRequested(
             name: _nameController.text.trim(),
@@ -212,8 +221,161 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
             cnic: _cnicController.text.trim(),
             drivingLicense: _licenseController.text.trim(),
             profileImageUrl: profileImageUrl,
+            latitude: _latitude,
+            longitude: _longitude,
           ),
         );
+  }
+
+  Widget _buildLocationSection() {
+    final isDetected = _locationStatus == 'detected';
+    final isDetecting = _locationStatus == 'detecting';
+    final isDenied = _locationStatus == 'denied';
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: isDetected ? const Color(0xFFEAF6F0) : Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: isDetected
+              ? const Color(0xFF27AE60)
+              : const Color(0xFFE5E7EB),
+          width: 1.5,
+        ),
+        boxShadow: AppTheme.softShadow,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: isDetected
+                      ? const Color(0xFF27AE60).withOpacity(0.15)
+                      : AppTheme.primaryColor.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(
+                  isDetected
+                      ? Icons.location_on_rounded
+                      : Icons.location_searching_rounded,
+                  color: isDetected
+                      ? const Color(0xFF27AE60)
+                      : AppTheme.primaryColor,
+                  size: 20,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'My Location',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      isDetected
+                          ? 'Location saved — used for nearby services'
+                          : isDenied
+                              ? 'Permission denied'
+                              : 'Set your location for nearby service results',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: isDetected
+                            ? const Color(0xFF27AE60)
+                            : isDenied
+                                ? AppTheme.errorColor
+                                : AppTheme.textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: isDetecting ? null : _detectLocation,
+              icon: isDetecting
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : Icon(
+                      isDetected
+                          ? Icons.refresh_rounded
+                          : Icons.my_location_rounded,
+                      size: 18,
+                    ),
+              label: Text(
+                isDetecting
+                    ? 'Detecting…'
+                    : isDetected
+                        ? 'Update Location'
+                        : 'Detect My Location',
+                style: const TextStyle(fontWeight: FontWeight.w600),
+              ),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: isDetected
+                    ? const Color(0xFF27AE60)
+                    : AppTheme.primaryColor,
+                side: BorderSide(
+                  color: isDetected
+                      ? const Color(0xFF27AE60)
+                      : AppTheme.primaryColor,
+                  width: 1.5,
+                ),
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _detectLocation() async {
+    setState(() => _locationStatus = 'detecting');
+    try {
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+      if (permission == LocationPermission.deniedForever ||
+          permission == LocationPermission.denied) {
+        setState(() => _locationStatus = 'denied');
+        return;
+      }
+      final pos = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.medium,
+          timeLimit: Duration(seconds: 10),
+        ),
+      );
+      if (mounted) {
+        setState(() {
+          _latitude = pos.latitude;
+          _longitude = pos.longitude;
+          _locationStatus = 'detected';
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => _locationStatus = 'denied');
+    }
   }
 
   Widget _buildModernTextField({
@@ -523,6 +685,10 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                           maxLines: 3,
                           textInputAction: TextInputAction.next,
                         ),
+                        const SizedBox(height: 16),
+
+                        // Location Section
+                        _buildLocationSection(),
                         const SizedBox(height: 24),
 
                         // Provider specific fields

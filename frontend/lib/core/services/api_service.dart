@@ -337,10 +337,18 @@ class ApiService {
   // ============================================
 
   /// Get available services
-  Future<Map<String, dynamic>> getAvailableServices({String? category}) async {
+  Future<Map<String, dynamic>> getAvailableServices({
+    String? category,
+    double? latitude,
+    double? longitude,
+    double radiusKm = 50.0,
+  }) async {
     final params = <String, String>{};
     if (category != null) params['category'] = category;
-    return get(ApiEndpoints.services, queryParams: params);
+    if (latitude != null) params['latitude'] = latitude.toString();
+    if (longitude != null) params['longitude'] = longitude.toString();
+    if (latitude != null || longitude != null) params['radius'] = radiusKm.toString();
+    return get(ApiEndpoints.services, queryParams: params.isEmpty ? null : params);
   }
 
   /// Get provider's services
@@ -368,8 +376,16 @@ class ApiService {
   // ============================================
 
   /// Get personalized service recommendations for a seeker
-  Future<Map<String, dynamic>> getRecommendedServices(String seekerId, {int limit = 10}) async {
-    return get(ApiEndpoints.recommendations(seekerId), queryParams: {'limit': limit.toString()});
+  Future<Map<String, dynamic>> getRecommendedServices(
+    String seekerId, {
+    int limit = 10,
+    double? latitude,
+    double? longitude,
+  }) async {
+    final params = <String, String>{'limit': limit.toString()};
+    if (latitude != null) params['latitude'] = latitude.toString();
+    if (longitude != null) params['longitude'] = longitude.toString();
+    return get(ApiEndpoints.recommendations(seekerId), queryParams: params);
   }
 
   /// Update a seeker's interest list

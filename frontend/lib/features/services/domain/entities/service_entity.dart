@@ -36,6 +36,9 @@ class ServiceEntity extends Equatable {
   final double? serviceBaseLongitude;
   final String? serviceBaseAddress;
 
+  // Distance from seeker (computed by backend when lat/lng is provided)
+  final double? distanceKm;
+
   final DateTime? createdAt;
   final DateTime? updatedAt;
 
@@ -63,6 +66,7 @@ class ServiceEntity extends Equatable {
     this.serviceBaseLatitude,
     this.serviceBaseLongitude,
     this.serviceBaseAddress,
+    this.distanceKm,
     this.createdAt,
     this.updatedAt,
   });
@@ -142,6 +146,7 @@ class ServiceEntity extends Equatable {
       serviceBaseLatitude: json['serviceBaseLatitude']?.toDouble(),
       serviceBaseLongitude: json['serviceBaseLongitude']?.toDouble(),
       serviceBaseAddress: json['serviceBaseAddress'],
+      distanceKm: (json['distanceKm'] as num?)?.toDouble(),
       createdAt: json['createdAt'] != null
           ? DateTime.tryParse(json['createdAt'])
           : null,
@@ -176,6 +181,7 @@ class ServiceEntity extends Equatable {
       'serviceBaseLatitude': serviceBaseLatitude,
       'serviceBaseLongitude': serviceBaseLongitude,
       'serviceBaseAddress': serviceBaseAddress,
+      'distanceKm': distanceKm,
     };
   }
 

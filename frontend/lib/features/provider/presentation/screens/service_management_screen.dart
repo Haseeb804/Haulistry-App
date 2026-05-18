@@ -30,6 +30,12 @@ class _ServiceManagementScreenState extends State<ServiceManagementScreen> {
   @override
   void initState() {
     super.initState();
+    // Seed cache immediately — shows data on first frame if already loaded.
+    final current = context.read<ProviderBloc>().state;
+    if (current is ProviderLoaded) {
+      _lastLoaded = current;
+    }
+    // Refresh in background; if _lastLoaded is set, no spinner is shown.
     context.read<ProviderBloc>().add(const ProviderLoadServicesRequested());
   }
 

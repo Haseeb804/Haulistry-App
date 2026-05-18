@@ -144,6 +144,46 @@ async def get_seeker_feedbacks(seeker_id: str, limit: int = 50):
         )
 
 
+@router.delete("/{feedback_id}", response_model=FeedbackResponse)
+async def delete_feedback(feedback_id: str):
+    """
+    Delete a feedback/review and automatically recalculate the target
+    user's rating based on remaining reviews. If all reviews are deleted
+    the rating becomes 0.
+    """
+    try:
+        existing = Feedback.get_feedback_by_id(feedback_id)
+        if not existing:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Feedback not found."
+            )
+
+        result = Feedback.delete_feedback(feedback_id)
+        if result is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Feedback not found or already deleted."
+            )
+
+        return FeedbackResponse(
+            success=True,
+            message=(
+                f"Review deleted. New rating: {result['newRating']:.1f} "
+                f"based on {result['newTotalReviews']} remaining review(s)."
+            ),
+            feedback=result,
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to delete feedback: {str(e)}"
+        )
+
+
 @router.get("/check/{booking_id}/{reviewer_type}")
 async def check_feedback_exists(booking_id: str, reviewer_type: str):
     """Check if feedback exists for a booking"""

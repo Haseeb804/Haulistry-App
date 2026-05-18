@@ -46,6 +46,8 @@ abstract class AuthRepository {
     required String role,
     Uint8List? profileImage,
     List<String> interests = const [],
+    double? latitude,
+    double? longitude,
   });
   
   /// Sign out

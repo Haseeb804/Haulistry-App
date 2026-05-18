@@ -134,10 +134,7 @@ class ServiceDetailScreen extends StatelessWidget {
                   _buildFeatureItem('Insurance coverage', Icons.shield_rounded),
                   const SizedBox(height: 24),
 
-                  // ── SIMILAR SERVICES ───────────────────────────────────────
-                  _sectionTitle(Icons.category_rounded, AppTheme.accentColor,
-                      'Similar Services'),
-                  const SizedBox(height: 12),
+                  // ── SIMILAR / AVAILABLE SERVICES ───────────────────────────
                   _buildSimilarServices(context, key),
                   const SizedBox(height: 100),
                 ],
@@ -1216,6 +1213,7 @@ class ServiceDetailScreen extends StatelessWidget {
     return _SimilarServicesSection(
       currentServiceId: service?.id,
       category: currentKey,
+      serviceLabel: _serviceLabel,
     );
   }
 
@@ -1423,10 +1421,12 @@ class ServiceDetailScreen extends StatelessWidget {
 class _SimilarServicesSection extends StatefulWidget {
   final String? currentServiceId;
   final String category;
+  final String serviceLabel;
 
   const _SimilarServicesSection({
     required this.currentServiceId,
     required this.category,
+    required this.serviceLabel,
   });
 
   @override
@@ -1436,6 +1436,7 @@ class _SimilarServicesSection extends StatefulWidget {
 class _SimilarServicesSectionState extends State<_SimilarServicesSection> {
   List<ServiceEntity> _services = [];
   bool _loading = true;
+  bool _isSimilar = true; // true = same-category results; false = fallback all
 
   @override
   void initState() {
@@ -1445,17 +1446,40 @@ class _SimilarServicesSectionState extends State<_SimilarServicesSection> {
 
   Future<void> _load() async {
     try {
+      // ── Step 1: try same-category services ─────────────────────────────────
       final resp = await ApiService.instance
           .getAvailableServices(category: widget.category);
       final raw = resp['services'] as List<dynamic>? ?? [];
       if (!mounted) return;
-      final filtered = raw
+
+      final similar = raw
           .map((j) => ServiceEntity.fromJson(j as Map<String, dynamic>))
           .where((s) => s.id != widget.currentServiceId)
-          .take(6)
+          .take(8)
           .toList();
+
+      if (similar.isNotEmpty) {
+        setState(() {
+          _services = similar;
+          _isSimilar = true;
+          _loading = false;
+        });
+        return;
+      }
+
+      // ── Step 2: fallback — all services regardless of category ─────────────
+      final allResp = await ApiService.instance.getAvailableServices();
+      if (!mounted) return;
+      final allRaw = allResp['services'] as List<dynamic>? ?? [];
+      final fallback = allRaw
+          .map((j) => ServiceEntity.fromJson(j as Map<String, dynamic>))
+          .where((s) => s.id != widget.currentServiceId)
+          .take(8)
+          .toList();
+
       setState(() {
-        _services = filtered;
+        _services = fallback;
+        _isSimilar = false;
         _loading = false;
       });
     } catch (_) {
@@ -1501,61 +1525,82 @@ class _SimilarServicesSectionState extends State<_SimilarServicesSection> {
     return '🚛';
   }
 
+  Widget _buildSectionHeader() {
+    final icon =
+        _isSimilar ? Icons.category_rounded : Icons.home_repair_service_rounded;
+    final color = _isSimilar ? AppTheme.accentColor : AppTheme.primaryColor;
+    final title = _isSimilar
+        ? 'Similar ${widget.serviceLabel} Services'
+        : 'Other Available Services';
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Row(
+        children: [
+          Icon(icon, color: color, size: 22),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              title,
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_loading) {
-      return SizedBox(
-        height: 175,
-        child: ListView.builder(
-          scrollDirection: Axis.horizontal,
-          itemCount: 3,
-          itemBuilder: (_, __) => Container(
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Shimmer header placeholder
+          Container(
+            height: 22,
             width: 200,
-            margin: const EdgeInsets.only(right: 12),
+            margin: const EdgeInsets.only(bottom: 12),
             decoration: BoxDecoration(
               color: Colors.grey.shade200,
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: const Center(
-              child: CircularProgressIndicator(strokeWidth: 2),
+              borderRadius: BorderRadius.circular(6),
             ),
           ),
-        ),
+          SizedBox(
+            height: 175,
+            child: ListView.builder(
+              scrollDirection: Axis.horizontal,
+              itemCount: 3,
+              itemBuilder: (_, __) => Container(
+                width: 200,
+                margin: const EdgeInsets.only(right: 12),
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade200,
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: const Center(
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              ),
+            ),
+          ),
+        ],
       );
     }
 
     if (_services.isEmpty) {
-      return Container(
-        padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
-        decoration: BoxDecoration(
-          color: Colors.grey.shade50,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: Colors.grey.shade200),
-        ),
-        child: Row(
-          children: [
-            Icon(Icons.info_outline_rounded,
-                color: Colors.grey.shade400, size: 20),
-            const SizedBox(width: 12),
-            Text(
-              'Services not added yet',
-              style: TextStyle(
-                color: Colors.grey.shade500,
-                fontSize: 14,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ],
-        ),
-      );
+      return const SizedBox.shrink(); // nothing to show at all
     }
 
-    return SizedBox(
-      height: 175,
-      child: ListView.builder(
-        scrollDirection: Axis.horizontal,
-        itemCount: _services.length,
-        itemBuilder: (ctx, index) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildSectionHeader(),
+        SizedBox(
+          height: 175,
+          child: ListView.builder(
+            scrollDirection: Axis.horizontal,
+            itemCount: _services.length,
+            itemBuilder: (ctx, index) {
           final svc = _services[index];
           final gradient = _gradientFor(svc.category);
           final emoji = _emojiFor(svc.category);
@@ -1685,7 +1730,9 @@ class _SimilarServicesSectionState extends State<_SimilarServicesSection> {
           );
         },
       ),
-    );
+        ),  // closes SizedBox
+      ],    // closes Column.children
+    );      // closes Column
   }
 }
 

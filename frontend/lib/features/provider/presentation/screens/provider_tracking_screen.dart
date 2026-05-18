@@ -59,6 +59,7 @@ class _ProviderTrackingScreenState extends State<ProviderTrackingScreen> {
   BookingEntity? _booking;
   bool _isNearDropLocation = false;
   bool _autoFollowSeeker = false;
+  bool _autoFollowSelf = true; // camera follows provider's own position
   bool _hasAutoCompletionTriggered = false;
   bool _hasInitializedTracking = false;
   Timer? _seekerAnimationTimer;
@@ -274,10 +275,19 @@ class _ProviderTrackingScreenState extends State<ProviderTrackingScreen> {
       altitudeAccuracy: 0,
       heading: myLocation.heading ?? 0,
       headingAccuracy: 0,
-      speed: (myLocation.speed ?? 0) / 3.6, // Convert km/h to m/s
+      speed: (myLocation.speed ?? 0) / 3.6,
       speedAccuracy: 0,
     );
     _updateMarkers();
+
+    // Auto-follow: keep the camera centered on the provider's own position.
+    if (_autoFollowSelf && _mapController != null && mounted) {
+      final currentZoom = _mapController!.camera.zoom;
+      _mapController!.move(
+        LatLng(myLocation.latitude, myLocation.longitude),
+        currentZoom < 14 ? 14 : currentZoom,
+      );
+    }
 
     if (widget.dropoffLocation != null) {
       final distanceToDropM = Geolocator.distanceBetween(
@@ -848,12 +858,46 @@ class _ProviderTrackingScreenState extends State<ProviderTrackingScreen> {
                 ),
               ),
 
-              // Bottom controls
+              // Map controls
               Positioned(
                 right: 16,
                 bottom: 200,
                 child: Column(
                   children: [
+                    // Auto-follow own position toggle
+                    Tooltip(
+                      message: _autoFollowSelf ? 'Auto-follow ON' : 'Auto-follow OFF',
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: _autoFollowSelf ? AppTheme.primaryColor : Colors.white,
+                          borderRadius: BorderRadius.circular(12),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.1),
+                              blurRadius: 10,
+                            ),
+                          ],
+                        ),
+                        child: IconButton(
+                          icon: Icon(
+                            _autoFollowSelf ? Icons.gps_fixed_rounded : Icons.gps_not_fixed_rounded,
+                            color: _autoFollowSelf ? Colors.white : AppTheme.textSecondary,
+                          ),
+                          onPressed: () {
+                            setState(() => _autoFollowSelf = !_autoFollowSelf);
+                            // If turning on, immediately jump to current position.
+                            if (_autoFollowSelf && _currentPosition != null && _mapController != null) {
+                              _mapController!.move(
+                                LatLng(_currentPosition!.latitude, _currentPosition!.longitude),
+                                15,
+                              );
+                            }
+                          },
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    // Follow seeker toggle
                     Container(
                       decoration: BoxDecoration(
                         color: Colors.white,
@@ -866,7 +910,7 @@ class _ProviderTrackingScreenState extends State<ProviderTrackingScreen> {
                         ],
                       ),
                       child: IconButton(
-                        icon: Icon(_autoFollowSeeker ? Icons.gps_fixed : Icons.gps_not_fixed),
+                        icon: Icon(_autoFollowSeeker ? Icons.person_pin_circle_rounded : Icons.person_outline_rounded),
                         onPressed: () {
                           setState(() {
                             _autoFollowSeeker = !_autoFollowSeeker;

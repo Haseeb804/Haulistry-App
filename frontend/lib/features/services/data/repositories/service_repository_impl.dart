@@ -17,13 +17,20 @@ class ServiceRepositoryImpl implements ServiceRepository {
   //   • GraphQL parsing + schema resolution
   // The GraphQL datasource remains the fallback for search and by-ID lookups.
   @override
-  Future<List<ServiceEntity>> getAvailableServices({String? category}) async {
+  Future<List<ServiceEntity>> getAvailableServices({
+    String? category,
+    double? latitude,
+    double? longitude,
+    double radiusKm = 50.0,
+  }) async {
     try {
-      final params = <String, String>{};
-      if (category != null && category != 'All') params['category'] = category;
-
       final response = await ApiService.instance
-          .get('/api/services', queryParams: params.isEmpty ? null : params)
+          .getAvailableServices(
+            category: (category == 'All') ? null : category,
+            latitude: latitude,
+            longitude: longitude,
+            radiusKm: radiusKm,
+          )
           .timeout(const Duration(seconds: 20));
 
       final List<dynamic> raw =
@@ -32,7 +39,6 @@ class ServiceRepositoryImpl implements ServiceRepository {
           .map((j) => ServiceEntity.fromJson(j as Map<String, dynamic>))
           .toList();
     } catch (_) {
-      // Fallback to GraphQL if REST fails (e.g., network error handled upstream).
       return remoteDataSource.getAvailableServices(category: category);
     }
   }

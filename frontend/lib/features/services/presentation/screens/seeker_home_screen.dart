@@ -1,6 +1,7 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:go_router/go_router.dart';
 import '../../../../core/constants/app_constants.dart';
 import '../../../../core/data/graphql_client.dart';
@@ -41,6 +42,13 @@ class _SeekerHomeScreenState extends State<SeekerHomeScreen>
   List<ServiceEntity> _recommendations = [];
   bool _recommendationsLoading = false;
   bool _recommendationsTimedOut = false;
+
+  // Location state
+  double? _userLat;
+  double? _userLon;
+  double _radiusKm = 50.0;
+  static const List<double> _radiusOptions = [5, 10, 20, 25, 50];
+  bool _locationLoading = false;
 
   // Categories that match backend service categories
   final List<Map<String, dynamic>> _categories = [
@@ -97,7 +105,6 @@ class _SeekerHomeScreenState extends State<SeekerHomeScreen>
     _feedbackRepository = FeedbackRepositoryImpl(
       remoteDataSource: FeedbackRemoteDataSource(baseUrl: AppConstants.apiUrl),
     );
-    context.read<ServiceBloc>().add(const ServiceLoadRequested());
     _animController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 600),
@@ -107,9 +114,53 @@ class _SeekerHomeScreenState extends State<SeekerHomeScreen>
     );
     _animController.forward();
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      _initLocation();
       _enforceMandatorySeekerFeedback();
-      _loadRecommendations();
     });
+  }
+
+  Future<void> _initLocation() async {
+    // 1. Try stored location from user profile first
+    final authState = context.read<AuthBloc>().state;
+    if (authState is AuthAuthenticated) {
+      final user = authState.user;
+      if (user.latitude != null && user.longitude != null) {
+        _userLat = user.latitude;
+        _userLon = user.longitude;
+        _loadServicesWithLocation();
+        _loadRecommendations();
+        return;
+      }
+    }
+    // 2. Try GPS silently (no UI prompt — just attempt if already permitted)
+    try {
+      final perm = await Geolocator.checkPermission();
+      if (perm == LocationPermission.always ||
+          perm == LocationPermission.whileInUse) {
+        final pos = await Geolocator.getCurrentPosition(
+          locationSettings: const LocationSettings(
+            accuracy: LocationAccuracy.medium,
+            timeLimit: Duration(seconds: 6),
+          ),
+        );
+        if (mounted) {
+          _userLat = pos.latitude;
+          _userLon = pos.longitude;
+        }
+      }
+    } catch (_) {}
+    if (mounted) {
+      _loadServicesWithLocation();
+      _loadRecommendations();
+    }
+  }
+
+  void _loadServicesWithLocation() {
+    context.read<ServiceBloc>().add(ServiceLoadRequested(
+          latitude: _userLat,
+          longitude: _userLon,
+          radiusKm: _radiusKm,
+        ));
   }
 
   Future<void> _enforceMandatorySeekerFeedback() async {
@@ -157,9 +208,13 @@ class _SeekerHomeScreenState extends State<SeekerHomeScreen>
       _recommendationsTimedOut = false;
     });
     try {
-      // 25 s covers cold-start Neo4j/backend (free-tier Render/Railway wakeup).
       final response = await ApiService.instance
-          .getRecommendedServices(user.uid, limit: 6)
+          .getRecommendedServices(
+            user.uid,
+            limit: 6,
+            latitude: _userLat,
+            longitude: _userLon,
+          )
           .timeout(const Duration(seconds: 25));
       final List<dynamic> items =
           response['recommendations'] as List<dynamic>? ?? [];
@@ -194,13 +249,14 @@ class _SeekerHomeScreenState extends State<SeekerHomeScreen>
       backgroundColor: AppTheme.backgroundColor,
       body: RefreshIndicator(
         onRefresh: () async {
-          context.read<ServiceBloc>().add(const ServiceLoadRequested());
+          _loadServicesWithLocation();
           await _loadRecommendations();
         },
         child: CustomScrollView(
           slivers: [
             _buildAppBar(),
             _buildCategoriesSection(),
+            _buildRadiusFilterSection(),
             _buildRecommendationsSection(),
             _buildServicesHeader(),
             _buildServicesGrid(),
@@ -366,7 +422,7 @@ class _SeekerHomeScreenState extends State<SeekerHomeScreen>
                   onPressed: () {
                     _searchController.clear();
                     setState(() {});
-                    context.read<ServiceBloc>().add(const ServiceLoadRequested());
+                    _loadServicesWithLocation();
                   },
                 )
               : null,
@@ -376,7 +432,7 @@ class _SeekerHomeScreenState extends State<SeekerHomeScreen>
         onChanged: (value) {
           setState(() {});
           if (value.isEmpty) {
-            context.read<ServiceBloc>().add(const ServiceLoadRequested());
+            _loadServicesWithLocation();
           } else {
             context.read<ServiceBloc>().add(ServiceSearchRequested(query: value));
           }
@@ -416,9 +472,14 @@ class _SeekerHomeScreenState extends State<SeekerHomeScreen>
                   final isSelected = _selectedCategory == category['name'];
                   return GestureDetector(
                     onTap: () {
-                      setState(() => _selectedCategory = category['name']);
+                      setState(() => _selectedCategory = category['name'] as String);
                       context.read<ServiceBloc>().add(
-                            ServiceFilterByCategory(category: category['name']),
+                            ServiceFilterByCategory(
+                              category: category['name'] as String,
+                              latitude: _userLat,
+                              longitude: _userLon,
+                              radiusKm: _radiusKm,
+                            ),
                           );
                     },
                     child: AnimatedContainer(
@@ -465,6 +526,168 @@ class _SeekerHomeScreenState extends State<SeekerHomeScreen>
         ),
       ),
     );
+  }
+
+  Widget _buildRadiusFilterSection() {
+    if (_userLat == null && _userLon == null) {
+      // No location — show a compact "Set location" prompt
+      return SliverToBoxAdapter(
+        child: GestureDetector(
+          onTap: _requestLocationAndReload,
+          child: Container(
+            margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            decoration: BoxDecoration(
+              color: AppTheme.primaryColor.withOpacity(0.07),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: AppTheme.primaryColor.withOpacity(0.2)),
+            ),
+            child: Row(
+              children: [
+                Icon(Icons.location_off_rounded,
+                    size: 18, color: AppTheme.primaryColor.withOpacity(0.7)),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'Enable location to see nearest services first',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: AppTheme.primaryColor.withOpacity(0.9),
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+                if (_locationLoading)
+                  const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                else
+                  Icon(Icons.chevron_right_rounded,
+                      size: 18, color: AppTheme.primaryColor),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    return SliverToBoxAdapter(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+            child: Row(
+              children: [
+                const Icon(Icons.radar_rounded,
+                    color: AppTheme.primaryColor, size: 18),
+                const SizedBox(width: 8),
+                const Text(
+                  'Search Radius',
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                ),
+                const Spacer(),
+                Icon(Icons.location_on_rounded,
+                    size: 14, color: Colors.green.shade600),
+                const SizedBox(width: 4),
+                Text(
+                  'Location active',
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: Colors.green.shade600,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          SizedBox(
+            height: 36,
+            child: ListView.builder(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              itemCount: _radiusOptions.length,
+              itemBuilder: (context, index) {
+                final r = _radiusOptions[index];
+                final isSelected = _radiusKm == r;
+                return GestureDetector(
+                  onTap: () => _onRadiusChanged(r),
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 200),
+                    margin: const EdgeInsets.only(right: 8),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 14, vertical: 6),
+                    decoration: BoxDecoration(
+                      gradient: isSelected ? AppTheme.primaryGradient : null,
+                      color: isSelected ? null : Colors.white,
+                      borderRadius: BorderRadius.circular(20),
+                      border: isSelected
+                          ? null
+                          : Border.all(color: const Color(0xFFE5E7EB)),
+                      boxShadow: isSelected
+                          ? [
+                              BoxShadow(
+                                color: AppTheme.primaryColor.withOpacity(0.3),
+                                blurRadius: 6,
+                                offset: const Offset(0, 2),
+                              )
+                            ]
+                          : AppTheme.softShadow,
+                    ),
+                    child: Text(
+                      r >= 50 ? 'Any distance' : '${r.toInt()} KM',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: isSelected
+                            ? Colors.white
+                            : AppTheme.textPrimary,
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _requestLocationAndReload() async {
+    setState(() => _locationLoading = true);
+    try {
+      LocationPermission perm = await Geolocator.checkPermission();
+      if (perm == LocationPermission.denied) {
+        perm = await Geolocator.requestPermission();
+      }
+      if (perm == LocationPermission.always ||
+          perm == LocationPermission.whileInUse) {
+        final pos = await Geolocator.getCurrentPosition(
+          locationSettings: const LocationSettings(
+            accuracy: LocationAccuracy.medium,
+            timeLimit: Duration(seconds: 8),
+          ),
+        );
+        if (mounted) {
+          setState(() {
+            _userLat = pos.latitude;
+            _userLon = pos.longitude;
+          });
+          _loadServicesWithLocation();
+          _loadRecommendations();
+        }
+      }
+    } catch (_) {}
+    if (mounted) setState(() => _locationLoading = false);
+  }
+
+  void _onRadiusChanged(double radius) {
+    if (_radiusKm == radius) return;
+    setState(() => _radiusKm = radius);
+    _loadServicesWithLocation();
   }
 
   Widget _buildRecommendationsSection() {
@@ -714,21 +937,53 @@ class _SeekerHomeScreenState extends State<SeekerHomeScreen>
                     overflow: TextOverflow.ellipsis,
                   ),
                   const Spacer(),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.2),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Text(
-                      'Rs. ${service.basePrice.toStringAsFixed(0)}+',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 12,
-                        fontWeight: FontWeight.bold,
+                  Row(
+                    children: [
+                      if (service.distanceKm != null) ...[
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 6, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.9),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.near_me_rounded,
+                                  size: 10,
+                                  color: Colors.green.shade700),
+                              const SizedBox(width: 2),
+                              Text(
+                                '${service.distanceKm!.toStringAsFixed(1)} km',
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.green.shade700,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                      ],
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.2),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          'Rs. ${service.basePrice.toStringAsFixed(0)}+',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
                       ),
-                    ),
+                    ],
                   ),
                 ],
               ),
@@ -860,9 +1115,7 @@ class _SeekerHomeScreenState extends State<SeekerHomeScreen>
                   ),
                   const SizedBox(height: 16),
                   ElevatedButton.icon(
-                    onPressed: () {
-                      context.read<ServiceBloc>().add(const ServiceLoadRequested());
-                    },
+                    onPressed: _loadServicesWithLocation,
                     icon: const Icon(Icons.refresh_rounded, size: 18),
                     label: const Text('Try Again'),
                     style: ElevatedButton.styleFrom(
@@ -882,6 +1135,14 @@ class _SeekerHomeScreenState extends State<SeekerHomeScreen>
 
         if (state is ServiceLoaded) {
           if (state.services.isEmpty) {
+            // Check if we have a radius filter active — suggest expanding
+            if (_userLat != null && _radiusKm < 50) {
+              return SliverFillRemaining(
+                child: Center(
+                  child: _buildNoServicesInRadius(),
+                ),
+              );
+            }
             return SliverFillRemaining(
               child: Center(
                 child: EmptyStateWidget(
@@ -893,7 +1154,6 @@ class _SeekerHomeScreenState extends State<SeekerHomeScreen>
             );
           }
 
-          // Filter services based on selected category using the matching function
           final filteredServices = state.services
               .where((service) => _serviceMatchesCategory(service, _selectedCategory))
               .toList();
@@ -910,13 +1170,24 @@ class _SeekerHomeScreenState extends State<SeekerHomeScreen>
             );
           }
 
+          final showHint = _userLat != null &&
+              _radiusKm < 50 &&
+              filteredServices.length <= 3;
+
           return SliverPadding(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
             sliver: SliverList(
               delegate: SliverChildBuilderDelegate(
                 (context, index) {
-                  final service = filteredServices[index];
-                  return _buildServiceCard(service);
+                  if (index == 0 && showHint) {
+                    return Column(
+                      children: [
+                        _buildFewServicesHint(filteredServices.length),
+                        _buildServiceCard(filteredServices[0]),
+                      ],
+                    );
+                  }
+                  return _buildServiceCard(filteredServices[index]);
                 },
                 childCount: filteredServices.length,
               ),
@@ -1019,6 +1290,37 @@ class _SeekerHomeScreenState extends State<SeekerHomeScreen>
                               style: const TextStyle(
                                 fontSize: 12,
                                 fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  // Distance badge
+                  if (service.distanceKm != null)
+                    Positioned(
+                      bottom: 10,
+                      right: 10,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 7, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.9),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.near_me_rounded,
+                                size: 11,
+                                color: Colors.green.shade700),
+                            const SizedBox(width: 3),
+                            Text(
+                              '${service.distanceKm!.toStringAsFixed(1)} km',
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.green.shade700,
                               ),
                             ),
                           ],
@@ -1214,6 +1516,94 @@ class _SeekerHomeScreenState extends State<SeekerHomeScreen>
                 ],
               ),
             ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildNoServicesInRadius() {
+    final nextRadius = _radiusOptions.firstWhere(
+      (r) => r > _radiusKm,
+      orElse: () => 50.0,
+    );
+    return Padding(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: AppTheme.primaryColor.withOpacity(0.08),
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: const Icon(Icons.location_searching_rounded,
+                size: 44, color: AppTheme.primaryColor),
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'No services within ${_radiusKm.toInt()} KM',
+            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Try expanding your search radius to ${nextRadius.toInt()} KM',
+            style: const TextStyle(color: AppTheme.textSecondary, fontSize: 13),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 16),
+          ElevatedButton.icon(
+            onPressed: () => _onRadiusChanged(nextRadius),
+            icon: const Icon(Icons.expand_rounded, size: 18),
+            label: Text('Expand to ${nextRadius.toInt()} KM'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppTheme.primaryColor,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12)),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFewServicesHint(int count) {
+    final nextRadius = _radiusOptions.firstWhere(
+      (r) => r > _radiusKm,
+      orElse: () => 50.0,
+    );
+    return GestureDetector(
+      onTap: () => _onRadiusChanged(nextRadius),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        decoration: BoxDecoration(
+          color: const Color(0xFFFFF3CD),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: const Color(0xFFFFD966)),
+        ),
+        child: Row(
+          children: [
+            const Icon(Icons.info_outline_rounded,
+                size: 18, color: Color(0xFF856404)),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                'Only $count service${count == 1 ? '' : 's'} found within '
+                '${_radiusKm.toInt()} KM — tap to expand to '
+                '${nextRadius.toInt()} KM',
+                style: const TextStyle(
+                  fontSize: 12,
+                  color: Color(0xFF856404),
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ),
+            const Icon(Icons.chevron_right_rounded,
+                size: 18, color: Color(0xFF856404)),
           ],
         ),
       ),

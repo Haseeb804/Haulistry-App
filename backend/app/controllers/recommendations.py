@@ -3,8 +3,8 @@ Recommendations REST API Controller
 Personalized service suggestions for seekers.
 """
 
-from fastapi import APIRouter, HTTPException, status
-from typing import List
+from fastapi import APIRouter, HTTPException, status, Query
+from typing import List, Optional
 from pydantic import BaseModel
 from ..models.recommendation import Recommendation
 from ..models.user import User
@@ -17,10 +17,20 @@ class InterestsUpdateRequest(BaseModel):
 
 
 @router.get("/{seeker_id}")
-async def get_recommendations(seeker_id: str, limit: int = 15):
+async def get_recommendations(
+    seeker_id: str,
+    limit: int = 15,
+    latitude: Optional[float] = Query(None, description="Seeker latitude for proximity scoring"),
+    longitude: Optional[float] = Query(None, description="Seeker longitude for proximity scoring"),
+):
     """Return scored, personalized service recommendations for a seeker."""
     try:
-        recommendations = Recommendation.get_for_seeker(seeker_id, limit=limit)
+        recommendations = Recommendation.get_for_seeker(
+            seeker_id,
+            limit=limit,
+            latitude=latitude,
+            longitude=longitude,
+        )
         return {
             "success": True,
             "recommendations": recommendations,
